@@ -769,7 +769,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Registry entry contains `--autostart`.
 
-#### P3.6 Window lifecycle: start hidden, start minimized, close to tray — Status: ⬜
+#### P3.6 Window lifecycle: start hidden, start minimized, close to tray — Status: 🟡
 - **Depends on:** P3.2, P3.3, Q7 (hide vs destroy; default to **hide** if unanswered)
 - **Files:** `crates/desqu-shell/src/window.rs`
 - **Do:**
@@ -1356,3 +1356,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P3.4 — 🧪 — instance::plugin (decide(): --quit exits the running app via app.exit, else show_main), exit_if_quit_requested for first launch; window::show_main added early. 3 unit tests. Manual check (screenbound.exe --quit) possible only after P3.11 adopts the shell.
 - 2026-10-10 — workflow — rule 9 changed — Owner now makes all commits; after each step Claude suggests a short commit message and waits. History-rewrite to drop Claude Co-Authored-By trailers was blocked by the permission system; backup branch backup/pre-attribution-cleanup exists; owner to run the filter-branch themselves or allow it.
 - 2026-10-10 — P3.5 — 🧪 — autostart::plugin() (args --autostart), sync(), sync_at_startup() (disable+enable so old entries are rewritten). platform::remove_run_value(name) deletes the HKCU Run value + StartupApproved value (unsupported stub returns Ok(false)); tested against the real registry with a throwaway value. 13 tests pass, clippy clean. Still to verify by a human after P3.11: enabling writes exe path + --autostart in the Run key.
+- 2026-10-10 — P3.6 — 🧪 — window.rs: should_show_on_startup / close_action (pure, 5 tests), on_startup, install_close_handler (reads close_to_tray at event time, tray_ok captured), show_main. Q7 unanswered: used the plan default (hide, not destroy the WebView). 18 desqu-shell tests pass, clippy clean. Used by Screenbound in P3.11; behaviour verified then.
