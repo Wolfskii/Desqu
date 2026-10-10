@@ -46,10 +46,10 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 
 | Phase | Name | Status | Depends on |
 | --- | --- | --- | --- |
-| 0 | Baseline measurements and decisions | ⬜ | — |
-| 1 | Monorepo move (behaviour identical) | 🟡 | 0 |
-| 2 | Screenbound module crate + UI package | 🟡 | 1 |
-| 3 | Shared shell crate + shared UI kit | ⬜ | 1 (can run in parallel with 2) |
+| 0 | Baseline measurements and decisions | 🟡 | — |
+| 1 | Monorepo move (behaviour identical) | ✅ | 0 |
+| 2 | Screenbound module crate + UI package | ✅ | 1 |
+| 3 | Shared shell crate + shared UI kit | ✅ | 1 (can run in parallel with 2) |
 | 4 | Screenbound rebrand + settings migration | ⬜ | 2, 3, Q1, Q2 |
 | 5 | Updater, CI and GitHub releases | ⬜ | 3, Q5, Q6 |
 | 6 | Desqu collection app | ⬜ | 2, 3, 5 |
@@ -377,7 +377,7 @@ Each step has: **Status**, **Depends on**, **Files**, **Do**, **Verify**, **Done
 Goal: Screenbound lives in `apps/screenbound/`, the root is a Cargo + npm workspace, everything still
 builds and produces the same artifacts. **No identifier, name, or behaviour changes in this phase.**
 
-#### P1.1 Move Screenbound files with git — Status: 🟡
+#### P1.1 Move Screenbound files with git — Status: ✅
 - **Depends on:** P0.5, Q4
 - **Do:** From the repo root, with a clean working tree (`git status` shows nothing to commit). Stop
   any running `task dev` first.
@@ -409,7 +409,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
 - **Done when:**
   - [x] All moves done; history preserved (`git log --follow apps/screenbound/src-tauri/src/lib.rs` shows old commits).
 
-#### P1.2 Create the Cargo workspace — Status: 🟡
+#### P1.2 Create the Cargo workspace — Status: ✅
 - **Depends on:** P1.1
 - **Files:** new `Cargo.toml` (root), `apps/screenbound/src-tauri/Cargo.toml`
 - **Do:**
@@ -435,7 +435,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
 - **Done when:**
   - [x] Workspace builds; only one `Cargo.lock` (root); release profile only in root `Cargo.toml`.
 
-#### P1.3 Create the npm workspace — Status: 🟡
+#### P1.3 Create the npm workspace — Status: ✅
 - **Depends on:** P1.1
 - **Files:** new root `package.json`, `apps/screenbound/package.json`, `package-lock.json`
 - **Do:**
@@ -452,7 +452,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
   3. Run `npm install` at the root. This rewrites `package-lock.json` for the workspace.
 - **Verify:** `npm run check -w screenbound-app` passes.
 - **Done when:**
-  - [ ] `npm install` at root works; `node_modules/` only at root (plus any nested ones npm decides).
+  - [x] `npm install` at root works; `node_modules/` only at root (plus any nested ones npm decides).
 
 #### P1.4 Fix ignore files — Status: ✅
 - **Depends on:** P1.1
@@ -477,7 +477,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
 - **Done when:**
   - [ ] No build output shows up in `git status`.
 
-#### P1.5 Split Taskfiles — Status: 🟡
+#### P1.5 Split Taskfiles — Status: ✅
 - **Depends on:** P1.2, P1.3
 - **Files:** root [Taskfile.yml](Taskfile.yml), new `apps/screenbound/Taskfile.yml`
 - **Do:**
@@ -511,9 +511,9 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
   3. Keep task descriptions so `task --list` shows them.
 - **Verify:** `task --list` shows `screenbound:*` tasks; `task screenbound:ci` passes; `cd apps/screenbound; task ci` passes.
 - **Done when:**
-  - [ ] Both root and app-folder invocations work.
+  - [x] Both root and app-folder invocations work.
 
-#### P1.6 Parameterize release scripts — Status: 🟡
+#### P1.6 Parameterize release scripts — Status: ✅
 - **Depends on:** P1.2
 - **Files:** `scripts/publish-artifacts.ps1`, rename `scripts/stop-screenbound.ps1` → `scripts/stop-app.ps1` (`git mv`)
 - **Do:**
@@ -528,9 +528,9 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
      (same logic as today).
 - **Verify:** `task screenbound:release` produces the same three file names as recorded in P0.5, now in `dist/screenbound/`.
 - **Done when:**
-  - [ ] Artifacts identical in name; sizes within a few % of P0.5.
+  - [x] Artifacts identical in name; sizes within a few % of P0.5.
 
-#### P1.7 Split docs and agent rules — Status: 🟡
+#### P1.7 Split docs and agent rules — Status: ✅
 - **Depends on:** P1.1
 - **Files:** [AGENTS.md](AGENTS.md), new `apps/screenbound/AGENTS.md`, [README.md](README.md),
   new `apps/screenbound/README.md`, new root `PLAN.md`
@@ -553,9 +553,9 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
      `apps/screenbound/docs/fullscreen-research.md`).
 - **Verify:** open each markdown file and click/inspect links; no broken relative links.
 - **Done when:**
-  - [ ] All docs in place, links valid.
+  - [x] All docs in place, links valid.
 
-#### P1.8 Phase 1 regression check — Status: 🧪
+#### P1.8 Phase 1 regression check — Status: ✅
 - **Depends on:** P1.2–P1.7
 - **Do:**
   1. `task ci` (root) passes.
@@ -564,7 +564,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
   3. Run the **Core flow** and **Lifecycle** sections of `apps/screenbound/docs/manual-testing.md`.
   4. `task screenbound:release` + install; confirm exe is stripped (size similar to P0.5).
 - **Done when:**
-  - [ ] All four checks pass. Phase 1 → ✅ in the phase table.
+  - [x] All four checks pass. Phase 1 → ✅ in the phase table.
 
 ---
 
@@ -574,7 +574,7 @@ Goal: Screenbound's logic becomes a reusable Tauri plugin crate and a Svelte UI 
 standalone app becomes a thin shell. Behaviour stays identical except: the module can now be
 started/stopped at runtime.
 
-#### P2.1 Create `screenbound-module` crate and move code — Status: 🟡
+#### P2.1 Create `screenbound-module` crate and move code — Status: ✅
 - **Depends on:** P1.8
 - **Files:** new `apps/screenbound/module/Cargo.toml`, `apps/screenbound/module/src/lib.rs`;
   move `apps/screenbound/src-tauri/src/{core,engine,platform}` → `apps/screenbound/module/src/`
@@ -594,9 +594,9 @@ started/stopped at runtime.
 - **Verify:** `cargo test -p screenbound-module` runs the same number of unit tests as P0.5;
   `cargo build -p screenbound` succeeds; `cargo clippy --workspace --all-targets` clean.
 - **Done when:**
-  - [ ] Tests moved and passing; app still runs exactly as before.
+  - [x] Tests moved and passing; app still runs exactly as before.
 
-#### P2.2 Turn the commands into a Tauri plugin — Status: 🟡
+#### P2.2 Turn the commands into a Tauri plugin — Status: ✅
 - **Depends on:** P2.1
 - **Files:** `apps/screenbound/module/src/plugin.rs`, `apps/screenbound/module/build.rs`,
   `apps/screenbound/module/permissions/default.toml`, move `apps/screenbound/src-tauri/src/commands.rs`
@@ -642,9 +642,9 @@ started/stopped at runtime.
 - **Verify:** `cargo build -p screenbound`; app starts; DevTools console shows no permission errors
   once P2.3 switches the frontend.
 - **Done when:**
-  - [ ] All 9 old commands available as `plugin:screenbound-module|…`; 3 new lifecycle commands work.
+  - [x] All 9 old commands available as `plugin:screenbound-module|…`; 3 new lifecycle commands work.
 
-#### P2.3 Create `@desqu/screenbound-ui` and switch invoke names — Status: 🟡
+#### P2.3 Create `@desqu/screenbound-ui` and switch invoke names — Status: ✅
 - **Depends on:** P2.2
 - **Files:** new `apps/screenbound/ui/package.json`, `apps/screenbound/ui/src/index.ts`; move
   `apps/screenbound/src/lib/*` → `apps/screenbound/ui/src/` (`git mv`); new
@@ -674,9 +674,9 @@ started/stopped at runtime.
 - **Verify:** `task screenbound:check`; `task screenbound:dev` — all six tabs work, saving works,
   Diagnostics list loads, activity log streams.
 - **Done when:**
-  - [ ] UI identical to before; all calls go through the plugin.
+  - [x] UI identical to before; all calls go through the plugin.
 
-#### P2.4 Runtime start/stop works — Status: 🧪
+#### P2.4 Runtime start/stop works — Status: ✅
 - **Depends on:** P2.3
 - **Files:** `apps/screenbound/module/src/plugin.rs`, a temporary dev-only button is **not** needed:
   call from DevTools console `window.__TAURI_INTERNALS__.invoke('plugin:screenbound-module|module_stop')`.
@@ -696,7 +696,7 @@ started/stopped at runtime.
 Goal: tray, startup, close-to-tray, autostart, single instance, settings store and module mutex are
 implemented once in `crates/desqu-shell` and reused by every app. Standalone Screenbound adopts it.
 
-#### P3.1 Create `desqu-shell` crate skeleton — Status: 🟡
+#### P3.1 Create `desqu-shell` crate skeleton — Status: ✅
 - **Depends on:** P1.8
 - **Files:** `crates/desqu-shell/Cargo.toml`, `crates/desqu-shell/src/{lib.rs, settings.rs, args.rs, json.rs, logging.rs, module.rs, mutex.rs, tray.rs, window.rs, autostart.rs, instance.rs, platform/mod.rs, platform/windows.rs, platform/unsupported.rs}`
 - **Do:**
@@ -710,7 +710,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
      just for this.
 - **Verify:** `cargo build -p desqu-shell`.
 - **Done when:**
-  - [ ] Crate compiles with empty-but-declared modules.
+  - [x] Crate compiles with empty-but-declared modules.
 
 #### P3.2 Shell settings model + store — Status: ✅
 - **Depends on:** P3.1
@@ -742,7 +742,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Tests pass.
 
-#### P3.4 Single instance + `--quit` forwarding — Status: 🟡
+#### P3.4 Single instance + `--quit` forwarding — Status: ✅
 - **Depends on:** P3.3
 - **Files:** `crates/desqu-shell/src/instance.rs`
 - **Do:** `pub fn plugin<R: Runtime>() -> TauriPlugin<R>` wrapping `tauri_plugin_single_instance::init`.
@@ -752,9 +752,9 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Verify (manual):** with app running, run `screenbound.exe --quit` → running app exits and restores
   managed windows.
 - **Done when:**
-  - [ ] Behaviour confirmed (🧪 until manual check).
+  - [x] Behaviour confirmed (🧪 until manual check).
 
-#### P3.5 Autostart with `--autostart` arg — Status: 🟡
+#### P3.5 Autostart with `--autostart` arg — Status: ✅
 - **Depends on:** P3.3, P0.3
 - **Files:** `crates/desqu-shell/src/autostart.rs`
 - **Do:**
@@ -767,9 +767,9 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
      and the matching `StartupApproved\Run` value). Used by Phase 4 and Phase 6.
 - **Verify:** enable → `Get-ItemProperty HKCU:\...\Run` shows exe path + `--autostart`.
 - **Done when:**
-  - [ ] Registry entry contains `--autostart`.
+  - [x] Registry entry contains `--autostart`.
 
-#### P3.6 Window lifecycle: start hidden, start minimized, close to tray — Status: 🟡
+#### P3.6 Window lifecycle: start hidden, start minimized, close to tray — Status: ✅
 - **Depends on:** P3.2, P3.3, Q7 (hide vs destroy; default to **hide** if unanswered)
 - **Files:** `crates/desqu-shell/src/window.rs`
 - **Do:**
@@ -782,9 +782,9 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
      `RunEvent::Exit` → modules stop. Read the setting **at event time** (it can change while running).
   4. `pub fn show_main(app)` (move from Screenbound `lib.rs`).
 - **Done when:**
-  - [ ] Functions implemented and used by Screenbound in P3.8.
+  - [x] Functions implemented and used by Screenbound in P3.8.
 
-#### P3.7 Tray builder — Status: 🟡
+#### P3.7 Tray builder — Status: ✅
 - **Depends on:** P3.6
 - **Files:** `crates/desqu-shell/src/tray.rs`
 - **Do:** `TrayConfig { tooltip, show_label, extra_items: Vec<TrayItem>, on_item: Fn(&AppHandle, &str) }`
@@ -794,7 +794,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
   Return the `TrayIcon` so callers can update check items. Use the app's default window icon
   (copy whatever icon handling Screenbound's `install_tray` uses today).
 - **Done when:**
-  - [ ] Screenbound tray looks and behaves as before (P3.8).
+  - [x] Screenbound tray looks and behaves as before (P3.8).
 
 #### P3.8 Module mutex + `Module` trait — Status: ✅
 - **Depends on:** P3.1
@@ -823,7 +823,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [x] Lock test passes; Screenbound reports `OwnedElsewhere` correctly (two-process check happens in P6.3).
 
-#### P3.9 Shell plugin commands — Status: 🧪
+#### P3.9 Shell plugin commands — Status: ✅
 - **Depends on:** P3.2–P3.7
 - **Files:** `crates/desqu-shell/src/lib.rs`, `crates/desqu-shell/build.rs`, `crates/desqu-shell/permissions/default.toml`
 - **Do:** Tauri plugin `desqu-shell` with commands: `get_shell_settings`, `set_shell_settings`
@@ -851,7 +851,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [x] Screenbound UI compiles using `@desqu/ui`.
 
-#### P3.11 Standalone Screenbound adopts the shell — Status: 🧪
+#### P3.11 Standalone Screenbound adopts the shell — Status: ✅
 - **Depends on:** P2.4, P3.4–P3.10
 - **Files:** `apps/screenbound/src-tauri/src/lib.rs`, delete `apps/screenbound/src-tauri/src/autostart.rs`,
   `apps/screenbound/src-tauri/tauri.conf.json`, capabilities, `apps/screenbound/ui/src/components/SettingsPanel.svelte`,
@@ -1362,3 +1362,5 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P3.9 — 🧪 — desqu-shell plugin (name = package name desqu-shell): get_shell_settings, set_shell_settings (saves shell.json, then autostart::sync; sync failure returns 'Saved, but ...'), app_info {name, version, identifier, portable}; init(config_dir), current_settings(app) helper for startup/close handler. Corrupt shell.json -> defaults + shell.json.corrupt copy (app still starts). build.rs + permissions/default.toml, links=desqu-shell. 31 desqu-shell tests, clippy clean. KNOWN LIMIT: portable = no uninstall.exe next to exe, so an MSI install (which has none) is reported portable; revisit in P5.3 if MSI updates matter. Callable as plugin:desqu-shell|... only once an app registers it (P3.11).
 - 2026-10-10 — P3.10 — ✅ — packages/ui (@desqu/ui): Switch (git mv), tokens.css (whole old app.css; app.css now just @imports it), TriStateSwitch (on/off/mixed, mixed = centred knob + accent outline, aria-checked mixed), SettingsRow, shell-api.ts (ShellSettings/AppInfo types + plugin:desqu-shell wrappers), ShellSettingsSection (start with system / start minimized / close to tray). Screenbound imports Switch from @desqu/ui; ui and app depend on it. task screenbound:check 196 files 0 errors/warnings; vite build OK and CSS still contains the tokens. Not yet used at runtime: ShellSettingsSection arrives in P3.11; TriStateSwitch is for Desqu (P6.2).
 - 2026-10-10 — P3.11 — 🧪 — Screenbound standalone now uses desqu-shell: lib.rs = logging::init, args::parse, instance::plugin, autostart::plugin, desqu_shell::init + screenbound_module::init in setup, autostart::sync_at_startup, tray::build ('Show ScreenBound'), window::install_close_handler/on_startup; window visible:false; capability desqu-shell:default; src/autostart.rs deleted. Config v1->v2: AppConfig.legacy_start_at_boot (read-only, skip_serializing), take_legacy_start_at_boot, AppConfig::migrate_legacy_start_at_boot(path) rewrites a v1 file as v2; settings::adopt_legacy_start_with_system seeds shell.json only if absent; app runs both before the plugins load. types.ts drops startAtBoot; SettingsPanel renders ShellSettingsSection + animation. DEVIATIONS: removed capabilities/desktop.json (granted the UI direct autostart access, unused now, and its plugin is no longer a direct dep) and the unused @tauri-apps/plugin-autostart npm dependency. Verified here: 41 module + 34 shell tests (incl. migration keeps zones/groups, never overwrites shell.json), type check 0 errors, clippy clean, built binary run with --quit as first instance exits 0 leaving no process. KNOWN FLAKE: cargo clippy right after cargo test occasionally fails in the screenbound build script; a rerun passes. NEEDS HUMAN on real Windows (also confirms P3.4-P3.7, P3.9): (1) copy of a real v1 config with startAtBoot:true -> after first run shell.json has startWithSystem:true, config.json version 2 with zones/rules/groups/knownApps unchanged (diff the JSON); (2) sign-in with Start with system on -> window hidden, tray present, engine running, Run key = exe + --autostart; (3) manual launch shows window; Start minimized on -> manual launch stays in tray; (4) Close to tray off -> X quits and restores managed windows; (5) second launch of the exe shows the window; 'screenbound.exe --quit' while running exits it and restores windows; (6) tray looks/behaves as before. Add results to apps/screenbound/PLAN.md.
+- 2026-10-10 — P2.4, P3.4-P3.7, P3.9, P3.11 — ✅ — Owner ran the real-Windows checks and reported all of them work (details not recorded). Phases 2 and 3 done. Still open from Phase 0: P0.2 (hidden-at-boot/tray/CPU/RAM numbers not provided) and open questions Q1-Q3, Q5-Q11.
+- 2026-10-10 — plan hygiene — fixed — Several steps (P1.1-P1.3, P1.5-P1.8, P2.1-P2.3, P3.1, P3.4-P3.7) still showed 🟡/🧪 in the plan although done and logged (status edits had silently not applied). Corrected all to ✅, ticked their Done-when boxes, and fixed the Phase 0/1 table rows. Phase 0 stays 🟡: P0.1 (open questions) and P0.2 (measurements) remain.
