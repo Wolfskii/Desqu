@@ -53,6 +53,8 @@ pub(crate) enum Job {
     Marquee((i32, i32), (i32, i32)),
     /// The right button went down on the desktop here: remembered for "Create vial here".
     ContextDown((i32, i32)),
+    /// A mouse button went down at this screen point (closes the popup when it is outside it).
+    ButtonDown((i32, i32)),
     Stop,
 }
 
@@ -75,6 +77,8 @@ pub struct ModuleState {
     pending: Mutex<Option<PixelRect>>,
     /// Where the desktop was last right-clicked (screen pixels).
     context_point: Mutex<Option<(i32, i32)>>,
+    /// Where the popup is on screen while it is open.
+    menu_rect: Mutex<Option<PixelRect>>,
     problem: Mutex<Option<String>>,
     icons: Mutex<HashMap<String, String>>,
 }
@@ -103,6 +107,7 @@ impl ModuleState {
             owned_elsewhere: AtomicBool::new(false),
             pending: Mutex::new(None),
             context_point: Mutex::new(None),
+            menu_rect: Mutex::new(None),
             problem: Mutex::new(None),
             icons: Mutex::new(HashMap::new()),
         }
@@ -220,6 +225,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             let _ = sink.send(match event {
                 MouseEvent::Marquee(down, up) => Job::Marquee(down, up),
                 MouseEvent::ContextDown(at) => Job::ContextDown(at),
+                MouseEvent::ButtonDown(at) => Job::ButtonDown(at),
             });
         }))
         .map_err(|e| tracing::warn!("could not watch the desktop for dragged boxes: {e}"))
@@ -304,6 +310,14 @@ fn worker<R: Runtime>(app: AppHandle<R>, rx: Receiver<Job>, jobs: Sender<Job>, l
             }
             Ok(Job::WindowChanged) => moved = Some(now + MOVE_DEBOUNCE),
             Ok(Job::Marquee(down, up)) => offer_new_vial(&app, down, up),
+            Ok(Job::ButtonDown(at)) => {
+                let outside = app.try_state::<ModuleState>().is_some_and(|state| {
+                    lock(&state.menu_rect).is_some_and(|r| at.0 < r.left || at.0 >= r.right || at.1 < r.top || at.1 >= r.bottom)
+                });
+                if outside {
+                    close_menu(&app);
+                }
+            }
             Ok(Job::ContextDown(at)) => {
                 if let Some(state) = app.try_state::<ModuleState>() {
                     *lock(&state.context_point) = Some(at);
@@ -577,6 +591,9 @@ fn offer_new_vial<R: Runtime>(app: &AppHandle<R>, down: (i32, i32), up: (i32, i3
 }
 
 pub fn close_menu<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(state) = app.try_state::<ModuleState>() {
+        *lock(&state.menu_rect) = None;
+    }
     if let Some(window) = app.get_webview_window(MENU_LABEL) {
         let _ = window.destroy();
     }
@@ -596,21 +613,54 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
         .resizable(false)
         .skip_taskbar(true)
         .always_on_top(true)
-        .focused(true)
+        .focused(false)
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
     let _ = window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
     let _ = window.set_position(PhysicalPosition::new(x, y));
-    // Like a context menu: it goes away as soon as you click anywhere else.
+    if let Some(state) = app.try_state::<ModuleState>() {
+        *lock(&state.menu_rect) = Some(PixelRect { left: x, top: y, right: x + size.0, bottom: y + size.1 });
+    }
+    // It stays hidden until its page asks to be shown (`menu_ready`), so there is no blank flash and
+    // no focus fight while it loads. If the page never answers it is shown anyway.
     let handle = app.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Focused(false)) {
-            close_menu(&handle);
-        }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        menu_ready(&handle);
     });
-    window.show().map_err(|e| e.to_string())?;
-    let _ = window.set_focus();
+    Ok(())
+}
+
+/// The popup's page has loaded: show it and give it the keyboard (for Esc). Dismissal by clicking
+/// elsewhere is done from the mouse hook, not from focus changes, which the web view causes itself.
+pub fn menu_ready<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(MENU_LABEL) {
+        if window.is_visible().unwrap_or(false) {
+            return;
+        }
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+// ------------------------------------------------------------------------ renaming on the desktop
+
+/// A vial window is non-focusable so it never steals focus; typing a name needs it focusable for
+/// the moment of the edit.
+pub fn begin_rename<R: Runtime>(app: &AppHandle<R>, vial_id: &str) -> Result<(), String> {
+    let window = app.get_webview_window(&label_for(vial_id)).ok_or("that vial has no window")?;
+    window.set_focusable(true).map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())
+}
+
+/// Back to a window that never takes focus, and back under every other window.
+pub fn end_rename<R: Runtime>(app: &AppHandle<R>, vial_id: &str) -> Result<(), String> {
+    let window = app.get_webview_window(&label_for(vial_id)).ok_or("that vial has no window")?;
+    window.set_focusable(false).map_err(|e| e.to_string())?;
+    if let Ok(hwnd) = window.hwnd() {
+        platform::mark_as_tool_window(hwnd.0 as isize)?;
+    }
     Ok(())
 }
 

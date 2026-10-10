@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-end-rename"
+description = "Enables the end_rename command without any pre-configured scope."
+commands.allow = ["end_rename"]
+
+[[permission]]
+identifier = "deny-end-rename"
+description = "Denies the end_rename command without any pre-configured scope."
+commands.deny = ["end_rename"]

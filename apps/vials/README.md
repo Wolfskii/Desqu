@@ -16,7 +16,7 @@ and they come back exactly where they were.
 - **Drag icons in and out like Explorer.** Drag shortcuts, files and folders from the desktop onto a
   vial. Drag one out of a vial and drop it on the desktop (it lands where you drop it), on another
   vial, or in a folder: it is a normal Windows drag with the icon under the cursor; Ctrl, Shift and
-  Alt choose copy, move or shortcut, Esc cancels. Rename a vial in the Vials window.
+  Alt choose copy, move or shortcut, Esc cancels. Click a vial's name on the desktop to rename it.
 - **Vials on the desktop.** Drag the title bar to move one, collapse it to just its title, double
   click an item to open it, press × to take an item out. Vials sit below your other windows and
   never take focus or show up in Alt+Tab.

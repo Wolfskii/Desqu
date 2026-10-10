@@ -25,6 +25,11 @@ Vials never moves or deletes files, but items are hidden while a vial holds them
 0g3. Drag an icon from one vial onto another vial. Expect it to move there.
 0g4. Drag an icon out of a vial into an open Explorer folder window. Expect Windows to move the real
     file (Ctrl copies, Alt makes a shortcut, Esc cancels with nothing changed).
+0g4b. Click a vial's name on the desktop. Expect an edit box with the name selected; type, Enter
+    saves, Esc cancels, clicking elsewhere saves. Afterwards the vial must be back under other windows
+    and never take focus again.
+0g4c. Drag a box and wait: the popup must appear fully drawn (no blank flash) and stay until you click
+    elsewhere, press Esc, or choose it. Click inside it: it must not close before the click lands.
 0g5. A vial has no x buttons, no item counter and no "Empty" text.
 0g6. Start Vials with no config: expect no vial at all. Right-click empty desktop, "Show more
     options", "Create vial here": expect a vial with its corner at the right-click spot.

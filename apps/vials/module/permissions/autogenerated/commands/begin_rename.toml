@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-begin-rename"
+description = "Enables the begin_rename command without any pre-configured scope."
+commands.allow = ["begin_rename"]
+
+[[permission]]
+identifier = "deny-begin-rename"
+description = "Denies the begin_rename command without any pre-configured scope."
+commands.deny = ["begin_rename"]

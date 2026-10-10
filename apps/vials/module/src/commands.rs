@@ -139,6 +139,24 @@ pub async fn create_vial_from_menu<R: Runtime>(app: AppHandle<R>) -> CmdResult<S
     engine::create_vial_from_pending(&app)
 }
 
+/// The popup's page has loaded: show it.
+#[tauri::command]
+pub async fn menu_ready<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
+    engine::menu_ready(&app);
+    Ok(())
+}
+
+/// A vial's title was clicked: let its window take the keyboard so the name can be typed.
+#[tauri::command]
+pub async fn begin_rename<R: Runtime>(app: AppHandle<R>, vial_id: String) -> CmdResult<()> {
+    engine::begin_rename(&app, &vial_id)
+}
+
+#[tauri::command]
+pub async fn end_rename<R: Runtime>(app: AppHandle<R>, vial_id: String) -> CmdResult<()> {
+    engine::end_rename(&app, &vial_id)
+}
+
 #[tauri::command]
 pub async fn dismiss_menu<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
     engine::close_menu(&app);

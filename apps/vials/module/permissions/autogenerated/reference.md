@@ -12,6 +12,9 @@ Everything the Vials UI needs
 - `allow-open-item`
 - `allow-create-vial-from-menu`
 - `allow-dismiss-menu`
+- `allow-menu-ready`
+- `allow-begin-rename`
+- `allow-end-rename`
 - `allow-drop-items`
 - `allow-drag-item-out`
 - `allow-get-monitors`
@@ -51,6 +54,32 @@ Enables the assign_item command without any pre-configured scope.
 <td>
 
 Denies the assign_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-begin-rename`
+
+</td>
+<td>
+
+Enables the begin_rename command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-begin-rename`
+
+</td>
+<td>
+
+Denies the begin_rename command without any pre-configured scope.
 
 </td>
 </tr>
@@ -188,6 +217,32 @@ Denies the drop_items command without any pre-configured scope.
 <tr>
 <td>
 
+`vials-module:allow-end-rename`
+
+</td>
+<td>
+
+Enables the end_rename command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-end-rename`
+
+</td>
+<td>
+
+Denies the end_rename command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `vials-module:allow-get-config`
 
 </td>
@@ -285,6 +340,32 @@ Enables the list_items command without any pre-configured scope.
 <td>
 
 Denies the list_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-menu-ready`
+
+</td>
+<td>
+
+Enables the menu_ready command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-menu-ready`
+
+</td>
+<td>
+
+Denies the menu_ready command without any pre-configured scope.
 
 </td>
 </tr>

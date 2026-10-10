@@ -27,6 +27,7 @@ impl MouseWatcher {
 pub(crate) enum MouseEvent {
     Marquee((i32, i32), (i32, i32)),
     ContextDown((i32, i32)),
+    ButtonDown((i32, i32)),
 }
 
 #[cfg(not(windows))]

@@ -1,7 +1,7 @@
 <script lang="ts">
   // The content of one vial's own window on the desktop.
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { api } from "./api";
   import ItemIcon from "./components/ItemIcon.svelte";
   import { vials } from "./state.svelte";
@@ -65,6 +65,41 @@
     press = null;
   }
 
+  // Clicking the name edits it right on the desktop.
+  let editing = $state(false);
+  let draft = $state("");
+  let nameInput: HTMLInputElement | undefined = $state();
+
+  async function startEdit() {
+    if (!vial || editing) return;
+    draft = vial.name;
+    try {
+      await api.beginRename(vialId);
+    } catch (e) {
+      vials.error = String(e);
+      return;
+    }
+    editing = true;
+    await tick();
+    nameInput?.focus();
+    nameInput?.select();
+  }
+
+  async function finishEdit(save: boolean) {
+    if (!editing) return;
+    editing = false;
+    const name = draft.trim();
+    if (save && vial && name && name !== vial.name) {
+      vial.name = name;
+      vials.scheduleSave(true);
+    }
+    try {
+      await api.endRename(vialId);
+    } catch (e) {
+      vials.error = String(e);
+    }
+  }
+
   function toggleCollapsed() {
     if (!vial) return;
     vial.collapsed = !vial.collapsed;
@@ -74,7 +109,23 @@
 
 <div class="vial" class:dropping>
   <header data-tauri-drag-region>
-    <span class="title" data-tauri-drag-region>{vial?.name ?? "Vial"}</span>
+    {#if editing}
+      <input
+        class="name-input"
+        bind:this={nameInput}
+        bind:value={draft}
+        maxlength="80"
+        aria-label="Vial name"
+        onkeydown={(e) => {
+          if (e.key === "Enter") void finishEdit(true);
+          else if (e.key === "Escape") void finishEdit(false);
+        }}
+        onblur={() => finishEdit(true)}
+      />
+    {:else}
+      <button class="title" title="Click to rename" onclick={startEdit}>{vial?.name ?? "Vial"}</button>
+    {/if}
+    <span class="grab" data-tauri-drag-region></span>
     <button
       class="chevron"
       title={vial?.collapsed ? "Expand" : "Collapse"}
@@ -144,11 +195,32 @@
     cursor: default;
   }
   .title {
-    flex: 1;
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 2px 6px;
+    margin-left: -6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
     font-weight: 600;
+    text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: text;
+  }
+  .title:hover {
+    border-color: var(--border-strong);
+  }
+  .name-input {
+    flex: 1;
+    min-width: 0;
+    height: 24px;
+    font-weight: 600;
+  }
+  .grab {
+    flex: 1;
+    align-self: stretch;
   }
   .chevron {
     width: 26px;

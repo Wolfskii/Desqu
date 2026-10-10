@@ -7,7 +7,11 @@
   let error = $state<string | null>(null);
   let button: HTMLButtonElement | undefined = $state();
 
-  onMount(() => button?.focus());
+  // Show the window only now that the page is drawn.
+  onMount(() => {
+    button?.focus();
+    void api.menuReady();
+  });
 
   async function create() {
     if (busy) return;
