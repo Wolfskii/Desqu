@@ -45,7 +45,7 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | Phase | Name | Status | Depends on |
 | --- | --- | --- | --- |
 | 0 | Baseline measurements and decisions | ⬜ | — |
-| 1 | Monorepo move (behaviour identical) | ⬜ | 0 |
+| 1 | Monorepo move (behaviour identical) | 🟡 | 0 |
 | 2 | Screenbound module crate + UI package | ⬜ | 1 |
 | 3 | Shared shell crate + shared UI kit | ⬜ | 1 (can run in parallel with 2) |
 | 4 | Screenbound rebrand + settings migration | ⬜ | 2, 3, Q1, Q2 |
@@ -530,7 +530,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
 - **Done when:**
   - [ ] All docs in place, links valid.
 
-#### P1.8 Phase 1 regression check — Status: ⬜
+#### P1.8 Phase 1 regression check — Status: 🧪
 - **Depends on:** P1.2–P1.7
 - **Do:**
   1. `task ci` (root) passes.
@@ -1318,3 +1318,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P1.5 — ✅ — apps/screenbound/Taskfile.yml holds all screenbound tasks (paths adapted). Root Taskfile includes it (screenbound:*) + install/ci. Verified: task --list; task screenbound:ci and (cd apps/screenbound) task ci both pass. Note: root no longer has dev/release/deploy; use screenbound:dev etc. release task references scripts/stop-app.ps1 and publish-artifacts.ps1 -App, which P1.6 creates (release not yet verified).
 - 2026-10-10 — P1.6 — ✅ — stop-screenbound.ps1 → scripts/stop-app.ps1 (-Names). publish-artifacts.ps1 -App <name> (reads apps/<name>, root target/, writes dist/<name>/ and clears only that folder). task screenbound:release OK: dist/screenbound/ names identical to P0.5, sizes within 0.1% (setup 2,506,870 B; msi 3,813,376 B; portable 10,522,624 B). Old root dist/ files from baseline left in place (ignored build output; delete when owner agrees).
 - 2026-10-10 — P1.7 — ✅ — Root README = Desqu intro + products + build; apps/screenbound/README.md = old README (image paths fixed, task screenbound:* commands). Root AGENTS.md = repo-wide rules (dependency rules, layering, conventions); apps/screenbound/AGENTS.md = Screenbound rules + screenbound:* commands. Root PLAN.md = index. All relative links checked. Next: P1.8 (regression, partly needs a human on Windows).
+- 2026-10-10 — P1.8 — 🧪 — Automated: root task ci exit 0 (189 files 0 errors; 37 Rust tests pass, clippy clean). Release via new task verified (P1.6). NOT yet done (needs human on Windows): (2) task screenbound:dev — app starts, tabs load, settings from %APPDATA%\com.screenbound.app shown; (3) manual-testing.md Core flow + Lifecycle; (4) confirm installed exe size ~ P0.5 (P1.6 build: 10.5 MB portable, same as baseline).
