@@ -46,12 +46,12 @@ tasks:
   test:
     desc: Rust unit tests
     cmds:
-      - cargo test -p screenbound
+      - cargo test -p screenbound-module -p screenbound
 
   probe:
     desc: Read-only probe of real monitors and windows
     cmds:
-      - cargo test -p screenbound -- --ignored --nocapture
+      - cargo test -p screenbound-module -- --ignored --nocapture
 
   probe:resize:
     desc: Resize one window and print how its bounds change (PID=)
@@ -63,7 +63,7 @@ tasks:
   lint:
     desc: Clippy on all Rust targets
     cmds:
-      - cargo clippy -p screenbound --all-targets
+      - cargo clippy -p screenbound-module -p screenbound --all-targets
 
   ci:
     desc: Typecheck, unit tests, and clippy

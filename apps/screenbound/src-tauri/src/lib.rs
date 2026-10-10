@@ -1,8 +1,5 @@
 mod autostart;
 mod commands;
-pub mod core;
-mod engine;
-mod platform;
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -11,7 +8,8 @@ use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 
-use engine::{Engine, EngineHandle, EngineMessage, EnginePaths, Notification};
+use screenbound_module::{engine, platform};
+use screenbound_module::engine::{Engine, EngineHandle, EngineMessage, EnginePaths, Notification};
 use platform::EventSubscription;
 
 /// Keeps the native event subscription alive for the app's lifetime.

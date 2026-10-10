@@ -3,11 +3,11 @@
 use tauri::{AppHandle, State};
 
 use crate::autostart;
-use crate::core::config::AppConfig;
-use crate::core::monitor::MonitorInfo;
-use crate::core::window::{WindowId, WindowInfo};
-use crate::engine::activity::ActivityEntry;
-use crate::engine::{EngineHandle, EngineStatus};
+use screenbound_module::core::config::AppConfig;
+use screenbound_module::core::monitor::MonitorInfo;
+use screenbound_module::core::window::{WindowId, WindowInfo};
+use screenbound_module::engine::activity::ActivityEntry;
+use screenbound_module::engine::{EngineHandle, EngineStatus};
 
 type CmdResult<T> = Result<T, String>;
 
