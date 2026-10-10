@@ -1001,7 +1001,7 @@ fighting over windows.
 - **Done when:**
   - [ ] vN detects vN+1, installs passively, relaunches, settings intact; tampered `.sig` rejected.
 
-#### P5.4 Version scripts — Status: ⬜
+#### P5.4 Version scripts — Status: ✅
 - **Depends on:** P1.6
 - **Files:** `scripts/bump-version.ps1`, `scripts/check-versions.ps1`
 - **Do:**
@@ -1011,7 +1011,7 @@ fighting over windows.
     `apps/<x>/ui/package.json` (if it exists). Then `cargo update -w` to refresh `Cargo.lock`.
   - `check-versions.ps1 -App x [-Tag x-v1.2.3]` fails if any of those differ or the tag mismatches.
 - **Done when:**
-  - [ ] Both scripts work for screenbound.
+  - [x] Both scripts work for screenbound.
 
 #### P5.5 CI workflow — Status: ⬜
 - **Depends on:** P1.8
