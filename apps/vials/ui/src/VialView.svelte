@@ -279,12 +279,12 @@
     border: 1px solid rgba(255, 255, 255, 0.26);
     border-radius: 12px;
     background:
-      radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.22), transparent 55%),
-      linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0.07));
+      radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 45%, rgba(255, 255, 255, 0.03));
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.55),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.1),
-      inset 0 0 28px rgba(255, 255, 255, 0.05);
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+      inset 0 0 28px rgba(255, 255, 255, 0.04);
     transition:
       background 0.15s,
       border-color 0.15s;
@@ -296,8 +296,8 @@
       linear-gradient(160deg, rgba(120, 175, 255, 0.28), rgba(120, 175, 255, 0.12));
   }
   .glass header {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
-    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   }
   .glass .title:hover {

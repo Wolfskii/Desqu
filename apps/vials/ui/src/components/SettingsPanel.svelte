@@ -37,6 +37,39 @@
         <option value="classic">Classic</option>
       </select>
     </SettingsRow>
+    {#if (vials.config?.theme ?? "glass") === "glass"}
+      <SettingsRow label="Glass blur" description="Frosted is Windows acrylic (strong blur with a fine grain). Clear is a plain blur without grain.">
+        <select
+          value={vials.config?.glassBlur ?? "frosted"}
+          disabled={!vials.config}
+          aria-label="Glass blur"
+          onchange={(e) => {
+            if (!vials.config) return;
+            vials.config.glassBlur = e.currentTarget.value === "clear" ? "clear" : "frosted";
+            vials.scheduleSave(true);
+          }}
+        >
+          <option value="frosted">Frosted</option>
+          <option value="clear">Clear</option>
+        </select>
+      </SettingsRow>
+      <SettingsRow label="Glass tint" description="Lower is clearer. The vials are rebuilt when you let go of the slider.">
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="5"
+          value={vials.config?.glassTint ?? 20}
+          disabled={!vials.config}
+          aria-label="Glass tint"
+          onchange={(e) => {
+            if (!vials.config) return;
+            vials.config.glassTint = Number(e.currentTarget.value);
+            vials.scheduleSave(true);
+          }}
+        />
+      </SettingsRow>
+    {/if}
     <SettingsRow
       label="Create vials by dragging a box on the desktop"
       description="Drag a box over empty space on the desktop and a small menu offers to create a vial there. Dragging over icons selects them as usual."

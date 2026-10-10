@@ -108,6 +108,21 @@ pub enum VialTheme {
     Classic,
 }
 
+/// What the Glass look blurs the desktop with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlassBlur {
+    /// Windows acrylic: strong blur with a fine grain and a slightly grey wash.
+    #[default]
+    Frosted,
+    /// Plain blur behind the window: clearer, no grain.
+    Clear,
+}
+
+fn default_glass_tint() -> u8 {
+    20
+}
+
 fn default_version() -> u32 {
     CONFIG_VERSION
 }
@@ -135,6 +150,11 @@ pub struct VialsConfig {
     pub context_menu: bool,
     #[serde(default)]
     pub theme: VialTheme,
+    #[serde(default)]
+    pub glass_blur: GlassBlur,
+    /// How strongly the glass is tinted, 0 (clearest) to 100 (nearly solid).
+    #[serde(default = "default_glass_tint")]
+    pub glass_tint: u8,
     /// Items the user took out of a vial on purpose: rules never put them back.
     #[serde(default)]
     pub declined: Vec<String>,
@@ -151,6 +171,8 @@ impl Default for VialsConfig {
             create_on_drag: true,
             context_menu: true,
             theme: VialTheme::default(),
+            glass_blur: GlassBlur::default(),
+            glass_tint: default_glass_tint(),
             declined: Vec::new(),
         }
     }
@@ -252,6 +274,7 @@ impl VialsConfig {
                 )));
             }
         }
+        self.glass_tint = self.glass_tint.min(100);
         self.version = CONFIG_VERSION;
         Ok(self)
     }
@@ -389,6 +412,15 @@ mod tests {
         assert!(serde_json::to_string(&cfg).unwrap().contains("\"theme\":\"classic\""));
         let old: VialsConfig = serde_json::from_str("{}").unwrap();
         assert_eq!(old.theme, VialTheme::Glass);
+    }
+
+    #[test]
+    fn glass_settings_default_round_trip_and_are_clamped() {
+        let cfg = VialsConfig::default();
+        assert_eq!((cfg.glass_blur, cfg.glass_tint), (GlassBlur::Frosted, 20));
+        let cfg: VialsConfig = serde_json::from_str(r#"{"glassBlur":"clear","glassTint":250}"#).unwrap();
+        assert_eq!(cfg.glass_blur, GlassBlur::Clear);
+        assert_eq!(cfg.validated().unwrap().glass_tint, 100);
     }
 
     #[test]

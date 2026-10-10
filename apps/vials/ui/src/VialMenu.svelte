@@ -99,8 +99,8 @@
     border-radius: 12px;
     color: rgba(255, 255, 255, 0.95);
     background:
-      radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.22), transparent 60%),
-      linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+      radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.14), transparent 60%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.55),
       inset 0 -1px 0 rgba(255, 255, 255, 0.1);

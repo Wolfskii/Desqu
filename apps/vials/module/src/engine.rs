@@ -23,7 +23,7 @@ use tauri::{
 
 use crate::core::gesture;
 use crate::core::layout::{self, MonitorRef};
-use crate::core::model::{PixelRect, Vial, VialTheme, VialsConfig};
+use crate::core::model::{GlassBlur, PixelRect, Vial, VialTheme, VialsConfig};
 use crate::core::rules;
 use crate::platform::{self, MouseEvent, MouseWatcher};
 
@@ -81,7 +81,7 @@ pub struct ModuleState {
     /// Where the popup is on screen while it is open.
     menu_rect: Mutex<Option<PixelRect>>,
     /// The theme the open vial windows were built with; a change rebuilds them.
-    applied_theme: Mutex<Option<VialTheme>>,
+    applied_theme: Mutex<Option<(VialTheme, GlassBlur, u8)>>,
     problem: Mutex<Option<String>>,
     icons: Mutex<HashMap<String, String>>,
 }
@@ -461,10 +461,11 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
     // Window effects are fixed when a window is built, so a new theme means new windows.
     if let Some(state) = app.try_state::<ModuleState>() {
         let mut applied = lock(&state.applied_theme);
-        if applied.is_some_and(|t| t != cfg.theme) {
+        let now = (cfg.theme, cfg.glass_blur, cfg.glass_tint);
+        if applied.is_some_and(|t| t != now) {
             close_vial_windows(app, &HashSet::new());
         }
-        *applied = Some(cfg.theme);
+        *applied = Some(now);
     }
     close_vial_windows(app, &wanted);
 
@@ -516,7 +517,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                 // Keep it out of Alt+Tab too (skip_taskbar alone does not). After show(): Tauri
                 // rewrites the extended style while showing.
                 if cfg.theme == VialTheme::Glass {
-                    apply_glass(&window);
+                    apply_glass(&window, cfg.glass_blur, cfg.glass_tint);
                 }
                 if let Ok(hwnd) = window.hwnd() {
                     if let Err(e) = platform::mark_as_tool_window(hwnd.0 as isize) {
@@ -622,7 +623,8 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
     let size = ((MENU_SIZE.0 * monitor.scale).round() as i32, (MENU_SIZE.1 * monitor.scale).round() as i32);
     let (x, y) = gesture::popup_position(cursor, size, &monitor.bounds);
 
-    let glass = app.try_state::<ModuleState>().is_some_and(|s| s.config().theme == VialTheme::Glass);
+    let look = app.try_state::<ModuleState>().map(|s| s.config());
+    let glass = look.as_ref().is_some_and(|c| c.theme == VialTheme::Glass);
     let window = WebviewWindowBuilder::new(app, MENU_LABEL, WebviewUrl::App("vials-menu".into()))
         .title("Create a vial")
         .decorations(false)
@@ -635,8 +637,8 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
-    if glass {
-        apply_glass(&window);
+    if let Some(cfg) = look.as_ref().filter(|c| c.theme == VialTheme::Glass) {
+        apply_glass(&window, cfg.glass_blur, cfg.glass_tint);
     }
     let _ = window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
     let _ = window.set_position(PhysicalPosition::new(x, y));
@@ -655,8 +657,13 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
 
 /// Frosted glass: the desktop behind the window is blurred (acrylic) with a dark tint so labels
 /// stay readable on any wallpaper, and the corners are rounded. Both are best effort.
-fn apply_glass<R: Runtime>(window: &tauri::WebviewWindow<R>) {
-    let effects = EffectsBuilder::new().effect(Effect::Acrylic).color(Color(18, 22, 30, 96)).build();
+fn apply_glass<R: Runtime>(window: &tauri::WebviewWindow<R>, blur: GlassBlur, tint_percent: u8) {
+    let alpha = (u16::from(tint_percent.min(100)) * 255 / 100) as u8;
+    let effect = match blur {
+        GlassBlur::Frosted => Effect::Acrylic,
+        GlassBlur::Clear => Effect::Blur,
+    };
+    let effects = EffectsBuilder::new().effect(effect).color(Color(24, 28, 38, alpha)).build();
     if let Err(e) = window.set_effects(effects) {
         tracing::debug!("no glass effect on this system: {e}");
     }

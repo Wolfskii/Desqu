@@ -40,6 +40,7 @@ export interface SortRule {
 }
 
 export type VialTheme = "glass" | "classic";
+export type GlassBlur = "frosted" | "clear";
 
 export interface VialsConfig {
     version: number;
@@ -53,6 +54,10 @@ export interface VialsConfig {
     contextMenu: boolean;
     /** How vial windows look. */
     theme: VialTheme;
+    /** Glass look: frosted (acrylic) or clear blur. */
+    glassBlur: GlassBlur;
+    /** Glass look: 0 (clearest) to 100 (nearly solid). */
+    glassTint: number;
     /** Items the user took out of a vial on purpose; rules never put them back. */
     declined?: string[];
 }
