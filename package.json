@@ -1,0 +1,5 @@
+{
+  "name": "desqu-repo",
+  "private": true,
+  "workspaces": ["apps/*", "apps/*/ui", "packages/*"]
+}

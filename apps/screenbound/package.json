@@ -1,5 +1,5 @@
 {
-    "name": "screenbound",
+    "name": "screenbound-app",
     "version": "0.1.0",
     "description": "Constrain fullscreen windows to user-defined screen zones",
     "type": "module",
