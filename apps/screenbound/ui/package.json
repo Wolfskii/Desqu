@@ -12,6 +12,7 @@
         }
     },
     "peerDependencies": {
+        "@desqu/ui": "*",
         "svelte": "^5",
         "@tauri-apps/api": "^2"
     }

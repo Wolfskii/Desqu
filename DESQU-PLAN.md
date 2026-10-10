@@ -833,7 +833,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Commands callable as `plugin:desqu-shell|…`.
 
-#### P3.10 Shared UI kit `@desqu/ui` — Status: ⬜
+#### P3.10 Shared UI kit `@desqu/ui` — Status: ✅
 - **Depends on:** P1.8
 - **Files:** `packages/ui/package.json`, `packages/ui/src/{index.ts, tokens.css, Switch.svelte, TriStateSwitch.svelte, SettingsRow.svelte, ShellSettingsSection.svelte, shell-api.ts}`
 - **Do:**
@@ -849,7 +849,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
   6. `ShellSettingsSection.svelte`: rows for Start with system, Start minimized to tray, Close to tray.
 - **Verify:** `task screenbound:check`.
 - **Done when:**
-  - [ ] Screenbound UI compiles using `@desqu/ui`.
+  - [x] Screenbound UI compiles using `@desqu/ui`.
 
 #### P3.11 Standalone Screenbound adopts the shell — Status: ⬜
 - **Depends on:** P2.4, P3.4–P3.10
@@ -1360,3 +1360,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P3.7 — 🧪 — tray.rs: layout() (pure, 4 tests: show/sep/extras/sep/[updates]/exit) + build() (TrayConfig with tooltip, show_label, extra_items, updates_item flag off by default, on_item handler; show/exit handled by shell, left click shows window; same icon handling as old install_tray). 22 desqu-shell tests pass, clippy clean. Look-and-behaviour check happens when Screenbound adopts it in P3.11.
 - 2026-10-10 — P3.8 — ✅ — desqu-shell: mutex::try_acquire (Local\Desqu.Module.<id>), module::{Module, ModuleStatus}; platform LockHandle. DEVIATIONS: (1) lock = mutex existence (bInitialOwner=false, no ReleaseMutex) because ReleaseMutex only works on the owning thread and stop() runs on another; needs Win32_Security feature. (2) Module trait is generic over the runtime and every method takes the AppHandle (start/stop/status), so ScreenboundModule is a stateless unit struct. screenbound-module now depends on desqu-shell; start() takes the lock before spawning the engine (None -> status ownedElsewhere, Err), stop() releases it; plugin setup logs a failed start instead of failing app startup. module_status returns ModuleStatus; UI shows 'running elsewhere' / 'not supported' cards (types.ts ModuleStatus extended). 28 desqu-shell tests (lock twice in-process -> None, release from another thread), screenbound ci green.
 - 2026-10-10 — P3.9 — 🧪 — desqu-shell plugin (name = package name desqu-shell): get_shell_settings, set_shell_settings (saves shell.json, then autostart::sync; sync failure returns 'Saved, but ...'), app_info {name, version, identifier, portable}; init(config_dir), current_settings(app) helper for startup/close handler. Corrupt shell.json -> defaults + shell.json.corrupt copy (app still starts). build.rs + permissions/default.toml, links=desqu-shell. 31 desqu-shell tests, clippy clean. KNOWN LIMIT: portable = no uninstall.exe next to exe, so an MSI install (which has none) is reported portable; revisit in P5.3 if MSI updates matter. Callable as plugin:desqu-shell|... only once an app registers it (P3.11).
+- 2026-10-10 — P3.10 — ✅ — packages/ui (@desqu/ui): Switch (git mv), tokens.css (whole old app.css; app.css now just @imports it), TriStateSwitch (on/off/mixed, mixed = centred knob + accent outline, aria-checked mixed), SettingsRow, shell-api.ts (ShellSettings/AppInfo types + plugin:desqu-shell wrappers), ShellSettingsSection (start with system / start minimized / close to tray). Screenbound imports Switch from @desqu/ui; ui and app depend on it. task screenbound:check 196 files 0 errors/warnings; vite build OK and CSS still contains the tokens. Not yet used at runtime: ShellSettingsSection arrives in P3.11; TriStateSwitch is for Desqu (P6.2).

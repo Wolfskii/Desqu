@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from "../state.svelte";
-  import Switch from "./Switch.svelte";
+  import { Switch } from "@desqu/ui";
   import type { TransitionSpeed } from "../types";
 
   const speeds: { id: TransitionSpeed; label: string; hint: string }[] = [

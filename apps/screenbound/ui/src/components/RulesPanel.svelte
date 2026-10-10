@@ -1,6 +1,6 @@
 <script lang="ts">
   import GroupBadge from "./GroupBadge.svelte";
-  import Switch from "./Switch.svelte";
+  import { Switch } from "@desqu/ui";
   import { app, newId } from "../state.svelte";
   import type { Action, ChromeMode, RuleScope, WindowRule } from "../types";
 
