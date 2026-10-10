@@ -4,7 +4,7 @@
 mod windows;
 #[cfg(windows)]
 pub(crate) use self::windows::{
-    drag_item, is_over_desktop, mark_as_tool_window, set_context_menu, DragEnd, MouseEvent, MouseWatcher,
+    drag_item, mark_as_tool_window, set_context_menu, DragEnd, MouseEvent, MouseWatcher,
 };
 
 #[cfg(not(windows))]
@@ -42,6 +42,7 @@ pub(crate) fn set_context_menu(_exe: Option<&str>) -> Result<(), String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DragEnd {
     Cancelled,
+    OnDesktop((i32, i32)),
     Dropped { at: (i32, i32), accepted: bool },
 }
 
@@ -50,7 +51,3 @@ pub(crate) fn drag_item(_path: &str) -> Result<DragEnd, String> {
     Err("Vials is only available on Windows".into())
 }
 
-#[cfg(not(windows))]
-pub(crate) fn is_over_desktop(_x: i32, _y: i32) -> bool {
-    false
-}

@@ -289,15 +289,30 @@ const DRAGDROP_S_CANCEL: HRESULT = HRESULT(0x0004_0101);
 const DRAGDROP_S_USEDEFAULTCURSORS: HRESULT = HRESULT(0x0004_0102);
 
 /// The mouse button and Esc rules of a native drag: let go to drop, Esc to cancel.
+///
+/// Letting go over the empty desktop is not passed on to Explorer: the file already lives in the
+/// Desktop folder, so Explorer would answer "the destination folder is the same as the source
+/// folder". The drag is cancelled instead and the position is recorded for the caller to place the
+/// icon itself.
 #[implement(IDropSource)]
-struct DropSource;
+struct DropSource {
+    released_on_desktop: std::sync::Arc<std::sync::Mutex<Option<(i32, i32)>>>,
+}
 
 impl IDropSource_Impl for DropSource_Impl {
     fn QueryContinueDrag(&self, escape_pressed: BOOL, key_state: MODIFIERKEYS_FLAGS) -> HRESULT {
         if escape_pressed.as_bool() {
             DRAGDROP_S_CANCEL
         } else if key_state.0 & MK_LBUTTON.0 == 0 {
-            DRAGDROP_S_DROP
+            let mut at = POINT::default();
+            // SAFETY: plain cursor query into a local.
+            let _ = unsafe { GetCursorPos(&mut at) };
+            if on_desktop_view(at.x, at.y) {
+                *self.released_on_desktop.lock().unwrap_or_else(|e| e.into_inner()) = Some((at.x, at.y));
+                DRAGDROP_S_CANCEL
+            } else {
+                DRAGDROP_S_DROP
+            }
         } else {
             S_OK
         }
@@ -312,6 +327,8 @@ impl IDropSource_Impl for DropSource_Impl {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DragEnd {
     Cancelled,
+    /// Let go over the empty desktop (nothing was handed to Explorer): place the icon here.
+    OnDesktop((i32, i32)),
     /// Dropped at this screen position and `moved_or_copied` tells whether a target accepted it.
     Dropped { at: (i32, i32), accepted: bool },
 }
@@ -346,7 +363,8 @@ pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
             }
         }
 
-        let source: IDropSource = DropSource.into();
+        let released = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let source: IDropSource = DropSource { released_on_desktop: released.clone() }.into();
         let mut effect = DROPEFFECT(0);
         let result = DoDragDrop(&data, &source, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &mut effect);
         let mut at = POINT::default();
@@ -357,7 +375,10 @@ pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
         }
         drop(helper);
 
-        if result == DRAGDROP_S_DROP {
+        let on_desktop = released.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(at) = on_desktop {
+            Ok(DragEnd::OnDesktop(at))
+        } else if result == DRAGDROP_S_DROP {
             Ok(DragEnd::Dropped { at: (at.x, at.y), accepted: effect.0 != 0 })
         } else if result == DRAGDROP_S_CANCEL || result.is_ok() {
             Ok(DragEnd::Cancelled)
@@ -367,7 +388,3 @@ pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
     }
 }
 
-/// Whether the screen point is on the desktop's icon view (not on a window above it).
-pub(crate) fn is_over_desktop(x: i32, y: i32) -> bool {
-    on_desktop_view(x, y)
-}

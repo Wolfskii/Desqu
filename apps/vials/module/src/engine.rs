@@ -745,17 +745,15 @@ pub async fn drag_item_out<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Res
         .await
         .map_err(|e| e.to_string())??;
 
-    if let platform::DragEnd::Dropped { at, accepted: true } = end {
-        if platform::is_over_desktop(at.0, at.1) {
-            // Back on the desktop: it lands where it was dropped and stops belonging to the vial.
-            let layer = state.layer()?;
-            if let Err(e) = layer.show_at(item_id, desqu_desktop::Point { x: at.0, y: at.1 }) {
-                tracing::warn!("could not place the item where it was dropped: {e}");
-            }
-            let mut cfg = state.config();
-            cfg.assign(item_id, None);
-            state.set_config(cfg)?;
+    if let platform::DragEnd::OnDesktop(at) = end {
+        // Back on the desktop: it lands where it was dropped and stops belonging to the vial.
+        let layer = state.layer()?;
+        if let Err(e) = layer.show_at(item_id, desqu_desktop::Point { x: at.0, y: at.1 }) {
+            tracing::warn!("could not place the item where it was dropped: {e}");
         }
+        let mut cfg = state.config();
+        cfg.assign(item_id, None);
+        state.set_config(cfg)?;
     }
     Ok(())
 }
