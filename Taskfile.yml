@@ -22,8 +22,21 @@ tasks:
     cmds:
       - npm install
 
-  ci:
-    desc: CI for every app
+  crates:
+    desc: Unit tests and clippy for the shared crates (desqu-shell, desqu-desktop)
     cmds:
+      - cargo test -p desqu-shell -p desqu-desktop
+      - cargo clippy -p desqu-shell -p desqu-desktop --all-targets
+
+  probe:
+    desc: Real-desktop tests (touch only temporary files and windows they create themselves)
+    cmds:
+      - cargo test -p desqu-desktop --test real_desktop -- --ignored --nocapture
+      - task: screenbound:probe
+
+  ci:
+    desc: CI for every app and shared crate
+    cmds:
+      - task: crates
       - task: screenbound:ci
       - task: desqu:ci

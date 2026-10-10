@@ -777,6 +777,7 @@ dependencies = [
 name = "desqu-desktop"
 version = "0.1.0"
 dependencies = [
+ "png 0.17.16",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

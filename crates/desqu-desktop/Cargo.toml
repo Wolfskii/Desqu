@@ -12,6 +12,7 @@ name = "desqu_desktop"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+png = "0.17"
 thiserror = "2"
 tracing = "0.1"
 
