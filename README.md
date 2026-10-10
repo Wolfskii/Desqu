@@ -1,5 +1,11 @@
 # Desqu
 
+<p align="center">
+  <a href="https://www.buymeacoffee.com/wolfskii">
+    <img src="assets/buymeacoffee-button.png" alt="Buy me a coffee" height="50" />
+  </a>
+</p>
+
 Desqu is a collection of small desktop utilities for Windows. Each utility also builds, runs and
 installs on its own.
 
