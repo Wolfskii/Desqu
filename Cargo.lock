@@ -731,6 +731,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "desqu-shell"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-autostart",
+ "tauri-plugin-single-instance",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+ "windows",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

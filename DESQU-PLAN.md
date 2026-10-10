@@ -674,7 +674,7 @@ started/stopped at runtime.
 Goal: tray, startup, close-to-tray, autostart, single instance, settings store and module mutex are
 implemented once in `crates/desqu-shell` and reused by every app. Standalone Screenbound adopts it.
 
-#### P3.1 Create `desqu-shell` crate skeleton — Status: ⬜
+#### P3.1 Create `desqu-shell` crate skeleton — Status: 🟡
 - **Depends on:** P1.8
 - **Files:** `crates/desqu-shell/Cargo.toml`, `crates/desqu-shell/src/{lib.rs, settings.rs, args.rs, json.rs, logging.rs, module.rs, mutex.rs, tray.rs, window.rs, autostart.rs, instance.rs, platform/mod.rs, platform/windows.rs, platform/unsupported.rs}`
 - **Do:**
@@ -1327,3 +1327,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P2.2 — 🧪 — module/src/plugin.rs (ModuleState, start/stop, init, current_config), commands.rs moved into module, build.rs + permissions/default.toml, links="screenbound-module". PLAN FIX: plugin name must equal the Cargo package name (tauri-plugin derives ACL namespace from it) so plugin is `screenbound-module`, invoke `plugin:screenbound-module|x`, capability `screenbound-module:default`; plan text updated. App lib.rs now thin: registers plugin in setup, autostart synced at startup + on sb://config-changed (errors only logged now, no longer returned to UI), tray/close unchanged. Log filter now includes screenbound_module (engine logs would otherwise vanish); dev:logs updated. Verified: build, clippy clean, 37 module tests, ACL manifest lists all 12 commands. NOT verifiable until UI switches (P2.3): runtime invocation. UI is broken at this commit by design.
 - 2026-10-10 — P2.3 — 🧪 — src/lib/* moved to apps/screenbound/ui/src ($lib imports made relative), ScreenboundView.svelte (old +page markup + 'Screenbound is off / Turn on' card), index.ts exports ScreenboundView + types, api.ts uses plugin:screenbound-module|x and adds moduleStart/Stop/Status, state gets moduleStatus/turnOn. +page.svelte is now just <ScreenboundView />; app depends on @desqu/screenbound-ui. Verified: npm install links package; task screenbound:check 191 files 0 errors; vite build OK. NEEDS HUMAN: task screenbound:dev — all six tabs load, saving works, Diagnostics lists windows, activity streams, no permission errors in DevTools console (this also confirms P2.2 ACL at runtime).
 - 2026-10-10 — P2.2/P2.3 — ✅ — Owner ran task screenbound:dev and reported it works. P2.4 (module_stop/start on real windows) still needs a human run; left 🧪. Moving to Phase 3 (depends only on P1.8).
+- 2026-10-10 — P3.1 — ✅ — crates/desqu-shell skeleton (deps per plan; all modules declared; json.rs write_json_atomic and logging.rs init implemented, others are doc stubs). Added to workspace; cargo build/clippy clean.
