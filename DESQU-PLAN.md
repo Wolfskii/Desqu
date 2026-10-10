@@ -50,7 +50,7 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | 1 | Monorepo move (behaviour identical) | ✅ | 0 |
 | 2 | Screenbound module crate + UI package | ✅ | 1 |
 | 3 | Shared shell crate + shared UI kit | ✅ | 1 (can run in parallel with 2) |
-| 4 | Screenbound rebrand + settings migration | ⬜ | 2, 3, Q1, Q2 |
+| 4 | Screenbound rebrand + settings migration | 🧪 | 2, 3, Q1, Q2 |
 | 5 | Updater, CI and GitHub releases | ⬜ | 3, Q5, Q6 |
 | 6 | Desqu collection app | ⬜ | 2, 3, 5 |
 | 7 | Screenbound borderless gaming | ⬜ | 2 |
@@ -939,13 +939,13 @@ fighting over windows.
 - **Done when:**
   - [ ] Side-by-side install test passes (old running + new started → no window fighting).
 
-#### P4.4 Migration documentation — Status: ⬜
+#### P4.4 Migration documentation — Status: ✅
 - **Depends on:** P4.3
 - **Files:** `docs/migration-screenbound.md`, `apps/screenbound/README.md`
 - **Do:** Describe for users: install the new version, what is migrated, where the backup is,
   how to remove the old version. Keep it short. (Skip the user-facing part if Q3 says no users.)
 - **Done when:**
-  - [ ] Doc written and linked from README.
+  - [x] Doc written and linked from README.
 
 ---
 

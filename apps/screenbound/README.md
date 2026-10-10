@@ -97,6 +97,10 @@ task screenbound:deploy   # build and install for the current user
 
 `task screenbound:ci` runs the type check, unit tests and clippy. `task --list` shows everything else.
 
+## Upgrading from ScreenBound 0.1.0
+
+See [the migration guide](../../docs/migration-screenbound.md). Your settings are copied automatically.
+
 ## Docs
 
 - [AGENTS.md](AGENTS.md) — Screenbound architecture and engineering rules
