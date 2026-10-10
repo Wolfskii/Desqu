@@ -11,11 +11,10 @@ installs on its own.
 
 | Product | What it does | Status |
 | --- | --- | --- |
+| [Desqu](apps/desqu/README.md) | One app that hosts all the utilities below, with one tray icon and central settings | Available |
 | [Screenbound](apps/screenbound/README.md) | Keeps fullscreen apps inside a zone you choose on your monitor | Available |
 | Vials | Desktop containers for shortcuts, apps and folders | Planned |
 | Workspaces | Saves and restores desktop layouts per virtual desktop | Planned |
-
-Desqu (the collection app that hosts all of them in one process) is planned.
 
 ## Build
 
@@ -35,6 +34,8 @@ task ci           # type check, unit tests and clippy for every app
 
 ## Docs
 
+- [docs/architecture.md](docs/architecture.md) — how modules, shell and apps fit together
+- [docs/releasing.md](docs/releasing.md) — how releases and updates work
 - [AGENTS.md](AGENTS.md) — repository-wide engineering rules
 - [DESQU-PLAN.md](DESQU-PLAN.md) — the transformation plan and progress log
 - [PLAN.md](PLAN.md) — index of per-product status
