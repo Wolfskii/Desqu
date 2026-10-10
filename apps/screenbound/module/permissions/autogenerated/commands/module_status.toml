@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-module-status"
+description = "Enables the module_status command without any pre-configured scope."
+commands.allow = ["module_status"]
+
+[[permission]]
+identifier = "deny-module-status"
+description = "Denies the module_status command without any pre-configured scope."
+commands.deny = ["module_status"]

@@ -33,7 +33,7 @@ tasks:
     deps: [install]
     interactive: true
     env:
-      RUST_LOG: screenbound_lib=debug
+      RUST_LOG: screenbound_lib=debug,screenbound_module=debug
     cmds:
       - npm run tauri dev
 

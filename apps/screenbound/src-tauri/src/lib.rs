@@ -1,30 +1,17 @@
 mod autostart;
-mod commands;
-
-use std::sync::Mutex;
-use std::time::Duration;
 
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, Listener, Manager, WindowEvent};
 
-use screenbound_module::{engine, platform};
-use screenbound_module::engine::{Engine, EngineHandle, EngineMessage, EnginePaths, Notification};
-use platform::EventSubscription;
-
-/// Keeps the native event subscription alive for the app's lifetime.
-struct Subscription(Mutex<Option<EventSubscription>>);
-
-pub mod events {
-    pub const ACTIVITY: &str = "sb://activity";
-    pub const MANAGED_CHANGED: &str = "sb://managed-changed";
-    pub const MONITORS_CHANGED: &str = "sb://monitors-changed";
-    pub const CONFIG_CHANGED: &str = "sb://config-changed";
-}
+use screenbound_module::core::config::AppConfig;
+use screenbound_module::plugin::events;
+use screenbound_module::{platform, ModuleOptions};
 
 fn init_logging() {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("screenbound_lib=info,warn"));
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        tracing_subscriber::EnvFilter::new("screenbound_lib=info,screenbound_module=info,warn")
+    });
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
@@ -43,47 +30,31 @@ pub fn run() {
             show_main(app);
         }))
         .setup(|app| {
-            let config_dir = app.path().app_config_dir()?;
-            let data_dir = app.path().app_data_dir()?;
-            let paths = EnginePaths {
-                config: config_dir.join("config.json"),
-                journal: data_dir.join("managed-windows.json"),
-            };
-            tracing::info!(config = %paths.config.display(), journal = %paths.journal.display(), "starting ScreenBound");
+            // The module is registered here (not on the Builder) because the folders come from
+            // the resolved app identifier.
+            app.handle().plugin(screenbound_module::init(ModuleOptions {
+                config_dir: app.path().app_config_dir()?,
+                data_dir: app.path().app_data_dir()?,
+                start_immediately: true,
+            }))?;
 
-            let emitter = app.handle().clone();
-            let notify: engine::Notifier = std::sync::Arc::new(move |n| {
-                let _ = match n {
-                    Notification::Activity(entry) => emitter.emit(events::ACTIVITY, entry),
-                    Notification::ManagedChanged => emitter.emit(events::MANAGED_CHANGED, ()),
-                    Notification::MonitorsChanged(m) => emitter.emit(events::MONITORS_CHANGED, m),
-                    Notification::ConfigChanged(c) => emitter.emit(events::CONFIG_CHANGED, c),
-                };
-            });
-
-            let platform = platform::create();
-            let handle = EngineHandle::spawn(Engine::new(platform.clone(), paths, notify))?;
-            let start_at_boot = handle.call(|e| e.config().start_at_boot).map_err(|e| e.to_string())?;
-            if let Err(e) = autostart::sync(app.handle(), start_at_boot) {
-                tracing::warn!("autostart sync on startup failed: {e}");
+            if let Some(config) = screenbound_module::current_config(app.handle()) {
+                if let Err(e) = autostart::sync(app.handle(), config.start_at_boot) {
+                    tracing::warn!("autostart sync on startup failed: {e}");
+                }
             }
-
-            let engine_tx = handle.sender();
-            let subscription = match platform.subscribe(Box::new(move |ev| {
-                let _ = engine_tx.send(EngineMessage::Platform(ev));
-            })) {
-                Ok(s) => {
-                    let _ = handle.call(|e| e.set_events_active(true));
-                    Some(s)
+            // Keep the Run entry aligned whenever the UI saves settings.
+            let handle = app.handle().clone();
+            app.listen(events::CONFIG_CHANGED, move |event| {
+                match serde_json::from_str::<AppConfig>(event.payload()) {
+                    Ok(config) => {
+                        if let Err(e) = autostart::sync(&handle, config.start_at_boot) {
+                            tracing::warn!("autostart sync failed: {e}");
+                        }
+                    }
+                    Err(e) => tracing::warn!("unreadable config-changed payload: {e}"),
                 }
-                Err(e) => {
-                    tracing::error!("native event subscription failed: {e}");
-                    None
-                }
-            };
-
-            app.manage(handle);
-            app.manage(Subscription(Mutex::new(subscription)));
+            });
 
             // Closing the window hides it. The process keeps managing windows until Exit.
             match install_tray(app.handle()) {
@@ -103,31 +74,11 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            commands::get_monitors,
-            commands::get_config,
-            commands::set_config,
-            commands::set_enabled,
-            commands::get_status,
-            commands::list_windows,
-            commands::get_activity,
-            commands::release_window,
-            commands::release_all,
-        ])
         .build(tauri::generate_context!())
         .expect("error while building ScreenBound");
 
-    app.run(|app, event| {
-        if let RunEvent::Exit = event {
-            // Restore every managed window before the process goes away.
-            if let Some(handle) = app.try_state::<EngineHandle>() {
-                handle.stop(Duration::from_secs(3));
-            }
-            if let Some(sub) = app.try_state::<Subscription>() {
-                sub.0.lock().unwrap_or_else(|e| e.into_inner()).take();
-            }
-        }
-    });
+    // The module restores managed windows itself on RunEvent::Exit.
+    app.run(|_, _| {});
 }
 
 fn show_main(app: &AppHandle) {

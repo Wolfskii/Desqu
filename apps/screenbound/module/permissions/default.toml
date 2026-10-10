@@ -1,0 +1,16 @@
+[default]
+description = "Everything the Screenbound UI needs"
+permissions = [
+    "allow-get-monitors",
+    "allow-get-config",
+    "allow-set-config",
+    "allow-set-enabled",
+    "allow-get-status",
+    "allow-list-windows",
+    "allow-get-activity",
+    "allow-release-window",
+    "allow-release-all",
+    "allow-module-start",
+    "allow-module-stop",
+    "allow-module-status",
+]

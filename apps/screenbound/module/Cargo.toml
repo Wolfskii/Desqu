@@ -5,9 +5,14 @@ description = "Screenbound engine: constrain fullscreen windows to user-defined 
 authors = ["ScreenBound contributors"]
 edition = "2021"
 rust-version = "1.80"
+# Required by tauri-plugin: must equal the package name, which is also the plugin name.
+links = "screenbound-module"
 
 [lib]
 name = "screenbound_module"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
 
 [dependencies]
 tauri = "2"

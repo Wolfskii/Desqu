@@ -2943,6 +2943,7 @@ name = "screenbound"
 version = "0.1.0"
 dependencies = [
  "screenbound-module",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -2958,6 +2959,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tauri",
+ "tauri-plugin",
  "thiserror 2.0.21",
  "tracing",
  "windows",

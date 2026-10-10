@@ -227,12 +227,12 @@ These were checked in the code. If a later step changes one of them, the step sa
 
 | Path | Cargo package | Lib/bin name | Notes |
 | --- | --- | --- | --- |
-| `apps/screenbound/module` | `screenbound-module` | lib `screenbound_module` | Tauri plugin name `screenbound` |
+| `apps/screenbound/module` | `screenbound-module` | lib `screenbound_module` | Tauri plugin name `screenbound-module` |
 | `apps/screenbound/src-tauri` | `screenbound` | bin `screenbound`, lib `screenbound_lib` | Keeps `screenbound.exe` |
 | `apps/desqu/src-tauri` | `desqu` | bin `desqu`, lib `desqu_lib` | |
-| `apps/vials/module` | `vials-module` | lib `vials_module` | plugin name `vials` |
+| `apps/vials/module` | `vials-module` | lib `vials_module` | plugin name `vials-module` |
 | `apps/vials/src-tauri` | `vials` | bin `vials`, lib `vials_lib` | |
-| `apps/workspaces/module` | `workspaces-module` | lib `workspaces_module` | plugin name `workspaces` |
+| `apps/workspaces/module` | `workspaces-module` | lib `workspaces_module` | plugin name `workspaces-module` |
 | `apps/workspaces/src-tauri` | `workspaces` | bin `workspaces`, lib `workspaces_lib` | |
 | `crates/desqu-shell` | `desqu-shell` | lib `desqu_shell` | plugin name `desqu-shell` |
 | `crates/desqu-desktop` | `desqu-desktop` | lib `desqu_desktop` | |
@@ -263,6 +263,9 @@ These were checked in the code. If a later step changes one of them, the step sa
 - `ModuleOptions { config_dir: PathBuf, data_dir: PathBuf, start_immediately: bool }`.
   The shell passes the folders explicitly, so standalone and Desqu read **the same** files.
 - Frontend calls plugin commands as `invoke('plugin:<plugin-name>|<command>', args)`.
+- The plugin name **must equal the Cargo package name** (`screenbound-module`, `vials-module`, …):
+  `tauri-plugin` derives the permission namespace from the package name and `links` must match it,
+  so a shorter runtime name would fail the permission check (found in P2.2).
 - The app's capability file must list `"<plugin-name>:default"`.
 - Module status values: `off` (nothing running), `paused` (running but not acting; Screenbound's
   existing `enabled=false`), `on`, `unsupported` (OS not supported), `ownedElsewhere` (another process
@@ -571,7 +574,7 @@ started/stopped at runtime.
 - **Done when:**
   - [ ] Tests moved and passing; app still runs exactly as before.
 
-#### P2.2 Turn the commands into a Tauri plugin — Status: ⬜
+#### P2.2 Turn the commands into a Tauri plugin — Status: 🟡
 - **Depends on:** P2.1
 - **Files:** `apps/screenbound/module/src/plugin.rs`, `apps/screenbound/module/build.rs`,
   `apps/screenbound/module/permissions/default.toml`, move `apps/screenbound/src-tauri/src/commands.rs`
@@ -600,7 +603,7 @@ started/stopped at runtime.
      notifier that emits the 4 `sb://` events, subscribe, `set_events_active(true)`) and
      `stop(timeout)` (= today's `RunEvent::Exit` code: `handle.stop(timeout)`, then drop subscription).
   4. `pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R>`:
-     `Builder::new("screenbound").invoke_handler(generate_handler![...]).setup(|app, _| { manage ModuleState; if options.start_immediately { start } }).on_event(|app, ev| if let RunEvent::Exit = ev { stop(3s) }).build()`.
+     `Builder::new("screenbound-module").invoke_handler(generate_handler![...]).setup(|app, _| { manage ModuleState; if options.start_immediately { start } }).on_event(|app, ev| if let RunEvent::Exit = ev { stop(3s) }).build()`.
   5. Commands take `State<'_, ModuleState>` and use a helper `with_engine(|h| h.call(...))` that returns
      `Err("Screenbound is off")` when the engine is not running. Add `module_start`, `module_stop`,
      `module_status` (returns `"on" | "off" | "paused"`; `paused` when `config.enabled == false`).
@@ -613,13 +616,13 @@ started/stopped at runtime.
      tray + close handling (unchanged). Paths are resolved in the app (`app.path().app_config_dir()`),
      so build the plugin inside `setup` using `app.handle().plugin(...)`.
   8. Capability `apps/screenbound/src-tauri/capabilities/default.json`: permissions
-     `["core:default", "screenbound:default"]`.
+     `["core:default", "screenbound-module:default"]`.
 - **Verify:** `cargo build -p screenbound`; app starts; DevTools console shows no permission errors
   once P2.3 switches the frontend.
 - **Done when:**
-  - [ ] All 9 old commands available as `plugin:screenbound|…`; 3 new lifecycle commands work.
+  - [ ] All 9 old commands available as `plugin:screenbound-module|…`; 3 new lifecycle commands work.
 
-#### P2.3 Create `@desqu/screenbound-ui` and switch invoke names — Status: ⬜
+#### P2.3 Create `@desqu/screenbound-ui` and switch invoke names — Status: 🟡
 - **Depends on:** P2.2
 - **Files:** new `apps/screenbound/ui/package.json`, `apps/screenbound/ui/src/index.ts`; move
   `apps/screenbound/src/lib/*` → `apps/screenbound/ui/src/` (`git mv`); new
@@ -641,7 +644,7 @@ started/stopped at runtime.
   2. Move today's `+page.svelte` markup/script into `ScreenboundView.svelte` (header, tabs, panels).
      `+page.svelte` becomes `<script>import { ScreenboundView } from '@desqu/screenbound-ui';</script><ScreenboundView />`.
   3. `index.ts` exports `ScreenboundView` and the types.
-  4. In `api.ts`, change every `invoke('x', ...)` to `invoke('plugin:screenbound|x', ...)`. Event names
+  4. In `api.ts`, change every `invoke('x', ...)` to `invoke('plugin:screenbound-module|x', ...)`. Event names
      stay `sb://…`. Add `moduleStart`, `moduleStop`, `moduleStatus`.
   5. `ScreenboundView` shows an "Screenbound is off — Turn on" card when `moduleStatus()` is `off`.
   6. App `package.json`: add dependency `"@desqu/screenbound-ui": "*"`; run `npm install` at root.
@@ -654,7 +657,7 @@ started/stopped at runtime.
 #### P2.4 Runtime start/stop works — Status: ⬜
 - **Depends on:** P2.3
 - **Files:** `apps/screenbound/module/src/plugin.rs`, a temporary dev-only button is **not** needed:
-  call from DevTools console `window.__TAURI_INTERNALS__.invoke('plugin:screenbound|module_stop')`.
+  call from DevTools console `window.__TAURI_INTERNALS__.invoke('plugin:screenbound-module|module_stop')`.
 - **Do (real Windows):**
   1. Constrain a browser into a zone. Call `module_stop`. Expect: browser returns to full-monitor
      fullscreen, activity log stops, Process Explorer → screenbound.exe threads: the
@@ -1108,7 +1111,7 @@ fighting over windows.
      smaller `Switch` "Start with system", "Open" button. Above the cards: `TriStateSwitch`
      "Start all apps with system".
   3. Module page: renders `ScreenboundView` from `@desqu/screenbound-ui` (its `api.ts` already calls
-     `plugin:screenbound|…`). If off → the module's own "off" card with a Turn on button.
+     `plugin:screenbound-module|…`). If off → the module's own "off" card with a Turn on button.
   4. Settings: `ShellSettingsSection` (start minimized, close to tray — note: Desqu's own
      start-with-system is derived from module settings, show it read-only with explanation),
      `UpdateCard`, About (version of Desqu + each module).
@@ -1277,7 +1280,7 @@ fighting over windows.
 | `[profile.release]` silently ignored after the workspace move (loses LTO/strip/`panic = "unwind"`) | Move it to root `Cargo.toml`; check exe size | P1.2, P1.8 |
 | Root-anchored `.gitignore` stops ignoring `build/`, `.svelte-kit/` | New patterns | P1.4 |
 | Build output moves to root `target/` → scripts break | Parameterized scripts | P1.6 |
-| Command renames (`plugin:screenbound|…`) break UI | Change `api.ts` + capabilities in the same step | P2.2, P2.3 |
+| Command renames (`plugin:screenbound-module|…`) break UI | Change `api.ts` + capabilities in the same step | P2.2, P2.3 |
 | New identifier loses settings | Copy-not-move migration + marker + tests | P4.2 |
 | Old ScreenBound and new Screenbound fight over windows | Detect old process, keep engine off until gone | P4.3 |
 | Standalone uninstaller "Delete app data" deletes settings Desqu uses | Warn in Desqu UI and docs | P6.4 |
@@ -1321,3 +1324,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P1.8 — 🧪 — Automated: root task ci exit 0 (189 files 0 errors; 37 Rust tests pass, clippy clean). Release via new task verified (P1.6). NOT yet done (needs human on Windows): (2) task screenbound:dev — app starts, tabs load, settings from %APPDATA%\com.screenbound.app shown; (3) manual-testing.md Core flow + Lifecycle; (4) confirm installed exe size ~ P0.5 (P1.6 build: 10.5 MB portable, same as baseline).
 - 2026-10-10 — P1.8 — ✅ — Owner ran the app after the move and reported it works (not a full manual-testing.md run). Phase 1 done. Starting P2.1.
 - 2026-10-10 — P2.1 — ✅ — apps/screenbound/module (screenbound-module, lib screenbound_module) holds core/engine/platform (19 files git mv). App uses screenbound_module::{engine,platform,core}; moved serde/serde_json/thiserror/windows to module. No visibility changes were needed. 37 tests pass in module; workspace clippy clean; check 0 errors. Taskfile test/probe/lint now target screenbound-module too. Note: module declares tauri dep (unused until P2.2). Next: P2.2.
+- 2026-10-10 — P2.2 — 🧪 — module/src/plugin.rs (ModuleState, start/stop, init, current_config), commands.rs moved into module, build.rs + permissions/default.toml, links="screenbound-module". PLAN FIX: plugin name must equal the Cargo package name (tauri-plugin derives ACL namespace from it) so plugin is `screenbound-module`, invoke `plugin:screenbound-module|x`, capability `screenbound-module:default`; plan text updated. App lib.rs now thin: registers plugin in setup, autostart synced at startup + on sb://config-changed (errors only logged now, no longer returned to UI), tray/close unchanged. Log filter now includes screenbound_module (engine logs would otherwise vanish); dev:logs updated. Verified: build, clippy clean, 37 module tests, ACL manifest lists all 12 commands. NOT verifiable until UI switches (P2.3): runtime invocation. UI is broken at this commit by design.
