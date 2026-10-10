@@ -2971,6 +2971,7 @@ dependencies = [
 name = "screenbound-module"
 version = "0.1.0"
 dependencies = [
+ "desqu-shell",
  "serde",
  "serde_json",
  "tauri",

@@ -2,9 +2,12 @@
 //! at runtime (a stopped module has no threads and no hooks).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use desqu_shell::module::{Module, ModuleStatus};
+use desqu_shell::mutex::{self, ModuleLock};
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 
@@ -14,6 +17,8 @@ use crate::platform::{self, EventSubscription};
 
 /// Must equal the Cargo package name: tauri-plugin derives the permission namespace from it.
 pub const PLUGIN_NAME: &str = "screenbound-module";
+/// Id of the cross-process lock: only one process may run the Screenbound engine.
+pub const MODULE_ID: &str = "screenbound";
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub mod events {
@@ -36,6 +41,8 @@ pub struct ModuleState {
     journal_path: PathBuf,
     handle: Mutex<Option<EngineHandle>>,
     subscription: Mutex<Option<EventSubscription>>,
+    module_lock: Mutex<Option<ModuleLock>>,
+    owned_elsewhere: AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -49,6 +56,8 @@ impl ModuleState {
             journal_path: options.data_dir.join("managed-windows.json"),
             handle: Mutex::new(None),
             subscription: Mutex::new(None),
+            module_lock: Mutex::new(None),
+            owned_elsewhere: AtomicBool::new(false),
         }
     }
 
@@ -65,11 +74,12 @@ impl ModuleState {
         }
     }
 
-    pub fn status(&self) -> &'static str {
+    pub fn status(&self) -> ModuleStatus {
         match self.with_engine(|e| e.config().enabled) {
-            Ok(true) => "on",
-            Ok(false) => "paused",
-            Err(_) => "off",
+            Ok(true) => ModuleStatus::On,
+            Ok(false) => ModuleStatus::Paused,
+            Err(_) if self.owned_elsewhere.load(Ordering::Relaxed) => ModuleStatus::OwnedElsewhere,
+            Err(_) => ModuleStatus::Off,
         }
     }
 }
@@ -87,6 +97,12 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     if handle_slot.is_some() {
         return Ok(());
     }
+    // Take the cross-process lock first so a standalone app and Desqu never fight over windows.
+    let Some(module_lock) = mutex::try_acquire(MODULE_ID)? else {
+        state.owned_elsewhere.store(true, Ordering::Relaxed);
+        return Err("Screenbound is already running in another process".into());
+    };
+    state.owned_elsewhere.store(false, Ordering::Relaxed);
     tracing::info!(
         config = %state.config_path.display(),
         journal = %state.journal_path.display(),
@@ -126,6 +142,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     };
 
     *lock(&state.subscription) = subscription;
+    *lock(&state.module_lock) = Some(module_lock);
     *handle_slot = Some(handle);
     Ok(())
 }
@@ -140,6 +157,9 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>, timeout: Duration) {
         handle.stop(timeout);
     }
     lock(&state.subscription).take();
+    // Dropping the lock lets another process take the module over.
+    lock(&state.module_lock).take();
+    state.owned_elsewhere.store(false, Ordering::Relaxed);
 }
 
 pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
@@ -161,7 +181,10 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
         .setup(move |app, _api| {
             app.manage(ModuleState::new(&options));
             if options.start_immediately {
-                start(app)?;
+                // Not fatal: another process may own the module, and the UI shows that state.
+                if let Err(e) = start(app) {
+                    tracing::warn!("Screenbound did not start: {e}");
+                }
             }
             Ok(())
         })
@@ -172,4 +195,26 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             }
         })
         .build()
+}
+
+/// Handle the shell uses to drive Screenbound; all state lives in the plugin's `ModuleState`.
+pub struct ScreenboundModule;
+
+impl<R: Runtime> Module<R> for ScreenboundModule {
+    fn id(&self) -> &'static str {
+        MODULE_ID
+    }
+
+    fn start(&self, app: &AppHandle<R>) -> Result<(), String> {
+        start(app)
+    }
+
+    fn stop(&self, app: &AppHandle<R>, timeout: Duration) {
+        stop(app, timeout)
+    }
+
+    fn status(&self, app: &AppHandle<R>) -> ModuleStatus {
+        app.try_state::<ModuleState>()
+            .map_or(ModuleStatus::Off, |state| state.status())
+    }
 }

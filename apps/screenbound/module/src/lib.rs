@@ -7,4 +7,4 @@ pub mod engine;
 pub mod platform;
 pub mod plugin;
 
-pub use plugin::{current_config, init, ModuleOptions};
+pub use plugin::{current_config, init, ModuleOptions, ScreenboundModule};

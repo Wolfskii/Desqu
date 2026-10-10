@@ -796,7 +796,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Screenbound tray looks and behaves as before (P3.8).
 
-#### P3.8 Module mutex + `Module` trait — Status: ⬜
+#### P3.8 Module mutex + `Module` trait — Status: ✅
 - **Depends on:** P3.1
 - **Files:** `crates/desqu-shell/src/mutex.rs`, `crates/desqu-shell/src/module.rs`,
   `crates/desqu-shell/src/platform/*`
@@ -821,7 +821,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Verify:** start two dev builds (`target/debug/screenbound.exe` twice is blocked by single instance,
   so test with a unit/integration test that acquires the lock twice in one process → second is `None`).
 - **Done when:**
-  - [ ] Lock test passes; Screenbound reports `OwnedElsewhere` correctly.
+  - [x] Lock test passes; Screenbound reports `OwnedElsewhere` correctly (two-process check happens in P6.3).
 
 #### P3.9 Shell plugin commands — Status: ⬜
 - **Depends on:** P3.2–P3.7
@@ -1358,3 +1358,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P3.5 — 🧪 — autostart::plugin() (args --autostart), sync(), sync_at_startup() (disable+enable so old entries are rewritten). platform::remove_run_value(name) deletes the HKCU Run value + StartupApproved value (unsupported stub returns Ok(false)); tested against the real registry with a throwaway value. 13 tests pass, clippy clean. Still to verify by a human after P3.11: enabling writes exe path + --autostart in the Run key.
 - 2026-10-10 — P3.6 — 🧪 — window.rs: should_show_on_startup / close_action (pure, 5 tests), on_startup, install_close_handler (reads close_to_tray at event time, tray_ok captured), show_main. Q7 unanswered: used the plan default (hide, not destroy the WebView). 18 desqu-shell tests pass, clippy clean. Used by Screenbound in P3.11; behaviour verified then.
 - 2026-10-10 — P3.7 — 🧪 — tray.rs: layout() (pure, 4 tests: show/sep/extras/sep/[updates]/exit) + build() (TrayConfig with tooltip, show_label, extra_items, updates_item flag off by default, on_item handler; show/exit handled by shell, left click shows window; same icon handling as old install_tray). 22 desqu-shell tests pass, clippy clean. Look-and-behaviour check happens when Screenbound adopts it in P3.11.
+- 2026-10-10 — P3.8 — ✅ — desqu-shell: mutex::try_acquire (Local\Desqu.Module.<id>), module::{Module, ModuleStatus}; platform LockHandle. DEVIATIONS: (1) lock = mutex existence (bInitialOwner=false, no ReleaseMutex) because ReleaseMutex only works on the owning thread and stop() runs on another; needs Win32_Security feature. (2) Module trait is generic over the runtime and every method takes the AppHandle (start/stop/status), so ScreenboundModule is a stateless unit struct. screenbound-module now depends on desqu-shell; start() takes the lock before spawning the engine (None -> status ownedElsewhere, Err), stop() releases it; plugin setup logs a failed start instead of failing app startup. module_status returns ModuleStatus; UI shows 'running elsewhere' / 'not supported' cards (types.ts ModuleStatus extended). 28 desqu-shell tests (lock twice in-process -> None, release from another thread), screenbound ci green.

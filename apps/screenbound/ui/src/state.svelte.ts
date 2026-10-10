@@ -39,8 +39,13 @@ class AppState {
             this.error = String(e);
             return;
         }
-        if (this.moduleStatus === "off") return;
+        if (!this.isRunning) return;
         await this.#load();
+    }
+
+    /** `on` or `paused`: the engine runs in this process, so the tabs can load. */
+    get isRunning() {
+        return this.moduleStatus === "on" || this.moduleStatus === "paused";
     }
 
     async turnOn() {
@@ -51,6 +56,8 @@ class AppState {
             await this.#load();
         } catch (e) {
             this.error = String(e);
+            // The module may now be `ownedElsewhere`; show that instead of a stale `off`.
+            this.moduleStatus = await api.moduleStatus().catch(() => this.moduleStatus);
         }
     }
 

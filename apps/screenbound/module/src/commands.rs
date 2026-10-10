@@ -1,5 +1,6 @@
 //! Tauri command surface. Thin: validates/forwards to the engine thread and returns JSON.
 
+use desqu_shell::module::ModuleStatus;
 use tauri::{AppHandle, Runtime, State};
 
 use crate::core::config::AppConfig;
@@ -71,8 +72,8 @@ pub async fn module_stop<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
     Ok(())
 }
 
-/// `"off"` (nothing running), `"paused"` (running, `enabled = false`) or `"on"`.
+/// See [`ModuleStatus`]: `off`, `paused` (running, `enabled = false`), `on`, `ownedElsewhere`, `unsupported`.
 #[tauri::command]
-pub async fn module_status(state: State<'_, ModuleState>) -> CmdResult<&'static str> {
+pub async fn module_status(state: State<'_, ModuleState>) -> CmdResult<ModuleStatus> {
     Ok(state.status())
 }

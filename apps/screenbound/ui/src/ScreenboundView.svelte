@@ -18,11 +18,20 @@
   const managedCount = $derived(app.status?.managed.length ?? 0);
 </script>
 
-{#if app.moduleStatus === "off"}
+{#if app.moduleStatus !== null && !app.isRunning}
   <div class="off">
-    <h2>Screenbound is off</h2>
-    <p class="dim">Fullscreen windows are not being constrained.</p>
-    <button onclick={() => app.turnOn()}>Turn on</button>
+    {#if app.moduleStatus === "ownedElsewhere"}
+      <h2>Screenbound is running elsewhere</h2>
+      <p class="dim">Another Desqu or Screenbound window already controls your fullscreen windows. Close it, then try again.</p>
+      <button onclick={() => app.turnOn()}>Try again</button>
+    {:else if app.moduleStatus === "unsupported"}
+      <h2>Screenbound is not supported here</h2>
+      <p class="dim">This operating system has no Screenbound backend yet.</p>
+    {:else}
+      <h2>Screenbound is off</h2>
+      <p class="dim">Fullscreen windows are not being constrained.</p>
+      <button onclick={() => app.turnOn()}>Turn on</button>
+    {/if}
     {#if app.error}<p class="error-text">{app.error}</p>{/if}
   </div>
 {:else}
