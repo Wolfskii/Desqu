@@ -159,6 +159,8 @@ export interface WindowInfo {
 }
 
 export interface ManagedSummary {
+    /** `fullscreen`: a fullscreen app held in a zone; `borderless`: a windowed app made borderless. */
+    kind: "fullscreen" | "borderless";
     id: number;
     idHex: string;
     processName: string;

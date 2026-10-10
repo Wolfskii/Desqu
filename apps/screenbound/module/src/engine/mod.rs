@@ -5,6 +5,8 @@
 pub mod activity;
 mod handle;
 pub mod journal;
+#[cfg(all(test, windows))]
+mod real_tests;
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -13,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use crate::core::borderless::{self, BorderlessObservation};
 use crate::core::config::{AppConfig, ConfigError};
 use crate::core::fullscreen::{
     classify_managed, compensate_invisible_frame, fullscreen_monitor, is_resting_layout,
@@ -20,13 +23,14 @@ use crate::core::fullscreen::{
 };
 use crate::core::geometry::Rect;
 use crate::core::monitor::{monitor_for_rect, MonitorId, MonitorInfo};
+use crate::core::rules::BorderlessTarget;
 use crate::core::transition::{frame_at, START_DELAY};
 use crate::core::window::{
     ChromeMode, ShowState, WindowId, WindowIdentity, WindowInfo, WindowState,
 };
 use crate::platform::{PlatformError, PlatformEvent, PlatformWindowManager};
 use activity::{ActivityEntry, ActivityLevel, ActivityLog};
-use journal::JournalEntry;
+use journal::{JournalEntry, JournalKind};
 
 pub use handle::{EngineHandle, EngineMessage};
 
@@ -98,6 +102,24 @@ struct ManagedWindow {
     since_ms: u64,
 }
 
+/// A framed window we turned borderless and fitted to a monitor or zone.
+struct BorderlessWindow {
+    id: WindowId,
+    identity: WindowIdentity,
+    rule_id: String,
+    target: BorderlessTarget,
+    topmost: bool,
+    /// The window as the app had it (framed): what we hand back.
+    detected: WindowState,
+    /// What the window looked like right after our last apply.
+    applied: WindowState,
+    /// The visible rect we aimed for.
+    visible_target: Rect,
+    reapplies: VecDeque<Instant>,
+    gave_up: bool,
+    since_ms: u64,
+}
+
 /// Where a zone apply ends up, resolved before the window is moved.
 #[derive(Debug, Clone)]
 struct ZonePlan {
@@ -150,9 +172,17 @@ struct Animation {
     restarts: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ManagedKind {
+    Fullscreen,
+    Borderless,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManagedSummary {
+    pub kind: ManagedKind,
     pub id: WindowId,
     pub id_hex: String,
     pub process_name: String,
@@ -183,6 +213,9 @@ pub struct Engine {
     config: AppConfig,
     monitors: Vec<MonitorInfo>,
     managed: BTreeMap<WindowId, ManagedWindow>,
+    borderless: BTreeMap<WindowId, BorderlessWindow>,
+    /// Windows we failed to make borderless (or the user released); not retried until they change.
+    borderless_rejected: HashSet<WindowId>,
     last_normal: HashMap<WindowId, WindowState>,
     /// Fullscreen windows we failed to manage (e.g. elevated); retried once they leave fullscreen.
     rejected: HashSet<WindowId>,
@@ -239,6 +272,8 @@ impl Engine {
             config,
             monitors: Vec::new(),
             managed: BTreeMap::new(),
+            borderless: BTreeMap::new(),
+            borderless_rejected: HashSet::new(),
             last_normal: HashMap::new(),
             rejected: HashSet::new(),
             pending: HashMap::new(),
@@ -294,28 +329,42 @@ impl Engine {
 
     fn recover_entries(&mut self, entries: Vec<JournalEntry>) {
         for entry in entries {
-            let still_ours = self
+            let same_process = self
                 .platform
                 .identity(entry.window)
-                .is_ok_and(|i| i.process == entry.process)
-                && self
-                    .platform
-                    .state(entry.window)
-                    .is_ok_and(|s| s.bounds.approx_eq(&entry.applied.bounds, BOUNDS_TOLERANCE));
-            if !still_ours {
-                continue;
-            }
+                .is_ok_and(|i| i.process == entry.process);
+            let in_place = self
+                .platform
+                .state(entry.window)
+                .is_ok_and(|s| s.bounds.approx_eq(&entry.applied.bounds, BOUNDS_TOLERANCE));
             let who = Some(format!("{} {}", entry.process_name, entry.window));
-            match self.platform.restore_state(entry.window, &entry.detected) {
-                Ok(()) => {
-                    if let Err(e) = self.platform.set_hides_taskbar(entry.window, true) {
-                        tracing::warn!(window = %entry.window, "could not mark recovered fullscreen window: {e}");
-                    }
+            if same_process && !in_place && entry.kind == JournalKind::Borderless {
+                // The window has moved on, but must not stay borderless forever: give back its frame.
+                if self.platform.set_style(entry.window, entry.detected.style).is_ok() {
                     self.log(
                         ActivityLevel::Info,
                         who,
-                        "Restored window left constrained by a previous session".into(),
+                        "Restored the frame of a borderless window left by a previous session".into(),
                     );
+                }
+                continue;
+            }
+            if !(same_process && in_place) {
+                continue;
+            }
+            match self.platform.restore_state(entry.window, &entry.detected) {
+                Ok(()) => {
+                    // Only fullscreen windows were marked for the taskbar.
+                    if entry.kind == JournalKind::Fullscreen {
+                        if let Err(e) = self.platform.set_hides_taskbar(entry.window, true) {
+                            tracing::warn!(window = %entry.window, "could not mark recovered fullscreen window: {e}");
+                        }
+                    }
+                    let what = match entry.kind {
+                        JournalKind::Fullscreen => "window left constrained by a previous session",
+                        JournalKind::Borderless => "borderless window left by a previous session",
+                    };
+                    self.log(ActivityLevel::Info, who, format!("Restored {what}"));
                 }
                 Err(e) => self.log(
                     ActivityLevel::Warn,
@@ -349,7 +398,10 @@ impl Engine {
                     let started = *self.fullscreen_since.entry(id).or_insert(now);
                     let deadline = (now + FULLSCREEN_SETTLE).min(started + FULLSCREEN_SETTLE_CAP);
                     self.pending.insert(id, deadline);
-                } else if self.managed.contains_key(&id) || self.is_managed_app(id) {
+                } else if self.managed.contains_key(&id)
+                    || self.borderless.contains_key(&id)
+                    || self.is_managed_app(id)
+                {
                     self.fullscreen_since.remove(&id);
                     self.pending.insert(id, now);
                 } else {
@@ -443,6 +495,10 @@ impl Engine {
             self.evaluate_managed(id);
             return;
         }
+        if self.borderless.contains_key(&id) {
+            self.evaluate_borderless(id);
+            return;
+        }
         if !self.config.enabled {
             return;
         }
@@ -452,7 +508,9 @@ impl Engine {
         let Ok(identity) = self.platform.identity(id) else {
             return;
         };
-        let Some(rule) = self.config.match_rule(&identity) else {
+        // A window with a fullscreen rule belongs to the zone feature; borderless handles the rest.
+        let Some(rule) = self.config.match_fullscreen_rule(&identity) else {
+            self.try_borderless(id, identity);
             return;
         };
         let Some(action) = rule.fullscreen_action() else {
@@ -1064,6 +1122,277 @@ impl Engine {
         self.last_normal.insert(id, pre);
     }
 
+    // ---- borderless windows ----------------------------------------------------------------
+
+    /// A framed window matched a borderless rule: strip the frame and fit it to the target.
+    fn try_borderless(&mut self, id: WindowId, identity: WindowIdentity) {
+        if self.borderless_rejected.contains(&id) {
+            return;
+        }
+        let Some(rule) = self.config.match_borderless_rule(&identity) else {
+            return;
+        };
+        let Some(action) = rule.borderless_action() else {
+            return;
+        };
+        let (rule_id, target, topmost) = (rule.id.clone(), action.target.clone(), action.topmost);
+        let state = match self.platform.state(id) {
+            Ok(s) => s,
+            Err(PlatformError::WindowGone(_)) => return self.forget(id),
+            Err(_) => return,
+        };
+        let has_owner = self.platform.owner(id).is_some();
+        if !borderless::should_apply(&state, has_owner, &self.monitors) {
+            return;
+        }
+        let who = label(&identity, id);
+        match self.apply_borderless(id, &target, topmost, &state) {
+            Ok((applied, visible_target, summary)) => {
+                self.borderless.insert(
+                    id,
+                    BorderlessWindow {
+                        id,
+                        identity,
+                        rule_id,
+                        target,
+                        topmost,
+                        detected: state,
+                        applied,
+                        visible_target,
+                        reapplies: VecDeque::new(),
+                        gave_up: false,
+                        since_ms: activity::now_ms(),
+                    },
+                );
+                self.save_journal();
+                self.log(ActivityLevel::Info, Some(who), summary);
+                (self.notify)(Notification::ManagedChanged);
+            }
+            Err(e) => {
+                // Undo any partial change (e.g. frame stripped but the move was refused).
+                let _ = self.platform.restore_state(id, &state);
+                self.borderless_rejected.insert(id);
+                self.log(
+                    ActivityLevel::Warn,
+                    Some(who),
+                    format!("Could not make window borderless: {e}"),
+                );
+            }
+        }
+    }
+
+    /// Strips the frame and fits the window to `target`, then checks that it stayed there.
+    /// Returns the state afterwards, the visible rect aimed for and a log line. On error the
+    /// caller restores `before`.
+    fn apply_borderless(
+        &self,
+        id: WindowId,
+        target: &BorderlessTarget,
+        topmost: bool,
+        before: &WindowState,
+    ) -> Result<(WindowState, Rect, String), String> {
+        let window_monitor = monitor_for_rect(&self.monitors, &before.bounds)
+            .ok_or("window is not on any monitor")?;
+        let (visible_target, what) = match target {
+            BorderlessTarget::Monitor => (
+                window_monitor.bounds,
+                format!("monitor {}", window_monitor.friendly_name),
+            ),
+            BorderlessTarget::Zone { zone_id } => {
+                let zone = self
+                    .config
+                    .zone(zone_id)
+                    .ok_or_else(|| format!("zone '{zone_id}' no longer exists"))?;
+                let monitor = zone
+                    .target_monitor(&self.monitors, Some(window_monitor))
+                    .ok_or("no monitor available for zone")?;
+                (
+                    zone.resolve_on(monitor),
+                    format!("zone '{}' on {}", zone.name, monitor.friendly_name),
+                )
+            }
+        };
+
+        self.platform
+            .set_borderless(id)
+            .map_err(|e| e.to_string())?;
+        let styled = self.platform.state(id).map_err(|e| e.to_string())?;
+        self.platform
+            .set_bounds(id, compensate_invisible_frame(visible_target, &styled))
+            .map_err(|e| e.to_string())?;
+        let after = self.platform.state(id).map_err(|e| e.to_string())?;
+        if !after
+            .visible_bounds
+            .approx_eq(&visible_target, BOUNDS_TOLERANCE)
+        {
+            return Err(format!(
+                "application rejected the bounds (wanted {visible_target}, got {})",
+                after.visible_bounds
+            ));
+        }
+        // Covering a whole monitor should look like fullscreen: let the shell drop the taskbar.
+        if matches!(target, BorderlessTarget::Monitor) {
+            if let Err(e) = self.platform.set_hides_taskbar(id, true) {
+                tracing::warn!(window = %id, "could not mark window fullscreen for the taskbar: {e}");
+            }
+        }
+        if topmost {
+            if let Err(e) = self.platform.set_topmost(id, true) {
+                tracing::warn!(window = %id, "could not keep window on top: {e}");
+            }
+        }
+        let after = self.platform.state(id).unwrap_or(after);
+        let summary = format!(
+            "Made borderless on {what}: {} → {}",
+            before.bounds, after.bounds
+        );
+        Ok((after, visible_target, summary))
+    }
+
+    fn evaluate_borderless(&mut self, id: WindowId) {
+        let state = match self.platform.state(id) {
+            Ok(s) => s,
+            Err(PlatformError::WindowGone(_)) => return self.forget(id),
+            Err(e) => return tracing::debug!(window = %id, "state read failed: {e}"),
+        };
+        let Some(b) = self.borderless.get(&id) else {
+            return;
+        };
+        if b.gave_up {
+            return;
+        }
+        let to_monitor = matches!(b.target, BorderlessTarget::Monitor);
+        match borderless::observe(&state, &b.applied, &self.monitors, to_monitor) {
+            BorderlessObservation::Unchanged | BorderlessObservation::Dormant => {}
+            BorderlessObservation::Reassert => self.reapply_borderless(id, state, false),
+            BorderlessObservation::AppFullscreen => {
+                if let Some(b) = self.borderless.remove(&id) {
+                    self.log(
+                        ActivityLevel::Info,
+                        Some(label(&b.identity, id)),
+                        "Application went fullscreen itself; no longer managing its frame".into(),
+                    );
+                    self.save_journal();
+                    (self.notify)(Notification::ManagedChanged);
+                }
+            }
+        }
+    }
+
+    /// The app moved or re-framed itself (or the display changed): fit it again. `forced` skips
+    /// the loop guard, for changes we caused ourselves (display or zone edits).
+    fn reapply_borderless(&mut self, id: WindowId, state: WindowState, forced: bool) {
+        let Some(mut b) = self.borderless.remove(&id) else {
+            return;
+        };
+        let who = label(&b.identity, id);
+        if forced {
+            b.gave_up = false;
+            b.reapplies.clear();
+        } else {
+            let now = Instant::now();
+            b.reapplies
+                .retain(|t| now.duration_since(*t) < REAPPLY_WINDOW);
+            b.reapplies.push_back(now);
+            if b.reapplies.len() > MAX_REAPPLIES {
+                b.gave_up = true;
+                self.borderless.insert(id, b);
+                self.log(
+                    ActivityLevel::Warn,
+                    Some(who),
+                    "Application keeps changing its window; leaving it as it is".into(),
+                );
+                (self.notify)(Notification::ManagedChanged);
+                return;
+            }
+        }
+        match self.apply_borderless(id, &b.target, b.topmost, &state) {
+            Ok((applied, visible_target, msg)) => {
+                tracing::info!(window = %who, "re-applied borderless: {msg}");
+                b.applied = applied;
+                b.visible_target = visible_target;
+                self.borderless.insert(id, b);
+            }
+            Err(e) => {
+                // We cannot hold it: hand the window back as the app had it.
+                let _ = self.platform.restore_state(id, &b.detected);
+                self.borderless_rejected.insert(id);
+                self.log(
+                    ActivityLevel::Warn,
+                    Some(who),
+                    format!("Could not re-apply borderless window: {e}"),
+                );
+            }
+        }
+        self.save_journal();
+        (self.notify)(Notification::ManagedChanged);
+    }
+
+    /// Gives a borderless window its frame (and place) back. If the app has moved on from where
+    /// we put it, only the frame is restored so it is never left permanently borderless.
+    fn release_borderless(&mut self, id: WindowId, reason: ReleaseReason) {
+        let Some(b) = self.borderless.remove(&id) else {
+            return;
+        };
+        let who = label(&b.identity, id);
+        if let Ok(current) = self.platform.state(id) {
+            let in_place = current.bounds.approx_eq(&b.applied.bounds, BOUNDS_TOLERANCE);
+            let result = if in_place && !b.gave_up {
+                self.platform.restore_state(id, &b.detected)
+            } else {
+                self.platform.set_style(id, b.detected.style)
+            };
+            match result {
+                Ok(()) => {
+                    self.restore_taskbar(id, b.detected.topmost);
+                    self.log(
+                        ActivityLevel::Info,
+                        Some(who),
+                        format!("Released borderless window ({reason:?}); restored {}", b.detected.bounds),
+                    );
+                }
+                Err(e) => self.log(
+                    ActivityLevel::Warn,
+                    Some(who),
+                    format!("Release ({reason:?}) could not restore: {e}"),
+                ),
+            }
+        }
+        // After an explicit release, do not grab it again straight away.
+        if reason == ReleaseReason::Requested {
+            self.borderless_rejected.insert(id);
+        }
+        self.save_journal();
+    }
+
+    /// Re-checks borderless windows after a config edit: gone/changed rules release the window
+    /// (the scan that follows applies the new rule), zone edits re-fit it in place.
+    fn reconcile_borderless(&mut self) {
+        let ids: Vec<WindowId> = self.borderless.keys().copied().collect();
+        for id in ids {
+            let identity = self.borderless[&id].identity.clone();
+            let wanted = self
+                .config
+                .enabled
+                .then(|| self.config.match_borderless_rule(&identity))
+                .flatten()
+                // A fullscreen rule that matches now takes the window over.
+                .filter(|_| self.config.match_fullscreen_rule(&identity).is_none())
+                .and_then(|r| r.borderless_action().map(|a| (a.target.clone(), a.topmost)));
+            let unchanged = wanted.as_ref().is_some_and(|(target, topmost)| {
+                let b = &self.borderless[&id];
+                &b.target == target && b.topmost == *topmost
+            });
+            if !unchanged {
+                self.release_borderless(id, ReleaseReason::ConfigChanged);
+            } else if matches!(self.borderless[&id].target, BorderlessTarget::Zone { .. }) {
+                if let Ok(state) = self.platform.state(id) {
+                    self.reapply_borderless(id, state, true);
+                }
+            }
+        }
+    }
+
     /// Hands a still-fullscreen window back to the app's own fullscreen state.
     fn release(&mut self, id: WindowId, reason: ReleaseReason) {
         let Some(m) = self.managed.remove(&id) else {
@@ -1114,10 +1443,22 @@ impl Engine {
         for id in ids {
             self.release(id, reason);
         }
+        let borderless: Vec<WindowId> = self.borderless.keys().copied().collect();
+        for id in borderless {
+            self.release_borderless(id, reason);
+        }
         (self.notify)(Notification::ManagedChanged);
     }
 
     fn on_user_moved(&mut self, id: WindowId) {
+        if let Some(b) = self.borderless.get_mut(&id) {
+            if let Ok(state) = self.platform.state(id) {
+                // Respect manual placement while still considering the window managed.
+                b.applied = state;
+                self.save_journal();
+            }
+            return;
+        }
         let Some(m) = self.managed.get_mut(&id) else {
             return;
         };
@@ -1143,11 +1484,21 @@ impl Engine {
         self.forget_panels_of(id);
         self.last_normal.remove(&id);
         self.rejected.remove(&id);
+        self.borderless_rejected.remove(&id);
         if let Some(m) = self.managed.remove(&id) {
             self.log(
                 ActivityLevel::Info,
                 Some(label(&m.identity, id)),
                 "Window closed while managed".into(),
+            );
+            self.save_journal();
+            (self.notify)(Notification::ManagedChanged);
+        }
+        if let Some(b) = self.borderless.remove(&id) {
+            self.log(
+                ActivityLevel::Info,
+                Some(label(&b.identity, id)),
+                "Window closed while borderless".into(),
             );
             self.save_journal();
             (self.notify)(Notification::ManagedChanged);
@@ -1206,6 +1557,13 @@ impl Engine {
             }
             self.managed.insert(id, m);
         }
+        let borderless: Vec<WindowId> = self.borderless.keys().copied().collect();
+        for id in borderless {
+            match self.platform.state(id) {
+                Ok(state) => self.reapply_borderless(id, state, true),
+                Err(_) => self.forget(id),
+            }
+        }
         self.save_journal();
         (self.notify)(Notification::ManagedChanged);
     }
@@ -1224,17 +1582,23 @@ impl Engine {
     }
 
     fn save_journal(&self) {
-        let entries: Vec<JournalEntry> = self
-            .managed
-            .values()
-            .map(|m| JournalEntry {
-                window: m.id,
-                process: m.identity.process.clone(),
-                process_name: m.identity.process_name.clone(),
-                detected: m.detected.clone(),
-                applied: m.applied.clone(),
-            })
-            .collect();
+        let fullscreen = self.managed.values().map(|m| JournalEntry {
+            kind: JournalKind::Fullscreen,
+            window: m.id,
+            process: m.identity.process.clone(),
+            process_name: m.identity.process_name.clone(),
+            detected: m.detected.clone(),
+            applied: m.applied.clone(),
+        });
+        let borderless = self.borderless.values().map(|b| JournalEntry {
+            kind: JournalKind::Borderless,
+            window: b.id,
+            process: b.identity.process.clone(),
+            process_name: b.identity.process_name.clone(),
+            detected: b.detected.clone(),
+            applied: b.applied.clone(),
+        });
+        let entries: Vec<JournalEntry> = fullscreen.chain(borderless).collect();
         journal::save(&self.paths.journal, &entries);
     }
 
@@ -1266,6 +1630,7 @@ impl Engine {
                 .managed
                 .values()
                 .map(|m| ManagedSummary {
+                    kind: ManagedKind::Fullscreen,
                     id: m.id,
                     id_hex: m.id.to_string(),
                     process_name: m.identity.process_name.clone(),
@@ -1280,6 +1645,25 @@ impl Engine {
                     gave_up: m.gave_up,
                     since_ms: m.since_ms,
                 })
+                .chain(self.borderless.values().map(|b| ManagedSummary {
+                    kind: ManagedKind::Borderless,
+                    id: b.id,
+                    id_hex: b.id.to_string(),
+                    process_name: b.identity.process_name.clone(),
+                    title: b.identity.title.clone(),
+                    rule_id: b.rule_id.clone(),
+                    zone_id: match &b.target {
+                        BorderlessTarget::Zone { zone_id } => zone_id.clone(),
+                        BorderlessTarget::Monitor => String::new(),
+                    },
+                    chrome: ChromeMode::Hide,
+                    monitor: b.applied.monitor.clone(),
+                    target: b.visible_target,
+                    detected_bounds: b.detected.bounds,
+                    pre_fullscreen_bounds: None,
+                    gave_up: b.gave_up,
+                    since_ms: b.since_ms,
+                }))
                 .collect(),
         }
     }
@@ -1305,7 +1689,7 @@ impl Engine {
                     id_hex: id.to_string(),
                     fullscreen_like: fullscreen_monitor(&state, &self.monitors).is_some(),
                     hung: self.platform.is_hung(id),
-                    managed: self.managed.contains_key(&id),
+                    managed: self.managed.contains_key(&id) || self.borderless.contains_key(&id),
                     matched_rule: self.config.match_rule(&identity).map(|r| r.name.clone()),
                     identity,
                     state,
@@ -1320,7 +1704,9 @@ impl Engine {
         config.save(&self.paths.config).map_err(|e| e.to_string())?;
         self.config = config;
         self.reconcile_managed();
+        self.reconcile_borderless();
         self.rejected.clear();
+        self.borderless_rejected.clear();
         (self.notify)(Notification::ConfigChanged(self.config.clone()));
         if self.config.enabled {
             self.scan_all();
@@ -1378,6 +1764,7 @@ impl Engine {
 
     pub fn release_window(&mut self, id: WindowId) {
         self.release(id, ReleaseReason::Requested);
+        self.release_borderless(id, ReleaseReason::Requested);
         (self.notify)(Notification::ManagedChanged);
     }
 
