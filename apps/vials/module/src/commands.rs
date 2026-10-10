@@ -133,6 +133,36 @@ pub async fn open_item(state: State<'_, ModuleState>, id: String) -> CmdResult<(
     desqu_shell::platform::open_url(&id)
 }
 
+/// The popup's "Create vial here": makes a vial where the box was dragged.
+#[tauri::command]
+pub async fn create_vial_from_menu<R: Runtime>(app: AppHandle<R>) -> CmdResult<String> {
+    engine::create_vial_from_pending(&app)
+}
+
+#[tauri::command]
+pub async fn dismiss_menu<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
+    engine::close_menu(&app);
+    Ok(())
+}
+
+/// Files dropped onto a vial window (dragged from the desktop). Only desktop items are taken;
+/// anything else is ignored, so the UI cannot be used to reference arbitrary paths.
+#[tauri::command]
+pub async fn drop_items(state: State<'_, ModuleState>, vial_id: String, paths: Vec<String>) -> CmdResult<VialsConfig> {
+    let wanted: Vec<String> = paths.iter().map(|p| p.replace('/', "\\").to_lowercase()).collect();
+    let on_desktop = state.layer()?.items().map_err(|e| e.to_string())?;
+    let mut cfg = state.config();
+    let mut changed = false;
+    for item in on_desktop.iter().filter(|i| wanted.contains(&i.id.replace('/', "\\").to_lowercase())) {
+        changed |= cfg.assign(&item.id, Some(&vial_id));
+    }
+    if changed {
+        state.set_config(cfg)
+    } else {
+        Ok(cfg)
+    }
+}
+
 #[tauri::command]
 pub async fn get_monitors<R: Runtime>(app: AppHandle<R>) -> CmdResult<Vec<MonitorInfo>> {
     Ok(engine::monitors(&app)

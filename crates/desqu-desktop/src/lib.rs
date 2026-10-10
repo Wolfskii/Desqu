@@ -36,6 +36,11 @@ pub fn recover_from(journal_path: &Path) -> DesktopResult<usize> {
     platform::recover_from(journal_path)
 }
 
+/// How many desktop items are selected right now (0 after a marquee over empty space). Read-only.
+pub fn selection_count() -> DesktopResult<usize> {
+    platform::selection_count()
+}
+
 /// Where the desktop shows `item_id` right now, or `None` if it is not there. Read-only and takes
 /// no lock, so it also works while another process owns the layer (for tests and diagnostics).
 pub fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {

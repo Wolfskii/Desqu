@@ -45,6 +45,8 @@ export interface VialsConfig {
     rules: SortRule[];
     autoSort: boolean;
     hideOnDesktop: boolean;
+    /** Dragging a box on the empty desktop offers to create a vial there. */
+    createOnDrag: boolean;
     /** Items the user took out of a vial on purpose; rules never put them back. */
     declined?: string[];
 }

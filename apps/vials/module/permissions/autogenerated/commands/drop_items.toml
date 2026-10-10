@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-drop-items"
+description = "Enables the drop_items command without any pre-configured scope."
+commands.allow = ["drop_items"]
+
+[[permission]]
+identifier = "deny-drop-items"
+description = "Denies the drop_items command without any pre-configured scope."
+commands.deny = ["drop_items"]

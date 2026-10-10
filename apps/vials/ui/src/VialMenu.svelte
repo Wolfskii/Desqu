@@ -1,0 +1,85 @@
+<script lang="ts">
+  // The popup that appears after dragging a box on the empty desktop, styled like a context menu.
+  import { onMount } from "svelte";
+  import { api } from "./api";
+
+  let busy = $state(false);
+  let error = $state<string | null>(null);
+  let button: HTMLButtonElement | undefined = $state();
+
+  onMount(() => button?.focus());
+
+  async function create() {
+    if (busy) return;
+    busy = true;
+    try {
+      await api.createVialFromMenu();
+    } catch (e) {
+      error = String(e);
+      busy = false;
+    }
+  }
+
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") void api.dismissMenu();
+  }
+</script>
+
+<svelte:window {onkeydown} />
+
+<div class="menu" role="menu">
+  <button bind:this={button} role="menuitem" disabled={busy} onclick={create}>
+    <span class="plus" aria-hidden="true">+</span>
+    Create vial here
+  </button>
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
+</div>
+
+<style>
+  :global(html),
+  :global(body) {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    user-select: none;
+  }
+  .menu {
+    box-sizing: border-box;
+    height: 100%;
+    padding: 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-1);
+  }
+  button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 100%;
+    padding: 0 12px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    font-size: 14px;
+    text-align: left;
+    cursor: default;
+  }
+  button:hover,
+  button:focus-visible {
+    background: var(--accent-soft);
+    outline: none;
+  }
+  .plus {
+    width: 18px;
+    text-align: center;
+    color: var(--accent);
+    font-size: 18px;
+    line-height: 1;
+  }
+  .error {
+    margin: 4px 8px;
+    color: var(--error);
+    font-size: 12px;
+  }
+</style>

@@ -103,6 +103,20 @@ pub(crate) fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
         .map_err(|_| DesktopError::Native { op: "peek", message: "thread panicked".into() })?
 }
 
+/// How many desktop items are selected right now. Read-only, takes no lock.
+pub(crate) fn selection_count() -> DesktopResult<usize> {
+    std::thread::Builder::new()
+        .name("desqu-desktop-selection".into())
+        .spawn(move || {
+            with_com(|| {
+                // SAFETY: on a COM thread of its own.
+                unsafe { shell::selection_count(&shell::desktop_view()?) }
+            })
+        })?
+        .join()
+        .map_err(|_| DesktopError::Native { op: "selection", message: "thread panicked".into() })?
+}
+
 fn with_com<T>(f: impl FnOnce() -> T) -> T {
     // SAFETY: balanced with CoUninitialize below; this thread owns its apartment.
     let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok();

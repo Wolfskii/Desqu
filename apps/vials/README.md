@@ -1,11 +1,17 @@
 # Vials
 
-Tidy desktop containers for Windows. A **vial** is a small window on your desktop that holds
-shortcuts, apps and folders. Items you put in a vial disappear from the loose desktop and live in
-the vial instead; take them out (or quit Vials) and they come back exactly where they were.
+Tidy desktop containers for Windows, in the spirit of Stardock Fences. A **vial** is a named,
+semi-transparent box on your desktop that holds shortcuts, files and folders. Items you drop into a
+vial disappear from the loose desktop and live in the vial instead; take them out (or quit Vials)
+and they come back exactly where they were.
 
 ## What it does
 
+- **Make one right on the desktop.** Drag a selection box over empty desktop space (the same
+  gesture you use to select icons). If it selects nothing, a small menu pops up at the cursor:
+  *Create vial here*. The vial appears exactly where you dragged. Turn this off in Settings.
+- **Drag icons in.** Drag shortcuts, files and folders from the desktop onto a vial. Rename a vial in
+  the Vials window.
 - **Vials on the desktop.** Drag the title bar to move one, collapse it to just its title, double
   click an item to open it, press × to take an item out. Vials sit below your other windows and
   never take focus or show up in Alt+Tab.
@@ -20,6 +26,9 @@ the vial instead; take them out (or quit Vials) and they come back exactly where
 Windows 10/11 with WebView2. Windows only for now.
 
 ## Known limits
+
+- The drag-a-box gesture needs a system-wide mouse hook that only looks at left-button presses and
+  releases that start on the desktop icon view. It works only while Vials is on.
 
 - Hiding uses the desktop's own icon view. It is verified on this project's test machine only;
   see [docs/desktop-research.md](docs/desktop-research.md) for what was observed and what was not.

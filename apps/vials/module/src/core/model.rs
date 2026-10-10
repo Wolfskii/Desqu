@@ -116,6 +116,9 @@ pub struct VialsConfig {
     /// Items in a vial are hidden on the desktop (parked off-screen, always restored).
     #[serde(default = "yes")]
     pub hide_on_desktop: bool,
+    /// Dragging a box on the empty desktop offers to create a vial there.
+    #[serde(default = "yes")]
+    pub create_on_drag: bool,
     /// Items the user took out of a vial on purpose: rules never put them back.
     #[serde(default)]
     pub declined: Vec<String>,
@@ -136,6 +139,7 @@ impl Default for VialsConfig {
             rules: Vec::new(),
             auto_sort: true,
             hide_on_desktop: true,
+            create_on_drag: true,
             declined: Vec::new(),
         }
     }

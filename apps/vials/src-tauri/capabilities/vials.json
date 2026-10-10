@@ -3,7 +3,8 @@
   "identifier": "vial-windows",
   "description": "Capability for the vial windows on the desktop (drag by the title bar, open items)",
   "windows": [
-    "vial-*"
+    "vial-*",
+    "vials-menu"
   ],
   "permissions": [
     "core:default",

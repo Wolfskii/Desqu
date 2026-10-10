@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the assign_item command without any pre-configured scope."
         },
         {
+          "description": "Enables the create_vial_from_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-create-vial-from-menu",
+          "markdownDescription": "Enables the create_vial_from_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the create_vial_from_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-create-vial-from-menu",
+          "markdownDescription": "Denies the create_vial_from_menu command without any pre-configured scope."
+        },
+        {
           "description": "Enables the desktop_status command without any pre-configured scope.",
           "type": "string",
           "const": "allow-desktop-status",
@@ -317,6 +329,30 @@
           "type": "string",
           "const": "deny-desktop-status",
           "markdownDescription": "Denies the desktop_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the dismiss_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-dismiss-menu",
+          "markdownDescription": "Enables the dismiss_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the dismiss_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-dismiss-menu",
+          "markdownDescription": "Denies the dismiss_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the drop_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-drop-items",
+          "markdownDescription": "Enables the drop_items command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the drop_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-drop-items",
+          "markdownDescription": "Denies the drop_items command without any pre-configured scope."
         },
         {
           "description": "Enables the get_config command without any pre-configured scope.",
@@ -427,10 +463,10 @@
           "markdownDescription": "Denies the set_config command without any pre-configured scope."
         },
         {
-          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-drop-items`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-drop-items`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
         }
       ]
     }

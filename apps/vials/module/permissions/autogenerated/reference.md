@@ -10,6 +10,9 @@ Everything the Vials UI needs
 - `allow-item-icon`
 - `allow-assign-item`
 - `allow-open-item`
+- `allow-create-vial-from-menu`
+- `allow-dismiss-menu`
+- `allow-drop-items`
 - `allow-get-monitors`
 - `allow-desktop-status`
 - `allow-module-start`
@@ -54,6 +57,32 @@ Denies the assign_item command without any pre-configured scope.
 <tr>
 <td>
 
+`vials-module:allow-create-vial-from-menu`
+
+</td>
+<td>
+
+Enables the create_vial_from_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-create-vial-from-menu`
+
+</td>
+<td>
+
+Denies the create_vial_from_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `vials-module:allow-desktop-status`
 
 </td>
@@ -73,6 +102,58 @@ Enables the desktop_status command without any pre-configured scope.
 <td>
 
 Denies the desktop_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-dismiss-menu`
+
+</td>
+<td>
+
+Enables the dismiss_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-dismiss-menu`
+
+</td>
+<td>
+
+Denies the dismiss_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-drop-items`
+
+</td>
+<td>
+
+Enables the drop_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-drop-items`
+
+</td>
+<td>
+
+Denies the drop_items command without any pre-configured scope.
 
 </td>
 </tr>

@@ -17,3 +17,7 @@ pub(crate) fn recover_from(_journal_path: &Path) -> DesktopResult<usize> {
 pub(crate) fn item_position(_item_id: &str) -> DesktopResult<Option<Point>> {
     Err(DesktopError::Unsupported)
 }
+
+pub(crate) fn selection_count() -> DesktopResult<usize> {
+    Err(DesktopError::Unsupported)
+}

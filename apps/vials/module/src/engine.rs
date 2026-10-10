@@ -20,16 +20,22 @@ use tauri::{
     WindowEvent,
 };
 
+use crate::core::gesture;
 use crate::core::layout::{self, MonitorRef};
-use crate::core::model::{PixelRect, VialsConfig};
+use crate::core::model::{PixelRect, Vial, VialsConfig};
 use crate::core::rules;
-use crate::platform;
+use crate::platform::{self, MouseWatcher};
 
 /// Id of the cross-process module lock.
 pub const MODULE_ID: &str = "vials";
 pub const EVENT_CHANGED: &str = "vials://changed";
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const LABEL_PREFIX: &str = "vial-";
+/// The small "create a vial" popup. Its label must not start with `vial-` (those are vials).
+pub const MENU_LABEL: &str = "vials-menu";
+const MENU_SIZE: (f64, f64) = (230.0, 46.0);
+/// Explorer updates its selection a moment after the button is released.
+const SELECTION_SETTLE: Duration = Duration::from_millis(220);
 /// The desktop view shows a new item several seconds after the file appears.
 const LAG_RECHECK: Duration = Duration::from_secs(5);
 const RETRY_DELAY: Duration = Duration::from_secs(3);
@@ -43,6 +49,8 @@ pub(crate) enum Job {
     DesktopChanged,
     /// A vial window was moved or resized (debounced).
     WindowChanged,
+    /// The user dragged a box (screen pixels: start, end) over the desktop's icon view.
+    Marquee((i32, i32), (i32, i32)),
     Stop,
 }
 
@@ -50,6 +58,7 @@ struct Running {
     layer: Arc<dyn DesktopLayer>,
     jobs: Sender<Job>,
     _subscription: Subscription,
+    _mouse: Option<MouseWatcher>,
     worker: Option<JoinHandle<()>>,
     _lock: ModuleLock,
 }
@@ -60,6 +69,8 @@ pub struct ModuleState {
     config: Mutex<VialsConfig>,
     running: Mutex<Option<Running>>,
     owned_elsewhere: AtomicBool,
+    /// The box the user dragged, waiting for them to pick "create a vial" in the popup.
+    pending: Mutex<Option<PixelRect>>,
     problem: Mutex<Option<String>>,
     icons: Mutex<HashMap<String, String>>,
 }
@@ -86,6 +97,7 @@ impl ModuleState {
             config: Mutex::new(config),
             running: Mutex::new(None),
             owned_elsewhere: AtomicBool::new(false),
+            pending: Mutex::new(None),
             problem: Mutex::new(None),
             icons: Mutex::new(HashMap::new()),
         }
@@ -193,6 +205,16 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         }))
         .map_err(|e| e.to_string())?;
 
+    // Not fatal: without the hook everything works except creating vials by dragging a box.
+    let mouse = {
+        let sink = jobs.clone();
+        MouseWatcher::start(Box::new(move |down, up| {
+            let _ = sink.send(Job::Marquee(down, up));
+        }))
+        .map_err(|e| tracing::warn!("could not watch the desktop for dragged boxes: {e}"))
+        .ok()
+    };
+
     let worker = {
         let app = app.clone();
         let layer = layer.clone();
@@ -204,7 +226,14 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     };
     let _ = jobs.send(Job::Reconcile);
     tracing::info!(config = %state.config_path.display(), "starting Vials");
-    *running = Some(Running { layer, jobs, _subscription: subscription, worker: Some(worker), _lock: module_lock });
+    *running = Some(Running {
+        layer,
+        jobs,
+        _subscription: subscription,
+        _mouse: mouse,
+        worker: Some(worker),
+        _lock: module_lock,
+    });
     Ok(())
 }
 
@@ -223,6 +252,7 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>) {
         let _ = worker.join();
     }
     close_vial_windows(app, &HashSet::new());
+    close_menu(app);
     if let Err(e) = running.layer.show_all() {
         tracing::warn!("could not restore hidden desktop items: {e}");
     }
@@ -260,6 +290,7 @@ fn worker<R: Runtime>(app: AppHandle<R>, rx: Receiver<Job>, jobs: Sender<Job>, l
                 later = Some(now + LAG_RECHECK);
             }
             Ok(Job::WindowChanged) => moved = Some(now + MOVE_DEBOUNCE),
+            Ok(Job::Marquee(down, up)) => offer_new_vial(&app, down, up),
             Err(RecvTimeoutError::Timeout) => {
                 if later.is_some_and(|t| t <= now) {
                     later = None;
@@ -424,6 +455,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
             .always_on_bottom(true)
             .focusable(false)
             .shadow(false)
+            .transparent(true)
             .visible(false)
             .build();
         match built {
@@ -499,4 +531,91 @@ fn persist_window_rects<R: Runtime>(app: &AppHandle<R>) {
     if changed {
         let _ = app.emit(EVENT_CHANGED, ());
     }
+}
+
+// ------------------------------------------------------------------- the "create a vial" popup
+
+/// After a box was dragged over the desktop: if it selected nothing, offer to make a vial there.
+fn offer_new_vial<R: Runtime>(app: &AppHandle<R>, down: (i32, i32), up: (i32, i32)) {
+    let Some(state) = app.try_state::<ModuleState>() else { return };
+    if !state.config().create_on_drag {
+        return;
+    }
+    let Some(rect) = gesture::marquee(down, up) else { return };
+    // Let Explorer finish selecting, then ask it: a box that caught icons is a selection, not a vial.
+    std::thread::sleep(SELECTION_SETTLE);
+    match desqu_desktop::selection_count() {
+        Ok(0) => {}
+        Ok(_) => return,
+        Err(e) => {
+            tracing::debug!("could not read the desktop selection: {e}");
+            return;
+        }
+    }
+    *lock(&state.pending) = Some(rect);
+    if let Err(e) = show_menu(app, up) {
+        tracing::warn!("could not show the create-a-vial popup: {e}");
+    }
+}
+
+pub fn close_menu<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(MENU_LABEL) {
+        let _ = window.destroy();
+    }
+}
+
+fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), String> {
+    close_menu(app);
+    let monitors = monitor_refs(app);
+    let at = PixelRect { left: cursor.0, top: cursor.1, right: cursor.0 + 1, bottom: cursor.1 + 1 };
+    let monitor = layout::monitor_containing(&at, &monitors).or(monitors.first()).ok_or("no monitor")?;
+    let size = ((MENU_SIZE.0 * monitor.scale).round() as i32, (MENU_SIZE.1 * monitor.scale).round() as i32);
+    let (x, y) = gesture::popup_position(cursor, size, &monitor.bounds);
+
+    let window = WebviewWindowBuilder::new(app, MENU_LABEL, WebviewUrl::App("vials-menu".into()))
+        .title("Create a vial")
+        .decorations(false)
+        .resizable(false)
+        .skip_taskbar(true)
+        .always_on_top(true)
+        .focused(true)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let _ = window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+    // Like a context menu: it goes away as soon as you click anywhere else.
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Focused(false)) {
+            close_menu(&handle);
+        }
+    });
+    window.show().map_err(|e| e.to_string())?;
+    let _ = window.set_focus();
+    Ok(())
+}
+
+/// The popup was clicked: make a vial where the box was dragged. Returns its id.
+pub fn create_vial_from_pending<R: Runtime>(app: &AppHandle<R>) -> Result<String, String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    let rect = lock(&state.pending).take().ok_or("there is no box to make a vial from")?;
+    close_menu(app);
+    let monitors = monitor_refs(app);
+    let monitor = layout::monitor_containing(&rect, &monitors).ok_or("the box is not on a monitor")?;
+    let normalized = layout::to_normalized(&rect, &monitor.bounds);
+
+    let mut cfg = state.config();
+    let id = gesture::next_id(cfg.vials.iter().map(|v| v.id.as_str()));
+    let name = gesture::next_name(cfg.vials.iter().map(|v| v.name.as_str()));
+    cfg.vials.push(Vial {
+        id: id.clone(),
+        name,
+        monitor: Some(monitor.name.clone()),
+        rect: normalized,
+        items: Vec::new(),
+        collapsed: false,
+    });
+    state.set_config(cfg)?;
+    Ok(id)
 }

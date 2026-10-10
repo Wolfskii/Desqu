@@ -7,6 +7,24 @@ human and a real desktop. Record result + date next to each case.
 Use a spare file or shortcut on the desktop, not something you cannot afford to lose track of:
 Vials never moves or deletes files, but items are hidden while a vial holds them.
 
+## Fences-style creation and drag-in
+
+0a. With Vials on, drag a box over empty desktop space (at least ~90x70 px). Release. Expect a small
+    "Create vial here" menu at the cursor within about a third of a second. Record the delay.
+0b. Click it. Expect a new translucent vial exactly where you dragged, named "Vial 1" (next free
+    number). Rename it in the Vials window.
+0c. Click elsewhere or press Esc while the menu is open. Expect it to vanish and nothing created.
+0d. Drag a box that catches at least one icon. Expect the normal selection and no menu.
+0e. Start a drag on an icon (moving it). Expect no menu.
+0f. Single click on empty desktop. Expect no menu.
+0g. Drag an icon from the desktop onto the vial. Expect the vial to highlight while you hover and
+    the icon to move into the vial (and disappear from the loose desktop) a moment after you drop.
+0h. Drag a file from an Explorer window (not the desktop) onto the vial. Expect nothing to happen.
+0i. Settings: turn off "Create vials by dragging a box". Expect no menu any more.
+0j. Menu near a screen edge and on a second monitor / at 125-150% scaling: expect it fully visible.
+0k. Check the vial looks right (translucent, rounded, readable over your wallpaper, also with a
+    live wallpaper).
+
 ## Basics
 
 1. Start Vials, **Vials** tab → add a vial. Expect a window on the desktop, below other windows.

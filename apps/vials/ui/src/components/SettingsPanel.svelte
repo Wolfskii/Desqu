@@ -23,6 +23,21 @@
       />
     </SettingsRow>
     <SettingsRow
+      label="Create vials by dragging a box on the desktop"
+      description="Drag a box over empty space on the desktop and a small menu offers to create a vial there. Dragging over icons selects them as usual."
+    >
+      <Switch
+        checked={vials.config?.createOnDrag ?? true}
+        label="Create vials by dragging a box on the desktop"
+        disabled={!vials.config}
+        onchange={(next) => {
+          if (!vials.config) return;
+          vials.config.createOnDrag = next;
+          vials.scheduleSave(true);
+        }}
+      />
+    </SettingsRow>
+    <SettingsRow
       label="Hide items on the desktop"
       description="Items in a vial are moved out of sight on the desktop (never deleted or changed) and put back when you take them out of the vial, turn Vials off, or quit. If Vials crashes, they are restored the next time it starts."
     >

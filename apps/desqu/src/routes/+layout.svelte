@@ -7,7 +7,7 @@
 
   let { children } = $props();
   // A vial's window on the desktop is bare content, without the app chrome.
-  const bare = $derived(page.url.pathname.startsWith("/vial/"));
+  const bare = $derived((page.url.pathname.startsWith("/vial/") || page.url.pathname.startsWith("/vials-menu")));
 
   onMount(() => {
     if (!bare) void desqu.init();

@@ -1,6 +1,8 @@
 <script lang="ts">
   // The content of one vial's own window on the desktop.
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { onDestroy, onMount } from "svelte";
+  import { api } from "./api";
   import ItemIcon from "./components/ItemIcon.svelte";
   import { vials } from "./state.svelte";
 
@@ -9,8 +11,29 @@
   const vial = $derived(vials.config?.vials.find((v) => v.id === vialId));
   const items = $derived(vial ? vials.itemsOf(vial) : []);
 
-  onMount(() => void vials.init());
-  onDestroy(() => vials.dispose());
+  let dropping = $state(false);
+  let unlistenDrop: (() => void) | null = null;
+
+  onMount(() => {
+    void vials.init();
+    // Icons dragged from the desktop onto this window are added to the vial.
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const p = event.payload;
+        if (p.type === "enter" || p.type === "over") dropping = true;
+        else if (p.type === "leave") dropping = false;
+        else if (p.type === "drop") {
+          dropping = false;
+          api.dropItems(vialId, p.paths).then(() => vials.refresh()).catch((e) => (vials.error = String(e)));
+        }
+      })
+      .then((un) => (unlistenDrop = un))
+      .catch(() => {});
+  });
+  onDestroy(() => {
+    vials.dispose();
+    unlistenDrop?.();
+  });
 
   function toggleCollapsed() {
     if (!vial) return;
@@ -19,7 +42,7 @@
   }
 </script>
 
-<div class="vial">
+<div class="vial" class:dropping>
   <header data-tauri-drag-region>
     <span class="title" data-tauri-drag-region>{vial?.name ?? "Vial"}</span>
     <span class="count dim" data-tauri-drag-region>{items.length}</span>
@@ -36,7 +59,7 @@
       {#if !vial}
         <p class="dim msg">This vial no longer exists.</p>
       {:else if items.length === 0}
-        <p class="dim msg">Empty. Add items from the Items tab of Vials.</p>
+        <p class="dim msg">Empty. Drag icons from the desktop into this vial.</p>
       {:else}
         <div class="grid">
           {#each items as item (item.id)}
@@ -62,6 +85,7 @@
 <style>
   :global(html),
   :global(body) {
+    background: transparent !important;
     height: 100%;
     overflow: hidden;
     user-select: none;
@@ -72,8 +96,12 @@
     height: 100vh;
     border: 1px solid var(--border-strong);
     border-radius: 8px;
-    background: var(--surface-1);
+    background: rgba(24, 27, 32, 0.78);
     overflow: hidden;
+  }
+  .vial.dropping {
+    border-color: var(--accent);
+    background: rgba(34, 52, 76, 0.85);
   }
   header {
     display: flex;
@@ -82,7 +110,7 @@
     height: 34px;
     flex: none;
     padding: 0 6px 0 12px;
-    background: var(--surface-2);
+    background: rgba(34, 38, 45, 0.85);
     cursor: default;
   }
   .title {

@@ -95,7 +95,7 @@ pub fn descriptors() -> Vec<Descriptor> {
     Descriptor {
         id: "vials",
         name: "Vials",
-        description: "Containers on your desktop that hold shortcuts, apps and folders, with optional auto-sort rules.",
+        description: "Fences-style containers on your desktop: drag a box to create one, drag icons in, optional auto-sort rules.",
         version: vials_module::VERSION,
         supported: cfg!(windows),
         settings_files: &["config.json"],

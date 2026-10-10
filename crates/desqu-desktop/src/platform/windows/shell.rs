@@ -15,7 +15,7 @@ use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemImageFactory,
     IShellWindows, SHCreateItemFromIDList, SHCreateItemFromParsingName, SHGetKnownFolderPath, ShellWindows,
-    KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY, SIIGBF_ICONONLY, SVGIO_ALLVIEW,
+    KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY, SIIGBF_ICONONLY, SVGIO_ALLVIEW, SVGIO_SELECTION,
     SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -75,6 +75,11 @@ unsafe fn display_name(item: &IShellItem, kind: SIGDN) -> String {
         }
         Err(_) => String::new(),
     }
+}
+
+/// How many items are selected in the desktop view right now.
+pub(super) unsafe fn selection_count(view: &IFolderView2) -> DesktopResult<usize> {
+    view.ItemCount(SVGIO_SELECTION).map(|n| n.max(0) as usize).map_err(|e| native("ItemCount", e))
 }
 
 pub(super) unsafe fn list(view: &IFolderView2) -> DesktopResult<Vec<RawItem>> {

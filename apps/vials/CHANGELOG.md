@@ -7,5 +7,6 @@ being released as the release notes and as the in-app update description.
 
 ## 0.1.0
 
-- First release: desktop vials that hold shortcuts, apps and folders, auto-sort rules, items hidden
-  from the loose desktop and always restored (also after a crash), in-app updates.
+- First release: Fences-style desktop vials. Drag a box on the empty desktop to create one, drag
+  icons into it, auto-sort rules, items hidden from the loose desktop and always restored (also
+  after a crash), in-app updates.
