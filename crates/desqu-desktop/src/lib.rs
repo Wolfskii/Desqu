@@ -35,3 +35,9 @@ pub fn open(owner: &str, journal_path: &Path) -> DesktopResult<Arc<dyn DesktopLa
 pub fn recover_from(journal_path: &Path) -> DesktopResult<usize> {
     platform::recover_from(journal_path)
 }
+
+/// Where the desktop shows `item_id` right now, or `None` if it is not there. Read-only and takes
+/// no lock, so it also works while another process owns the layer (for tests and diagnostics).
+pub fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
+    platform::item_position(item_id)
+}

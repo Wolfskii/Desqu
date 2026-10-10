@@ -23,6 +23,7 @@ use tauri::{
 use crate::core::layout::{self, MonitorRef};
 use crate::core::model::{PixelRect, VialsConfig};
 use crate::core::rules;
+use crate::platform;
 
 /// Id of the cross-process module lock.
 pub const MODULE_ID: &str = "vials";
@@ -436,6 +437,13 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                     }
                 });
                 let _ = window.show();
+                // Keep it out of Alt+Tab too (skip_taskbar alone does not). After show(): Tauri
+                // rewrites the extended style while showing.
+                if let Ok(hwnd) = window.hwnd() {
+                    if let Err(e) = platform::mark_as_tool_window(hwnd.0 as isize) {
+                        tracing::warn!("could not make the vial window a tool window: {e}");
+                    }
+                }
             }
             Err(e) => tracing::warn!("could not create the window for vial '{}': {e}", vial.name),
         }

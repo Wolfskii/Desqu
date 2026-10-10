@@ -6,6 +6,9 @@ includes:
   desqu:
     taskfile: ./apps/desqu/Taskfile.yml
     dir: ./apps/desqu
+  vials:
+    taskfile: ./apps/vials/Taskfile.yml
+    dir: ./apps/vials
   screenbound:
     taskfile: ./apps/screenbound/Taskfile.yml
     dir: ./apps/screenbound
@@ -40,3 +43,4 @@ tasks:
       - task: crates
       - task: screenbound:ci
       - task: desqu:ci
+      - task: vials:ci

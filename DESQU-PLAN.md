@@ -1234,7 +1234,7 @@ fighting over windows.
 - **Done when:**
   - [x] Kill -9 while items hidden → next start restores them.
 
-#### P8.3 Vials module + standalone app + Desqu integration — Status: ⬜
+#### P8.3 Vials module + standalone app + Desqu integration — Status: 🟡
 - **Depends on:** P8.2, Q10, Q1
 - **Do:** Same shape as Screenbound (P2.1–P2.3, P3.11): `apps/vials/module` (core: `Vial { id, name,
   monitor_id, rect: NormalizedRect, items: Vec<ItemRef>, collapsed }`, `SortRule { id, name, matcher:

@@ -6,6 +6,7 @@ mod commands;
 pub mod core;
 pub mod engine;
 pub mod plugin;
+mod platform;
 
 pub use plugin::{init, ModuleOptions, VialsModule};
 

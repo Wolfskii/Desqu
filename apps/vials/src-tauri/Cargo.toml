@@ -1,0 +1,22 @@
+[package]
+name = "vials"
+version = "0.1.0"
+description = "Vials: desktop containers for shortcuts, apps and folders"
+authors = ["Desqu contributors"]
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+# The `_lib` suffix avoids a bin/lib name clash on Windows (cargo#8519).
+name = "vials_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+desqu-shell = { path = "../../../crates/desqu-shell" }
+vials-module = { path = "../module" }
+serde_json = "1"
+tracing = "0.1"

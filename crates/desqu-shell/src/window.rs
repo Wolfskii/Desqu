@@ -15,7 +15,7 @@ pub const MAIN_WINDOW: &str = "main";
 pub enum CloseAction {
     /// Keep the process (and its modules) running with the window hidden.
     HideToTray,
-    /// Let the window close; the app exits and modules restore managed windows.
+    /// Exit the app; modules restore what they changed on the way out.
     Close,
 }
 
@@ -63,11 +63,17 @@ pub fn install_close_handler<R: Runtime>(
         return;
     };
     let hidden = window.clone();
+    let app = app.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
-            if close_action(close_to_tray(), tray_ok) == CloseAction::HideToTray {
-                api.prevent_close();
-                let _ = hidden.hide();
+            api.prevent_close();
+            match close_action(close_to_tray(), tray_ok) {
+                CloseAction::HideToTray => {
+                    let _ = hidden.hide();
+                }
+                // Exit explicitly rather than just letting the window close: an app with other
+                // windows (Vials' windows on the desktop) would otherwise keep running.
+                CloseAction::Close => app.exit(0),
             }
         }
     });

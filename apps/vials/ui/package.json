@@ -1,0 +1,19 @@
+{
+    "name": "@desqu/vials-ui",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "svelte": "./src/index.ts",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "svelte": "./src/index.ts",
+            "default": "./src/index.ts"
+        }
+    },
+    "peerDependencies": {
+        "@desqu/ui": "*",
+        "svelte": "^5",
+        "@tauri-apps/api": "^2"
+    }
+}

@@ -16,7 +16,7 @@ use std::time::Duration;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
 use crate::layer::{DesktopError, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
-use crate::model::{classify, is_parked, plan_recovery, DesktopItem, Journal, ParkedItem, PARK_POINT};
+use crate::model::{classify, is_parked, plan_recovery, DesktopItem, Journal, ParkedItem, Point, PARK_POINT};
 
 /// How long a handle waits for the worker before giving up (Explorer can be slow or hung).
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -83,6 +83,24 @@ pub(crate) fn recover_from(journal_path: &Path) -> DesktopResult<usize> {
         .spawn(move || with_com(|| recover_file(&path)))?
         .join()
         .map_err(|_| DesktopError::Native { op: "recover", message: "recovery thread panicked".into() })?
+}
+
+pub(crate) fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
+    let id = item_id.to_string();
+    std::thread::Builder::new()
+        .name("desqu-desktop-peek".into())
+        .spawn(move || {
+            with_com(|| {
+                // SAFETY: on a COM thread of its own.
+                let raw = unsafe {
+                    let view = shell::desktop_view()?;
+                    shell::list(&view)?
+                };
+                Ok(raw.into_iter().find(|r| r.id == id).map(|r| r.pos))
+            })
+        })?
+        .join()
+        .map_err(|_| DesktopError::Native { op: "peek", message: "thread panicked".into() })?
 }
 
 fn with_com<T>(f: impl FnOnce() -> T) -> T {

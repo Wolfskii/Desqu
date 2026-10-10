@@ -1,0 +1,165 @@
+<script lang="ts">
+  // The content of one vial's own window on the desktop.
+  import { onDestroy, onMount } from "svelte";
+  import ItemIcon from "./components/ItemIcon.svelte";
+  import { vials } from "./state.svelte";
+
+  let { vialId }: { vialId: string } = $props();
+
+  const vial = $derived(vials.config?.vials.find((v) => v.id === vialId));
+  const items = $derived(vial ? vials.itemsOf(vial) : []);
+
+  onMount(() => void vials.init());
+  onDestroy(() => vials.dispose());
+
+  function toggleCollapsed() {
+    if (!vial) return;
+    vial.collapsed = !vial.collapsed;
+    vials.scheduleSave(true);
+  }
+</script>
+
+<div class="vial">
+  <header data-tauri-drag-region>
+    <span class="title" data-tauri-drag-region>{vial?.name ?? "Vial"}</span>
+    <span class="count dim" data-tauri-drag-region>{items.length}</span>
+    <button
+      class="chevron"
+      title={vial?.collapsed ? "Expand" : "Collapse"}
+      aria-label={vial?.collapsed ? "Expand" : "Collapse"}
+      onclick={toggleCollapsed}>{vial?.collapsed ? "▾" : "▴"}</button
+    >
+  </header>
+
+  {#if !vial?.collapsed}
+    <div class="body">
+      {#if !vial}
+        <p class="dim msg">This vial no longer exists.</p>
+      {:else if items.length === 0}
+        <p class="dim msg">Empty. Add items from the Items tab of Vials.</p>
+      {:else}
+        <div class="grid">
+          {#each items as item (item.id)}
+            <div class="item" class:missing={item.missing} title={item.missing ? `${item.name} (no longer on the desktop)` : item.name}>
+              <button
+                class="open"
+                ondblclick={() => !item.missing && vials.open(item.id)}
+                onkeydown={(e) => e.key === "Enter" && !item.missing && vials.open(item.id)}
+                aria-label="Open {item.name}"
+              >
+                <ItemIcon id={item.id} size={40} dim={item.missing} />
+                <span class="label">{item.name}</span>
+              </button>
+              <button class="remove" title="Take out of this vial" aria-label="Remove {item.name} from the vial" onclick={() => vials.assign(item.id, null)}>×</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+</div>
+
+<style>
+  :global(html),
+  :global(body) {
+    height: 100%;
+    overflow: hidden;
+    user-select: none;
+  }
+  .vial {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-1);
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    flex: none;
+    padding: 0 6px 0 12px;
+    background: var(--surface-2);
+    cursor: default;
+  }
+  .title {
+    flex: 1;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .count {
+    font-size: 12px;
+  }
+  .chevron {
+    width: 26px;
+    padding: 0;
+    background: transparent;
+    border-color: transparent;
+  }
+  .body {
+    flex: 1;
+    overflow: auto;
+    padding: 8px;
+    min-height: 0;
+  }
+  .msg {
+    margin: 6px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 4px;
+  }
+  .item {
+    position: relative;
+  }
+  .open {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 8px 4px 6px;
+    background: transparent;
+    border-color: transparent;
+    border-radius: 6px;
+  }
+  .open:hover {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+  }
+  .label {
+    max-width: 100%;
+    font-size: 12px;
+    text-align: center;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }
+  .item.missing .label {
+    opacity: 0.5;
+  }
+  .remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    line-height: 1;
+    opacity: 0;
+    border-radius: 50%;
+  }
+  .item:hover .remove,
+  .remove:focus-visible {
+    opacity: 1;
+  }
+</style>

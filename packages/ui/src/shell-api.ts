@@ -2,6 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // Mirrors desqu-shell's serde types (crates/desqu-shell/src/{settings,plugin}.rs).
+/**
+ * Status every module reports (mirrors desqu-shell's `ModuleStatus`): `off` nothing runs, `paused`
+ * running but not acting, `on`, `unsupported` no OS backend, `ownedElsewhere` another process
+ * (standalone app or Desqu) runs the module.
+ */
+export type ModuleStatus = "off" | "paused" | "on" | "unsupported" | "ownedElsewhere";
+
 export interface UpdateSettings {
     checkAutomatically: boolean;
     installAutomatically: boolean;
