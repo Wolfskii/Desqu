@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
-  import { appRows, clearLegacySeenApps, loadLegacySeenApps, rememberApps, setAppsEnabled } from "$lib/apps";
-  import { app } from "$lib/state.svelte";
+  import { api } from "../api";
+  import { appRows, clearLegacySeenApps, loadLegacySeenApps, rememberApps, setAppsEnabled } from "../apps";
+  import { app } from "../state.svelte";
 
   let running = $state<string[]>([]);
   let query = $state("");

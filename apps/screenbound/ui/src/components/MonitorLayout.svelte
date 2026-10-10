@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { MonitorInfo } from "$lib/types";
-  import { rectH, rectW } from "$lib/types";
+  import type { MonitorInfo } from "../types";
+  import { rectH, rectW } from "../types";
 
   let {
     monitors,

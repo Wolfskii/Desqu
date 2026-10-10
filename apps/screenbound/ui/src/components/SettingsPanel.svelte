@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { app } from "$lib/state.svelte";
-  import Switch from "$lib/components/Switch.svelte";
-  import type { TransitionSpeed } from "$lib/types";
+  import { app } from "../state.svelte";
+  import Switch from "./Switch.svelte";
+  import type { TransitionSpeed } from "../types";
 
   const speeds: { id: TransitionSpeed; label: string; hint: string }[] = [
     { id: "instant", label: "Direct", hint: "No animation. The window jumps straight into the zone." },

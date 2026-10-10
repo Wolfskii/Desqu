@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { iconPath } from "$lib/groupIcons";
+  import { iconPath } from "../groupIcons";
 
   let { icon, color, size = 22 }: { icon: string; color: string; size?: number } = $props();
 </script>

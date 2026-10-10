@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { app } from "$lib/state.svelte";
-  import type { NormalizedRect, PixelRect, Zone, ZoneUnit } from "$lib/types";
-  import { MIN_PX, PRESETS, effectiveRect, fitPixels, referenceRect, sanitize, toNormalized, toPixels } from "$lib/zones";
+  import { app } from "../state.svelte";
+  import type { NormalizedRect, PixelRect, Zone, ZoneUnit } from "../types";
+  import { MIN_PX, PRESETS, effectiveRect, fitPixels, referenceRect, sanitize, toNormalized, toPixels } from "../zones";
   import MonitorLayout from "./MonitorLayout.svelte";
   import ZoneEditor from "./ZoneEditor.svelte";
 

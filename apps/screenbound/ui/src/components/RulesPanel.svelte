@@ -1,8 +1,8 @@
 <script lang="ts">
-  import GroupBadge from "$lib/components/GroupBadge.svelte";
-  import Switch from "$lib/components/Switch.svelte";
-  import { app, newId } from "$lib/state.svelte";
-  import type { Action, ChromeMode, RuleScope, WindowRule } from "$lib/types";
+  import GroupBadge from "./GroupBadge.svelte";
+  import Switch from "./Switch.svelte";
+  import { app, newId } from "../state.svelte";
+  import type { Action, ChromeMode, RuleScope, WindowRule } from "../types";
 
   function zoneAction(rule: WindowRule): Action | undefined {
     return rule.actions.find((a) => a.type === "fullscreenZone");

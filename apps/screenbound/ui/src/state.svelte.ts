@@ -1,5 +1,5 @@
 import { api, events, type UnlistenFn } from "./api";
-import type { ActivityEntry, AppConfig, EngineStatus, MonitorInfo, Zone } from "./types";
+import type { ActivityEntry, AppConfig, EngineStatus, ModuleStatus, MonitorInfo, Zone } from "./types";
 
 const SAVE_DELAY_MS = 350;
 const ACTIVITY_LIMIT = 300;
@@ -10,6 +10,7 @@ export function newId(prefix: string): string {
 }
 
 class AppState {
+    moduleStatus = $state<ModuleStatus | null>(null);
     monitors = $state<MonitorInfo[]>([]);
     config = $state<AppConfig | null>(null);
     status = $state<EngineStatus | null>(null);
@@ -32,6 +33,29 @@ class AppState {
     selectedZone = $derived(this.config?.zones.find((z) => z.id === this.selectedZoneId) ?? this.config?.zones[0] ?? null);
 
     async init() {
+        try {
+            this.moduleStatus = await api.moduleStatus();
+        } catch (e) {
+            this.error = String(e);
+            return;
+        }
+        if (this.moduleStatus === "off") return;
+        await this.#load();
+    }
+
+    async turnOn() {
+        try {
+            await api.moduleStart();
+            this.error = null;
+            this.moduleStatus = await api.moduleStatus();
+            await this.#load();
+        } catch (e) {
+            this.error = String(e);
+        }
+    }
+
+    async #load() {
+        this.#unlisten.forEach((u) => u());
         try {
             const [monitors, config, status, activity] = await Promise.all([
                 api.getMonitors(),

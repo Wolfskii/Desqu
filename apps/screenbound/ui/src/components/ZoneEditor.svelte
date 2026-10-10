@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { NormalizedRect, Rect, ZoneUnit } from "$lib/types";
-  import { rectH, rectW } from "$lib/types";
-  import { clamp, resolve, sanitize, snap } from "$lib/zones";
+  import type { NormalizedRect, Rect, ZoneUnit } from "../types";
+  import { rectH, rectW } from "../types";
+  import { clamp, resolve, sanitize, snap } from "../zones";
 
   type Handle = "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 

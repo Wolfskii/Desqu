@@ -182,3 +182,6 @@ export interface ActivityEntry {
 export const rectW = (r: Rect) => r.right - r.left;
 export const rectH = (r: Rect) => r.bottom - r.top;
 export const fmtRect = (r: Rect) => `(${r.left}, ${r.top}) ${rectW(r)}×${rectH(r)}`;
+
+/** `off`: nothing running; `paused`: running but `enabled` is false; `on`: constraining windows. */
+export type ModuleStatus = "off" | "paused" | "on";

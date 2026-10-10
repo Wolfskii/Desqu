@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { setAppsEnabled } from "$lib/apps";
-  import GroupBadge from "$lib/components/GroupBadge.svelte";
-  import { GROUP_COLORS, GROUP_ICONS } from "$lib/groupIcons";
-  import { app, newId } from "$lib/state.svelte";
-  import type { AppGroup } from "$lib/types";
+  import { setAppsEnabled } from "../apps";
+  import GroupBadge from "./GroupBadge.svelte";
+  import { GROUP_COLORS, GROUP_ICONS } from "../groupIcons";
+  import { app, newId } from "../state.svelte";
+  import type { AppGroup } from "../types";
 
   let draftName = $state("");
   let draftColor = $state(GROUP_COLORS[0]);

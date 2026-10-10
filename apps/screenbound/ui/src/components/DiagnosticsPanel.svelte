@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
-  import { app } from "$lib/state.svelte";
-  import { fmtRect, type WindowInfo } from "$lib/types";
+  import { api } from "../api";
+  import { app } from "../state.svelte";
+  import { fmtRect, type WindowInfo } from "../types";
 
   let windows = $state<WindowInfo[]>([]);
   let filter = $state("");
