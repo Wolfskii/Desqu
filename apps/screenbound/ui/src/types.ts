@@ -56,13 +56,23 @@ export type Matcher =
     | { type: "any"; value: Matcher[] }
     | { type: "all"; value: Matcher[] };
 
-export type Action = {
-    type: "fullscreenZone";
-    zoneId: string;
-    chrome: ChromeMode;
-    /** Fill the FancyZones zone a snapped window was in. Omitted on older rules, which the engine treats as true. */
-    useSnappedZone?: boolean;
-};
+export type BorderlessTarget = { type: "monitor" } | { type: "zone"; zoneId: string };
+
+export type Action =
+    | {
+          type: "fullscreenZone";
+          zoneId: string;
+          chrome: ChromeMode;
+          /** Fill the FancyZones zone a snapped window was in. Omitted on older rules, which the engine treats as true. */
+          useSnappedZone?: boolean;
+      }
+    | {
+          /** Make a windowed (framed) window borderless and fill `target`, e.g. a game running in a window. */
+          type: "borderless";
+          target: BorderlessTarget;
+          /** Keep above other windows while borderless. Omitted = off. */
+          topmost?: boolean;
+      };
 
 export type RuleScope =
     | { type: "all" }

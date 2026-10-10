@@ -71,6 +71,22 @@ by design; measure) · 18. Generic structure ✅
   when the window was maximized, snapped on another monitor, or seen only after it went
   fullscreen. **Observed (2026-09):** property readable cross-process; LibreWolf, VLC, and
   Cursor snapped at a (1280, 10) 2560×1345 zone.
+- **Borderless gaming (rules with a `borderless` action).** For a game or app that runs in a
+  *window* (not fullscreen): when a visible, framed, top-level window matches an enabled rule with a
+  `Borderless { target: monitor | zone, topmost }` action, Screenbound strips the frame via native
+  styles (no overlay, same as `ChromeMode::Hide`), moves the real window to the monitor or a zone,
+  verifies it stuck, and restores everything on release/exit/crash like zone windows.
+  - **Trigger: per-rule, automatic only.** No global hotkey (no `RegisterHotKey`); the Apps list and
+    rules decide. *(Assumed answer to Q11, 2026-10-10.)*
+  - **Separate lookup from fullscreen rules.** A rule with a borderless action and a rule with a
+    fullscreen-zone action are matched independently (`match_borderless_rule` /
+    `match_fullscreen_rule`), so listing one first never hides the other. If a window matches a
+    fullscreen rule, the zone feature owns it and borderless does not touch it.
+  - **Only framed, normal windows.** Not minimized, not cloaked/click-through, not owned by another
+    window (dialogs, launchers), not already monitor-sized borderless (that is fullscreen-like).
+  - **Limits, stated up front.** Exclusive-fullscreen games are not windows and are left alone;
+    elevated games give "access denied" (logged, nothing changed); anti-cheat software may treat
+    window styling as tampering — Screenbound does not inject into or hook the game.
 
 ## Known limitations / open questions
 

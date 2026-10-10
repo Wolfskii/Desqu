@@ -1161,7 +1161,7 @@ fighting over windows.
 
 ### Phase 7 — Screenbound borderless gaming
 
-#### P7.1 Design note + model — Status: ⬜
+#### P7.1 Design note + model — Status: ✅
 - **Depends on:** P2.4, Q11
 - **Files:** `apps/screenbound/PLAN.md` (design decision entry), `apps/screenbound/module/src/core/rules.rs`,
   `apps/screenbound/ui/src/types.ts`
@@ -1171,7 +1171,7 @@ fighting over windows.
      mirror in `types.ts`).
   2. Validation in `config.rs`: `zone_id` must exist (same as `FullscreenZone`). Unit tests.
 - **Done when:**
-  - [ ] Model + validation tests pass.
+  - [x] Model + validation tests pass.
 
 #### P7.2 Engine support — Status: ⬜
 - **Depends on:** P7.1
@@ -1387,3 +1387,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P4.2 — ✅ — Verified on the owner's real 0.1.0 settings (migration ran during the smoke tests): legacy config (version 1, startAtBoot true, 1 zone, 1 rule, 0 groups, 15 known apps) vs new config (version 2, no startAtBoot, identical zones/rules/groups/knownApps — node deep compare: identical apart from startAtBoot/version); shell.json has startWithSystem true (carried over); legacy config.json untouched (same size and timestamp), MIGRATED.txt written next to it with the date and the 'safe to delete' note. This is also the A3 check (settings preserved through the move, rebrand and migration) for the Screenbound standalone path.
 - 2026-10-10 — P6.3 (partly verified) — Real two-process test of the core design with the debug builds: Desqu with screenbound enabled in modules.json started the engine in-process (log 'starting Screenbound', module lock Local\Desqu.Module.screenbound HELD); a standalone Screenbound started alongside logged 'Screenbound did not start: Screenbound is already running in another process' and stayed up; `--quit` on the standalone exited it while Desqu kept the lock; `--quit` on Desqu exited with code 0 and released the lock (module stopped on exit). Test data (modules.json) and the debug Run values were removed afterwards. Still needs a human: the take-over UI flow and the visible window restore/re-constrain.
 - 2026-10-10 — P6.6 — 🧪 — Prepared: apps/desqu/README.md, apps/desqu/CHANGELOG.md (0.1.0 section), docs/architecture.md, root README lists Desqu. NEEDS HUMAN (acceptance checks for Desqu): A3 settings preserved when switching standalone <-> Desqu (diff config.json/zones/rules/groups/knownApps); A4 turning Screenbound off in Desqu frees resources (Process Explorer: no screenbound engine/event threads, idle CPU ~0%); A5 startup matrix (per-app start with system, master tri-state, --autostart hidden, start minimized, close to tray on/off, tray Exit restores windows); A6 take-over both directions; A7 updates isolated (releasing screenbound does not offer an update in Desqu and vice versa). Then tag desqu-v0.1.0 (docs/releasing.md) so the release is published with the Latest flag and the feed goes live.
+- 2026-10-10 — P7.1 — ✅ — core/rules.rs: Action::Borderless{target: BorderlessTarget(Monitor|Zone{zoneId}), topmost} (serde tag type, camelCase), BorderlessAction + WindowRule::borderless_action(), first_match_where so rule kinds are matched separately; config.rs: validation (unknown zone rejected) and match_fullscreen_rule / match_borderless_rule so a borderless rule listed first can never shadow a fullscreen rule (test); types.ts mirrors Action. Design note added to apps/screenbound/PLAN.md (Q11 = per-rule automatic only, framed normal windows only, limits). 58 module tests pass, clippy clean.

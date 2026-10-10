@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use super::rules::{Action, Matcher, RuleScope, WindowRule};
+use super::rules::{Action, BorderlessAction, BorderlessTarget, Matcher, RuleScope, WindowRule};
 use super::transition::TransitionSpeed;
 use super::window::ChromeMode;
 use super::zone::{NormalizedRect, Zone, ZoneReference, ZoneUnit};
@@ -195,6 +195,18 @@ impl AppConfig {
                     )));
                 }
             }
+            if let Some(BorderlessAction {
+                target: BorderlessTarget::Zone { zone_id },
+                ..
+            }) = rule.borderless_action()
+            {
+                if self.zone(zone_id).is_none() {
+                    return Err(ConfigError::Invalid(format!(
+                        "rule '{}' references unknown zone '{zone_id}'",
+                        rule.name
+                    )));
+                }
+            }
         }
         let mut seen_apps = std::collections::HashMap::<String, KnownApp>::new();
         for app in self.known_apps.drain(..) {
@@ -226,14 +238,33 @@ impl AppConfig {
     }
 
     pub fn match_rule(&self, id: &super::window::WindowIdentity) -> Option<&WindowRule> {
+        self.match_rule_where(id, |_| true)
+    }
+
+    /// First rule with a fullscreen-zone action that matches the window.
+    pub fn match_fullscreen_rule(&self, id: &super::window::WindowIdentity) -> Option<&WindowRule> {
+        self.match_rule_where(id, |r| r.fullscreen_action().is_some())
+    }
+
+    /// First rule with a borderless action that matches the window.
+    pub fn match_borderless_rule(&self, id: &super::window::WindowIdentity) -> Option<&WindowRule> {
+        self.match_rule_where(id, |r| r.borderless_action().is_some())
+    }
+
+    fn match_rule_where(
+        &self,
+        id: &super::window::WindowIdentity,
+        wanted: impl Fn(&WindowRule) -> bool,
+    ) -> Option<&WindowRule> {
         let known = self
             .known_apps
             .iter()
             .find(|app| app.process_name.eq_ignore_ascii_case(&id.process_name));
-        super::rules::first_match(
+        super::rules::first_match_where(
             &self.rules,
             id,
             known.map(|app| (app.enabled, app.group_id.as_deref())),
+            wanted,
         )
     }
 
@@ -396,5 +427,57 @@ mod tests {
         let path = std::env::temp_dir().join("sb-config-does-not-exist.json");
         let _ = std::fs::remove_file(&path);
         assert_eq!(AppConfig::migrate_legacy_start_at_boot(&path).unwrap(), None);
+    }
+
+    fn borderless_rule(id: &str, target: BorderlessTarget) -> WindowRule {
+        WindowRule {
+            id: id.into(),
+            name: id.into(),
+            enabled: true,
+            matcher: Matcher::ProcessName("game.exe".into()),
+            scope: None,
+            actions: vec![Action::Borderless { target, topmost: false }],
+        }
+    }
+
+    #[test]
+    fn borderless_rule_with_unknown_zone_is_rejected() {
+        let mut cfg = AppConfig::default();
+        cfg.rules.push(borderless_rule("b", BorderlessTarget::Zone { zone_id: "nope".into() }));
+        assert!(matches!(cfg.validated(), Err(ConfigError::Invalid(m)) if m.contains("unknown zone")));
+    }
+
+    #[test]
+    fn borderless_rule_on_a_known_zone_or_monitor_is_valid() {
+        let mut cfg = AppConfig::default();
+        let zone_id = cfg.zones[0].id.clone();
+        cfg.rules.push(borderless_rule("m", BorderlessTarget::Monitor));
+        cfg.rules.push(borderless_rule("z", BorderlessTarget::Zone { zone_id }));
+        assert!(cfg.validated().is_ok());
+    }
+
+    #[test]
+    fn fullscreen_and_borderless_rules_do_not_shadow_each_other() {
+        use super::super::rules::test_identity;
+        let mut cfg = AppConfig::default();
+        // A borderless rule listed first must not hide the fullscreen rule below it.
+        cfg.rules.clear();
+        cfg.rules.push(borderless_rule("b", BorderlessTarget::Monitor));
+        let zone_id = cfg.zones[0].id.clone();
+        cfg.rules.push(WindowRule {
+            id: "f".into(),
+            name: "f".into(),
+            enabled: true,
+            matcher: Matcher::ProcessName("game.exe".into()),
+            scope: None,
+            actions: vec![Action::FullscreenZone {
+                zone_id,
+                chrome: ChromeMode::Keep,
+                use_snapped_zone: true,
+            }],
+        });
+        let id = test_identity("game.exe", "UnrealWindow", "Game");
+        assert_eq!(cfg.match_borderless_rule(&id).map(|r| r.id.as_str()), Some("b"));
+        assert_eq!(cfg.match_fullscreen_rule(&id).map(|r| r.id.as_str()), Some("f"));
     }
 }

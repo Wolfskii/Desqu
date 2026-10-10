@@ -38,8 +38,7 @@ impl Matcher {
     }
 }
 
-/// Behavior applied to matching windows. Only `FullscreenZone` is implemented in the MVP;
-/// new variants (fixed size, aspect ratio, always-on-top, …) slot in here.
+/// Behavior applied to matching windows. New variants (fixed size, aspect ratio, …) slot in here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Action {
@@ -53,6 +52,32 @@ pub enum Action {
         #[serde(default = "default_true")]
         use_snapped_zone: bool,
     },
+    /// Turn a *windowed* (framed) window into a borderless one that fills `target`, e.g. a game
+    /// running in a window. Windows that are already fullscreen are the zone feature's job.
+    #[serde(rename_all = "camelCase")]
+    Borderless {
+        target: BorderlessTarget,
+        /// Keep the window above others while it is borderless.
+        #[serde(default)]
+        topmost: bool,
+    },
+}
+
+/// Where a borderless window ends up.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum BorderlessTarget {
+    /// The whole monitor the window is mostly on.
+    Monitor,
+    #[serde(rename_all = "camelCase")]
+    Zone { zone_id: String },
+}
+
+/// The borderless action of a rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BorderlessAction<'a> {
+    pub target: &'a BorderlessTarget,
+    pub topmost: bool,
 }
 
 /// The fullscreen action of a rule.
@@ -98,8 +123,6 @@ impl WindowRule {
         self.fullscreen_action().map(|a| (a.zone_id, a.chrome))
     }
 
-    // find_map stays correct once more Action variants exist.
-    #[allow(clippy::unnecessary_find_map)]
     pub fn fullscreen_action(&self) -> Option<FullscreenAction<'_>> {
         self.actions.iter().find_map(|a| match a {
             Action::FullscreenZone {
@@ -111,6 +134,17 @@ impl WindowRule {
                 chrome: *chrome,
                 use_snapped_zone: *use_snapped_zone,
             }),
+            _ => None,
+        })
+    }
+
+    pub fn borderless_action(&self) -> Option<BorderlessAction<'_>> {
+        self.actions.iter().find_map(|a| match a {
+            Action::Borderless { target, topmost } => Some(BorderlessAction {
+                target,
+                topmost: *topmost,
+            }),
+            _ => None,
         })
     }
 }
@@ -125,9 +159,20 @@ pub fn first_match<'a>(
     id: &WindowIdentity,
     known: Option<(bool, Option<&str>)>,
 ) -> Option<&'a WindowRule> {
+    first_match_where(rules, id, known, |_| true)
+}
+
+/// Like [`first_match`], restricted to rules `wanted` accepts. Fullscreen and borderless rules
+/// are looked up separately so a rule for one never hides a later rule for the other.
+pub fn first_match_where<'a>(
+    rules: &'a [WindowRule],
+    id: &WindowIdentity,
+    known: Option<(bool, Option<&str>)>,
+    wanted: impl Fn(&WindowRule) -> bool,
+) -> Option<&'a WindowRule> {
     rules
         .iter()
-        .find(|rule| rule.enabled && rule_matches(rule, id, known))
+        .find(|rule| rule.enabled && wanted(rule) && rule_matches(rule, id, known))
 }
 
 fn rule_matches(
@@ -288,5 +333,44 @@ mod tests {
         let back: WindowRule =
             serde_json::from_str(&serde_json::to_string(&rule).unwrap()).unwrap();
         assert_eq!(back, rule);
+    }
+
+    #[test]
+    fn borderless_action_round_trips_in_camel_case() {
+        let action = Action::Borderless {
+            target: BorderlessTarget::Zone { zone_id: "z1".into() },
+            topmost: true,
+        };
+        let json = serde_json::to_value(&action).unwrap();
+        assert_eq!(json["type"], "borderless");
+        assert_eq!(json["target"]["type"], "zone");
+        assert_eq!(json["target"]["zoneId"], "z1");
+        assert_eq!(json["topmost"], true);
+        assert_eq!(serde_json::from_value::<Action>(json).unwrap(), action);
+    }
+
+    #[test]
+    fn borderless_defaults_topmost_off_and_monitor_target_has_no_payload() {
+        let action: Action = serde_json::from_str(r#"{"type":"borderless","target":{"type":"monitor"}}"#).unwrap();
+        assert_eq!(
+            action,
+            Action::Borderless { target: BorderlessTarget::Monitor, topmost: false }
+        );
+    }
+
+    #[test]
+    fn rule_exposes_each_action_kind_separately() {
+        let rule = WindowRule {
+            id: "r".into(),
+            name: "r".into(),
+            enabled: true,
+            matcher: Matcher::ProcessName("a.exe".into()),
+            scope: None,
+            actions: vec![Action::Borderless { target: BorderlessTarget::Monitor, topmost: true }],
+        };
+        assert!(rule.fullscreen_action().is_none());
+        let b = rule.borderless_action().unwrap();
+        assert_eq!(b.target, &BorderlessTarget::Monitor);
+        assert!(b.topmost);
     }
 }
