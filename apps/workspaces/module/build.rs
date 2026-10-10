@@ -5,6 +5,7 @@ const COMMANDS: &[&str] = &[
     "list_items",
     "item_icon",
     "assign_item",
+    "assign_all_items",
     "desktop_status",
     "module_start",
     "module_stop",

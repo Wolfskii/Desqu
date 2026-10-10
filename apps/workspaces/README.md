@@ -7,6 +7,9 @@ virtual desktop and they show up only there; on your other desktops they are hid
 
 - **Icons per desktop.** On the Items tab pick a virtual desktop for any desktop item. It is shown
   on that desktop and hidden on the others. Items you leave on "Every desktop" show everywhere.
+- **First run asks once.** The first time Workspaces opens it asks which virtual desktop all the
+  items already on your desktop belong to (or to leave them on every desktop). Nothing to set up
+  item by item.
 - **New files join the desktop you are on.** A file that appears on the desktop while Workspaces is
   running is tied to the virtual desktop you are on (switch it off in Settings). Files that were
   already there stay on every desktop until you choose.
@@ -20,7 +23,8 @@ virtual desktop and they show up only there; on your other desktops they are hid
 ## Limits
 
 - Windows lists virtual desktops only once you have more than one (Win+Tab, then New desktop).
-- Switching is detected through the virtual desktop registry key. That this fires on a real switch
+- Switching is detected from the focused window moving to another virtual desktop (public
+  `IVirtualDesktopManager` plus a WinEvent hook) and from the virtual desktop registry key. That this fires on a real switch
   has been observed only on one Windows build (see
   [docs/virtual-desktop-research.md](docs/virtual-desktop-research.md)); other builds are untested.
 - Windows only for now.

@@ -7,6 +7,7 @@ permissions = [
     "allow-list-items",
     "allow-item-icon",
     "allow-assign-item",
+    "allow-assign-all-items",
     "allow-desktop-status",
     "allow-module-start",
     "allow-module-stop",

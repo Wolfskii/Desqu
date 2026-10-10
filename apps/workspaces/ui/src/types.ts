@@ -16,6 +16,8 @@ export interface WorkspacesConfig {
     workspaces: Workspace[];
     /** New files belong to the desktop you are on. */
     autoAssignNew: boolean;
+    /** The first-run question was answered. */
+    initialized: boolean;
 }
 
 export type ItemKind = "shortcut" | "folder" | "app" | "file" | "special";

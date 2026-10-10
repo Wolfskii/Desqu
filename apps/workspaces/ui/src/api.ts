@@ -13,6 +13,8 @@ export const api = {
     itemIcon: (id: string, size = 32) => invoke<string>(`${PLUGIN}|item_icon`, { id, size }),
     assignItem: (itemId: string, desktopId: string | null) =>
         invoke<WorkspacesConfig>(`${PLUGIN}|assign_item`, { itemId, desktopId }),
+    assignAllItems: (desktopId: string | null) =>
+        invoke<WorkspacesConfig>(`${PLUGIN}|assign_all_items`, { desktopId }),
     desktopStatus: () => invoke<DesktopStatus>(`${PLUGIN}|desktop_status`),
     moduleStart: () => invoke<void>(`${PLUGIN}|module_start`),
     moduleStop: () => invoke<void>(`${PLUGIN}|module_stop`),

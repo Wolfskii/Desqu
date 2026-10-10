@@ -11,6 +11,19 @@ use ::windows::Win32::System::Threading::{
     CreateEventW, SetEvent, WaitForMultipleObjects, INFINITE,
 };
 
+use ::windows::core::GUID;
+use ::windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use ::windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+};
+use ::windows::Win32::System::Threading::GetCurrentThreadId;
+use ::windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
+use ::windows::Win32::UI::Shell::{IVirtualDesktopManager, VirtualDesktopManager};
+use ::windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetMessageW, PostThreadMessageW, EVENT_SYSTEM_FOREGROUND, MSG,
+    WINEVENT_OUTOFCONTEXT, WM_QUIT,
+};
+
 use super::{DesktopInfo, Desktops};
 use crate::core::model::guid_from_registry_bytes;
 
@@ -88,9 +101,14 @@ pub(super) fn desktops() -> Result<Desktops, String> {
             DesktopInfo { id, name }
         })
         .collect();
-    let current = read_value("", "CurrentVirtualDesktop")
+    let from_registry = read_value("", "CurrentVirtualDesktop")
         .and_then(|b| guid_from_registry_bytes(&b))
         .filter(|c| list.iter().any(|d| &d.id == c));
+    // What is on screen wins over what the registry says: the window you are working in lives on
+    // the current desktop (the public IVirtualDesktopManager answers for it).
+    let current = foreground_desktop()
+        .filter(|c| list.iter().any(|d| &d.id == c))
+        .or(from_registry);
     Ok(Desktops { list, current })
 }
 
@@ -196,4 +214,155 @@ pub(super) fn watch(on_change: Box<dyn Fn() + Send + 'static>) -> Result<Watcher
         stop,
         thread: Some(thread),
     })
+}
+
+// ------------------------------------------------------------------- the foreground window
+
+fn guid_text(g: &GUID) -> String {
+    format!("{{{g:?}}}").to_ascii_uppercase()
+}
+
+/// Runs `f` with COM initialised on this thread.
+fn with_com<T>(f: impl FnOnce() -> T) -> T {
+    // SAFETY: balanced by CoUninitialize when this call initialised COM.
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok();
+    let out = f();
+    if initialized {
+        unsafe { CoUninitialize() };
+    }
+    out
+}
+
+/// The virtual desktop the foreground window is on. `None` for windows that belong to no single
+/// desktop (the taskbar, pinned windows) or that the shell does not track.
+fn desktop_of(mgr: &IVirtualDesktopManager, hwnd: HWND) -> Option<String> {
+    if hwnd.0.is_null() {
+        return None;
+    }
+    // SAFETY: COM call on a live interface with a window handle; failure just means "unknown".
+    let id = unsafe { mgr.GetWindowDesktopId(hwnd) }.ok()?;
+    (id != GUID::zeroed()).then(|| guid_text(&id))
+}
+
+fn foreground_desktop() -> Option<String> {
+    with_com(|| {
+        // SAFETY: standard COM activation and a foreground-window query.
+        let mgr = unsafe {
+            CoCreateInstance::<_, IVirtualDesktopManager>(&VirtualDesktopManager, None, CLSCTX_ALL)
+        }
+        .ok()?;
+        desktop_of(&mgr, unsafe { GetForegroundWindow() })
+    })
+}
+
+struct ForegroundState {
+    mgr: IVirtualDesktopManager,
+    last: Option<String>,
+    on_change: Box<dyn Fn()>,
+}
+
+thread_local! {
+    // The WinEvent callback runs on the thread that installed the hook.
+    static FOREGROUND: std::cell::RefCell<Option<ForegroundState>> = const { std::cell::RefCell::new(None) };
+}
+
+unsafe extern "system" fn foreground_proc(
+    _: HWINEVENTHOOK,
+    _: u32,
+    hwnd: HWND,
+    _: i32,
+    _: i32,
+    _: u32,
+    _: u32,
+) {
+    FOREGROUND.with(|f| {
+        if let Some(state) = f.borrow_mut().as_mut() {
+            // Only a change of desktop matters; every Alt+Tab fires this event.
+            if let Some(now) = desktop_of(&state.mgr, hwnd) {
+                if state.last.as_ref() != Some(&now) {
+                    state.last = Some(now);
+                    (state.on_change)();
+                }
+            }
+        }
+    });
+}
+
+/// Tells when the focused window moves to another virtual desktop, which is what happens right
+/// after a switch. Event-driven (a WinEvent hook); complements the registry watcher because the
+/// registry value is not guaranteed to change when the desktop does.
+pub(super) struct ForegroundWatcher {
+    thread_id: u32,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl ForegroundWatcher {
+    pub(super) fn start(on_change: Box<dyn Fn() + Send + 'static>) -> Result<Self, String> {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<u32, String>>();
+        let thread = std::thread::Builder::new()
+            .name("workspaces-foreground".into())
+            .spawn(move || {
+                with_com(|| {
+                    // SAFETY: the hook is removed below on this same thread, before it ends.
+                    unsafe {
+                        let mgr = match CoCreateInstance::<_, IVirtualDesktopManager>(
+                            &VirtualDesktopManager,
+                            None,
+                            CLSCTX_ALL,
+                        ) {
+                            Ok(m) => m,
+                            Err(e) => {
+                                let _ = ready_tx.send(Err(e.to_string()));
+                                return;
+                            }
+                        };
+                        let last = desktop_of(&mgr, GetForegroundWindow());
+                        FOREGROUND.with(|f| {
+                            *f.borrow_mut() = Some(ForegroundState {
+                                mgr,
+                                last,
+                                on_change,
+                            })
+                        });
+                        let hook = SetWinEventHook(
+                            EVENT_SYSTEM_FOREGROUND,
+                            EVENT_SYSTEM_FOREGROUND,
+                            None,
+                            Some(foreground_proc),
+                            0,
+                            0,
+                            WINEVENT_OUTOFCONTEXT,
+                        );
+                        if hook.0.is_null() {
+                            let _ =
+                                ready_tx.send(Err("could not watch the foreground window".into()));
+                            return;
+                        }
+                        let _ = ready_tx.send(Ok(GetCurrentThreadId()));
+                        let mut msg = MSG::default();
+                        while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+                        let _ = UnhookWinEvent(hook);
+                        FOREGROUND.with(|f| *f.borrow_mut() = None);
+                    }
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let thread_id = ready_rx.recv().map_err(|e| e.to_string())??;
+        Ok(Self {
+            thread_id,
+            thread: Some(thread),
+        })
+    }
+}
+
+impl Drop for ForegroundWatcher {
+    fn drop(&mut self) {
+        // SAFETY: posts WM_QUIT to the watcher thread so its message loop ends.
+        unsafe {
+            let _ = PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
 }

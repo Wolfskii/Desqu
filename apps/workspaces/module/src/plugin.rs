@@ -30,6 +30,7 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             commands::list_items,
             commands::item_icon,
             commands::assign_item,
+            commands::assign_all_items,
             commands::desktop_status,
             commands::module_start,
             commands::module_stop,

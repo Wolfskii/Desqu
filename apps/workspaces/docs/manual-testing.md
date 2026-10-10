@@ -8,9 +8,13 @@ exercised on build 26300.
 
 Prepare two or more virtual desktops (Win+Tab, New desktop). Use spare files on the desktop.
 
+0. First run (delete the Workspaces config.json first, with the app closed): expect the question
+   "Where do your desktop items belong?". Pick desktop 1. Expect every item visible on desktop 1
+   and hidden on desktop 2. Skip variant: "Leave them on every desktop" keeps all visible.
 1. Start Workspaces. Expect one card per virtual desktop, the current one marked "You are here".
 2. Items tab: tie a spare file to desktop 1. Expect it still visible on desktop 1.
-3. Switch to desktop 2 (Win+Ctrl+Right). Expect the file hidden; back on desktop 1 it is visible
+3. Switch to desktop 2 (Win+Ctrl+Right). Also switch to a desktop with no open windows and by
+   clicking the desktop in Win+Tab. Expect the file hidden; back on desktop 1 it is visible
    again. Record how long each change takes.
 4. Tie another file to desktop 2. Expect it visible only there.
 5. Create a new file on desktop 2 while Workspaces runs. Expect it to appear under desktop 2 on the

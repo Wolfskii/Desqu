@@ -35,8 +35,12 @@ hidden on the others. That needs only questions 1 and 2, which work without any 
 
 1. **Registry only:** desktop ids and names from `VirtualDesktopIDs` and `Desktops\{GUID}\Name`,
    the current desktop from `CurrentVirtualDesktop`. Hiding goes through `desqu-desktop`.
-2. **Switch detection is event-driven** through `RegNotifyChangeKeyValue`, re-reading
-   `CurrentVirtualDesktop` after each signal. No polling. If the value cannot be read (unknown
+2. **Switch detection is event-driven.** The current desktop is the desktop of the foreground window
+   (public `IVirtualDesktopManager::GetWindowDesktopId`), re-checked on every foreground change
+   (`SetWinEventHook`) and on `RegNotifyChangeKeyValue` signals; the registry value
+   `CurrentVirtualDesktop` is only the fallback because it is not guaranteed to track the visible
+   desktop (`SessionInfo\<n>\VirtualDesktops` has no such value on this build). No polling. Diagnostic:
+   `cargo run -p desqu-desktop --example vdwatch` prints both while you switch. If the value cannot be read (unknown
    layout on another build) nothing is hidden and every item is shown, never guessed.
 3. **Apps and windows are out of scope.** Answers 3 to 6 above are kept as research: moving other
    apps' windows is refused by Windows (`E_ACCESSDENIED`), so Workspaces does not try, and it does

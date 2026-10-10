@@ -231,9 +231,9 @@ fn worker<R: Runtime>(
     loop {
         // The registry key only exists once Windows has more than one desktop: keep trying.
         if watcher.is_none() {
-            let sink = jobs.clone();
-            watcher = platform::watch_switches(Box::new(move || {
-                let _ = sink.send(Job::Switched);
+            let sink = std::sync::Mutex::new(jobs.clone());
+            watcher = platform::watch_switches(Arc::new(move || {
+                let _ = lock(&sink).send(Job::Switched);
             }))
             .map_err(|e| tracing::debug!("not watching virtual desktops yet: {e}"))
             .ok();

@@ -10,6 +10,7 @@ Everything the Workspaces UI needs
 - `allow-list-items`
 - `allow-item-icon`
 - `allow-assign-item`
+- `allow-assign-all-items`
 - `allow-desktop-status`
 - `allow-module-start`
 - `allow-module-stop`
@@ -23,6 +24,32 @@ Everything the Workspaces UI needs
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`workspaces-module:allow-assign-all-items`
+
+</td>
+<td>
+
+Enables the assign_all_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`workspaces-module:deny-assign-all-items`
+
+</td>
+<td>
+
+Denies the assign_all_items command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>

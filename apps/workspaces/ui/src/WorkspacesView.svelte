@@ -57,6 +57,24 @@
       {#if !workspaces.config}
         <p class="dim">Loading…</p>
       {:else if tab === "desktops"}
+        {#if workspaces.needsSetup}
+          <section class="card setup">
+            <h3>Where do your desktop items belong?</h3>
+            <p class="dim">
+              You have {workspaces.items.filter((i) => !i.owner).length} shortcuts, files and folders on your desktop.
+              Put all of them on one virtual desktop to start with; they will then show only there. After that, new
+              files you add belong to the desktop you are on, and you can move any item on the Items tab.
+            </p>
+            <div class="choices">
+              {#each workspaces.desktops.filter((d) => !d.removed) as d (d.id)}
+                <button onclick={() => workspaces.assignAll(d.id)}>
+                  {d.name}{d.current ? " (this one)" : ""}
+                </button>
+              {/each}
+              <button class="quiet" onclick={() => workspaces.assignAll(null)}>Leave them on every desktop</button>
+            </div>
+          </section>
+        {/if}
         <div class="cards">
           {#each workspaces.desktops as entry (entry.id)}
             <DesktopCard {entry} />
@@ -139,6 +157,22 @@
     overflow: auto;
     padding: 12px 14px;
     min-height: 0;
+  }
+  .setup {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 860px;
+    margin-bottom: 10px;
+  }
+  .setup h3,
+  .setup p {
+    margin: 0;
+  }
+  .choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .cards {
     display: flex;

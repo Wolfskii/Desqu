@@ -6,6 +6,14 @@ pub(super) struct Watcher;
 
 const MSG: &str = "Workspaces is only available on Windows";
 
+pub(super) struct ForegroundWatcher;
+
+impl ForegroundWatcher {
+    pub(super) fn start(_on_change: Box<dyn Fn() + Send + 'static>) -> Result<Self, String> {
+        Err(MSG.into())
+    }
+}
+
 pub(super) fn desktops() -> Result<Desktops, String> {
     Err(MSG.into())
 }

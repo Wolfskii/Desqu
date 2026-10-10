@@ -118,6 +118,25 @@ class WorkspacesState {
         return this.config?.workspaces.find((w) => w.desktopId === desktopId);
     }
 
+    /** First run: ask where the items already on the desktop belong. */
+    get needsSetup(): boolean {
+        return (
+            !!this.config &&
+            !this.config.initialized &&
+            this.desktops.some((d) => !d.removed) &&
+            this.items.some((i) => !i.owner)
+        );
+    }
+
+    async assignAll(desktopId: string | null) {
+        try {
+            this.config = await api.assignAllItems(desktopId);
+            await this.refresh();
+        } catch (e) {
+            this.error = String(e);
+        }
+    }
+
     desktopName(id: string | null): string {
         if (!id) return "Every desktop";
         return this.desktops.find((d) => d.id === id)?.name ?? "Removed desktop";

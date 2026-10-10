@@ -172,6 +172,37 @@ pub async fn assign_item(
     state.set_config(cfg)
 }
 
+/// First run: gives every desktop item nobody owns yet to one virtual desktop (or, with `None`,
+/// keeps them on every desktop) and remembers that the question was answered.
+#[tauri::command]
+pub async fn assign_all_items(
+    state: State<'_, ModuleState>,
+    desktop_id: Option<String>,
+) -> CmdResult<WorkspacesConfig> {
+    let mut cfg = state.config();
+    if let Some(id) = desktop_id {
+        let desktops = platform::desktops()?;
+        let index = desktops
+            .list
+            .iter()
+            .position(|d| d.id == id)
+            .ok_or("that virtual desktop does not exist")?;
+        let name = &desktops.list[index].name;
+        let name = if name.is_empty() {
+            format!("Desktop {}", index + 1)
+        } else {
+            name.clone()
+        };
+        for item in state.layer()?.items().map_err(|e| e.to_string())? {
+            if cfg.owner_of(&item.id).is_none() {
+                cfg.assign(&item.id, Some((&id, &name)));
+            }
+        }
+    }
+    cfg.initialized = true;
+    state.set_config(cfg)
+}
+
 #[tauri::command]
 pub async fn desktop_status(state: State<'_, ModuleState>) -> CmdResult<DesktopStatus> {
     let layer = state.layer().ok();

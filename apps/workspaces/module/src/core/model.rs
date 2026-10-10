@@ -51,6 +51,9 @@ pub struct WorkspacesConfig {
     /// A file that appears on the desktop while Workspaces runs belongs to the desktop you are on.
     #[serde(default = "yes")]
     pub auto_assign_new: bool,
+    /// The first-run question ("which desktop do your current items belong to?") was answered.
+    #[serde(default)]
+    pub initialized: bool,
 }
 
 impl Default for WorkspacesConfig {
@@ -59,6 +62,7 @@ impl Default for WorkspacesConfig {
             version: CONFIG_VERSION,
             workspaces: Vec::new(),
             auto_assign_new: true,
+            initialized: false,
         }
     }
 }
