@@ -690,7 +690,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Crate compiles with empty-but-declared modules.
 
-#### P3.2 Shell settings model + store — Status: ⬜
+#### P3.2 Shell settings model + store — Status: ✅
 - **Depends on:** P3.1
 - **Files:** `crates/desqu-shell/src/settings.rs`
 - **Do:**
@@ -711,7 +711,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Tests pass.
 
-#### P3.3 Launch arguments — Status: ⬜
+#### P3.3 Launch arguments — Status: ✅
 - **Depends on:** P3.1
 - **Files:** `crates/desqu-shell/src/args.rs`
 - **Do:** `pub struct LaunchArgs { pub autostart: bool, pub quit: bool }`,
@@ -1328,3 +1328,5 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P2.3 — 🧪 — src/lib/* moved to apps/screenbound/ui/src ($lib imports made relative), ScreenboundView.svelte (old +page markup + 'Screenbound is off / Turn on' card), index.ts exports ScreenboundView + types, api.ts uses plugin:screenbound-module|x and adds moduleStart/Stop/Status, state gets moduleStatus/turnOn. +page.svelte is now just <ScreenboundView />; app depends on @desqu/screenbound-ui. Verified: npm install links package; task screenbound:check 191 files 0 errors; vite build OK. NEEDS HUMAN: task screenbound:dev — all six tabs load, saving works, Diagnostics lists windows, activity streams, no permission errors in DevTools console (this also confirms P2.2 ACL at runtime).
 - 2026-10-10 — P2.2/P2.3 — ✅ — Owner ran task screenbound:dev and reported it works. P2.4 (module_stop/start on real windows) still needs a human run; left 🧪. Moving to Phase 3 (depends only on P1.8).
 - 2026-10-10 — P3.1 — ✅ — crates/desqu-shell skeleton (deps per plan; all modules declared; json.rs write_json_atomic and logging.rs init implemented, others are doc stubs). Added to workspace; cargo build/clippy clean.
+- 2026-10-10 — P3.2 — ✅ — ShellSettings/UpdateSettings (camelCase, defaults keep current behaviour), load (missing=default, corrupt=error)/save (atomic). 6 unit tests.
+- 2026-10-10 — P3.3 — ✅ — args::parse recognises --autostart and --quit, ignores others. 3 unit tests (9 total in desqu-shell pass; clippy clean).
