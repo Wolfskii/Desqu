@@ -156,6 +156,26 @@ These were checked in the code. If a later step changes one of them, the step sa
   whether a productName that differs only in case collides with it. (P0.4)
 - Whether any GitHub releases / public 0.1.0 users exist. (Q3)
 
+### Measured on the owner's machine (2026-10-10, read-only registry/file queries)
+
+Installed ScreenBound 0.1.0 (NSIS, current user):
+
+- **Run entry** (P0.3): `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value name
+  `ScreenBound` (the Tauri productName), data `C:\Users\dawid\AppData\Local\ScreenBound\screenbound.exe`
+  with **no arguments**. `...\Explorer\StartupApproved\Run` also has a `ScreenBound` value
+  (Windows writes it; the plugin only writes `Run`). Registry value names are case-insensitive, so a
+  rebrand to `Screenbound` **overwrites** the same Run value rather than adding a second one.
+- **Install folder** (P0.4): `%LOCALAPPDATA%\ScreenBound` containing `screenbound.exe` and
+  `uninstall.exe` (so "installed" = `uninstall.exe` next to the exe; portable has none).
+- **Uninstall key**: `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ScreenBound`
+  — `DisplayName` ScreenBound, `DisplayVersion` 0.1.0, `Publisher` `screenbound`,
+  `InstallLocation` `"C:\Users\dawid\AppData\Local\ScreenBound"`,
+  `UninstallString` `"C:\Users\dawid\AppData\Local\ScreenBound\uninstall.exe"`,
+  `QuietUninstallString` empty (no silent flag recorded; NSIS accepts `/S`).
+- **Other**: `HKCU\Software\screenbound` key exists (empty); Start-menu shortcut
+  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\ScreenBound.lnk`; settings folder
+  `%APPDATA%\com.screenbound.app` held only `config.json` (3,426 bytes), no journal.
+
 ---
 
 ## 4. Open questions (owner must answer; record the answer here)
@@ -320,16 +340,16 @@ Each step has: **Status**, **Depends on**, **Files**, **Do**, **Verify**, **Done
 - **Done when:**
   - [ ] Results recorded (window shown/hidden at boot, tray behaviours, CPU %, RAM MB).
 
-#### P0.3 Record the autostart registry entry — Status: ⬜
+#### P0.3 Record the autostart registry entry — Status: ✅
 - **Depends on:** P0.2 (Start at boot enabled)
 - **Do:** In PowerShell:
   `Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'` and
   `Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'`.
   Record the value name(s) and data (exe path, arguments) in §3.
 - **Done when:**
-  - [ ] Exact value name and path recorded.
+  - [x] Exact value name and path recorded.
 
-#### P0.4 Record the installer footprint — Status: ⬜
+#### P0.4 Record the installer footprint — Status: ✅
 - **Depends on:** P0.2
 - **Do:** Record:
   - Install folder (likely `%LOCALAPPDATA%\ScreenBound` — confirm).
@@ -339,7 +359,7 @@ Each step has: **Status**, **Depends on**, **Files**, **Do**, **Verify**, **Done
   - Whether `uninstall.exe` exists next to `screenbound.exe` in the install folder (used later to
     detect portable vs installed).
 - **Done when:**
-  - [ ] All values recorded in §3.
+  - [x] All values recorded in §3.
 
 #### P0.5 Record artifact baseline — Status: ✅
 - **Depends on:** —
