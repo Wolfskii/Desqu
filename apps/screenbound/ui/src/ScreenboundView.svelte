@@ -9,6 +9,10 @@
   import { api } from "./api";
   import { app } from "./state.svelte";
 
+  // Only the standalone app passes these; inside Desqu the collection app handles take-over itself.
+  let { onOpenDesqu, onExit }: { onOpenDesqu?: () => void; onExit?: () => void } = $props();
+  const standalone = $derived(Boolean(onOpenDesqu || onExit));
+
   type Tab = "zones" | "apps" | "groups" | "rules" | "settings" | "diagnostics";
   let tab = $state<Tab>("zones");
 
@@ -20,7 +24,14 @@
 
 {#if app.moduleStatus !== null && !app.isRunning}
   <div class="off">
-    {#if app.moduleStatus === "ownedElsewhere"}
+    {#if app.moduleStatus === "ownedElsewhere" && standalone}
+      <h2>Screenbound is managed by Desqu</h2>
+      <p class="dim">Desqu is controlling your fullscreen windows. Open Desqu to change settings, or close this window.</p>
+      <div class="buttons">
+        {#if onOpenDesqu}<button onclick={() => onOpenDesqu()}>Open Desqu</button>{/if}
+        {#if onExit}<button onclick={() => onExit()}>Exit</button>{/if}
+      </div>
+    {:else if app.moduleStatus === "ownedElsewhere"}
       <h2>Screenbound is running elsewhere</h2>
       <p class="dim">Another Desqu or Screenbound window already controls your fullscreen windows. Close it, then try again.</p>
       <button onclick={() => app.turnOn()}>Try again</button>
@@ -101,7 +112,11 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    height: 100vh;
+    height: var(--view-height, 100vh);
+  }
+  .buttons {
+    display: flex;
+    gap: 8px;
   }
   .error-text {
     color: var(--error);
@@ -109,7 +124,7 @@
   .shell {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: var(--view-height, 100vh);
   }
   header {
     display: flex;

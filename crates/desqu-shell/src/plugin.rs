@@ -18,9 +18,24 @@ pub const SETTINGS_FILE: &str = "shell.json";
 /// File the NSIS installer puts next to the exe; a portable build has none.
 const UNINSTALLER: &str = "uninstall.exe";
 
+/// How an app uses the shell plugin.
+#[derive(Debug, Clone, Copy)]
+pub struct ShellOptions {
+    /// `true`: saving shell settings also syncs the "start with system" entry from
+    /// `startWithSystem`. Desqu sets this to `false`: its entry follows its modules instead.
+    pub manage_autostart: bool,
+}
+
+impl Default for ShellOptions {
+    fn default() -> Self {
+        Self { manage_autostart: true }
+    }
+}
+
 pub struct ShellState {
     path: PathBuf,
     settings: Mutex<ShellSettings>,
+    options: ShellOptions,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -79,8 +94,10 @@ pub async fn set_shell_settings<R: Runtime>(
 ) -> Result<ShellSettings, String> {
     settings::save(&state.path, &settings).map_err(|e| e.to_string())?;
     *lock(&state.settings) = settings.clone();
-    autostart::sync(&app, settings.start_with_system)
-        .map_err(|e| format!("Saved, but updating the startup entry failed: {e}"))?;
+    if state.options.manage_autostart {
+        autostart::sync(&app, settings.start_with_system)
+            .map_err(|e| format!("Saved, but updating the startup entry failed: {e}"))?;
+    }
     Ok(settings)
 }
 
@@ -121,6 +138,10 @@ pub async fn open_releases_page() -> Result<(), String> {
 }
 
 pub fn init<R: Runtime>(config_dir: PathBuf) -> TauriPlugin<R> {
+    init_with(config_dir, ShellOptions::default())
+}
+
+pub fn init_with<R: Runtime>(config_dir: PathBuf, options: ShellOptions) -> TauriPlugin<R> {
     Builder::new(PLUGIN_NAME)
         .invoke_handler(tauri::generate_handler![
             get_shell_settings,
@@ -134,20 +155,13 @@ pub fn init<R: Runtime>(config_dir: PathBuf) -> TauriPlugin<R> {
         .setup(move |app, _api| {
             let path = config_dir.join(SETTINGS_FILE);
             let settings = load_or_default(&path);
-            app.manage(ShellState { path, settings: Mutex::new(settings) });
+            app.manage(ShellState { path, settings: Mutex::new(settings), options });
             app.manage(ModuleRegistry::<R>::default());
 
-            // The updater plugin refuses to start without its config, so a build without
-            // `plugins.updater` simply has updates switched off.
-            let configured = app.config().plugins.0.contains_key("updater");
-            let enabled = configured
-                && match app.plugin(tauri_plugin_updater::Builder::new().build()) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        tracing::warn!("updater unavailable: {e}");
-                        false
-                    }
-                };
+            // Updates are on when the app configured them (`plugins.updater`) and registered
+            // `updates::plugin()` on its Builder. Registering it here would deadlock: Tauri holds
+            // its plugin-store lock while this setup runs.
+            let enabled = app.config().plugins.0.contains_key("updater");
             app.manage(UpdateState::new(enabled));
             if enabled {
                 updates::spawn_auto_check(app.clone());

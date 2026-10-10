@@ -55,6 +55,17 @@ pub fn register<R: Runtime>(app: &AppHandle<R>, module: impl Module<R> + 'static
     }
 }
 
+/// Like [`register`] for a module the app already holds behind an `Arc`.
+pub fn register_arc<R: Runtime>(app: &AppHandle<R>, module: Arc<dyn Module<R>>) {
+    if let Some(registry) = app.try_state::<ModuleRegistry<R>>() {
+        registry
+            .modules
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(module);
+    }
+}
+
 /// Stops every module that is not already off; returns their ids so they can be started again.
 pub fn stop_running<R: Runtime>(app: &AppHandle<R>, timeout: Duration) -> Vec<&'static str> {
     let Some(registry) = app.try_state::<ModuleRegistry<R>>() else {

@@ -1,11 +1,39 @@
-use tauri::{AppHandle, Listener, Manager};
+use tauri::{AppHandle, Manager};
 
 use desqu_shell::args;
 use desqu_shell::settings;
 use desqu_shell::tray::{self, Tray, TrayConfig};
-use desqu_shell::{autostart, instance, logging, module, plugin, updates, window};
+use desqu_shell::{autostart, instance, logging, module, updates, window};
 use screenbound_module::core::config::AppConfig;
 use screenbound_module::{migrate, platform, ModuleOptions};
+
+/// Starts Desqu (found through its uninstall entry). Without one, the window just hides:
+/// the user still has the tray icon and Desqu is controlling their windows anyway.
+#[tauri::command]
+fn open_desqu(app: AppHandle) -> Result<(), String> {
+    let exe = desqu_shell::platform::read_uninstall_entry("Desqu")
+        .and_then(|u| u.install_location)
+        .map(|dir| std::path::PathBuf::from(dir.trim().trim_matches('"')).join("desqu.exe"))
+        .filter(|path| path.exists());
+    match exe {
+        // A second launch of a running Desqu just shows its window (single instance).
+        Some(path) => std::process::Command::new(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("could not start Desqu: {e}")),
+        None => {
+            if let Some(window) = app.get_webview_window(window::MAIN_WINDOW) {
+                let _ = window.hide();
+            }
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
+fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +44,8 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(instance::plugin())
         .plugin(autostart::plugin())
+        .plugin(updates::plugin())
+        .invoke_handler(tauri::generate_handler![open_desqu, exit_app])
         .setup(move |app| {
             // `--quit` with nothing running: leave before any module starts.
             if instance::exit_if_quit_requested(app.handle(), &launch) {
@@ -58,15 +88,7 @@ pub fn run() {
                     false
                 }
             };
-            let tray_handle = app.handle().clone();
-            app.listen(updates::EVENT_UPDATE_AVAILABLE, move |event| {
-                let version = serde_json::from_str::<serde_json::Value>(event.payload())
-                    .ok()
-                    .and_then(|v| v["version"].as_str().map(str::to_owned));
-                if let Some(tray) = tray_handle.try_state::<Tray<tauri::Wry>>() {
-                    tray.set_update_available(version.as_deref());
-                }
-            });
+            tray::relabel_on_updates(app.handle());
             let handle = app.handle().clone();
             window::install_close_handler(app.handle(), tray_ok, move || {
                 desqu_shell::current_settings(&handle).close_to_tray
@@ -105,34 +127,11 @@ fn install_tray(app: &AppHandle) -> tauri::Result<Tray<tauri::Wry>> {
             show_label: "Show Screenbound".into(),
             extra_items: Vec::new(),
             updates_item: true,
-            on_item: Box::new(on_tray_item),
+            on_item: Box::new(|app, id| {
+                if id == tray::ID_UPDATES {
+                    updates::on_tray_click(app);
+                }
+            }),
         },
     )
-}
-
-/// "Check for updates" checks and shows the window; once an update is known the same item
-/// ("Update to vX") installs it, or opens the download page for portable builds.
-fn on_tray_item(app: &AppHandle, id: &str) {
-    if id != tray::ID_UPDATES {
-        return;
-    }
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        if updates::status(&app).available.is_some() {
-            let result = if plugin::is_portable_build() {
-                desqu_shell::platform::open_url(updates::RELEASES_URL)
-            } else {
-                updates::install(&app).await
-            };
-            if let Err(e) = result {
-                tracing::warn!("update from tray failed: {e}");
-                window::show_main(&app);
-            }
-        } else {
-            if let Err(e) = updates::check(&app).await {
-                tracing::info!("update check failed: {e}");
-            }
-            window::show_main(&app);
-        }
-    });
 }

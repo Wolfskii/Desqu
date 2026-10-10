@@ -1,9 +1,11 @@
 //! Tray builder shared by every app: "Show <app>", app-specific items, optional "Check for
 //! updates", "Exit". Left click shows the main window.
 
-use tauri::menu::{CheckMenuItemBuilder, Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem};
+use std::collections::HashMap;
+
+use tauri::menu::{CheckMenuItem, CheckMenuItemBuilder, Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Listener, Manager, Runtime};
 
 use crate::window;
 
@@ -56,15 +58,42 @@ pub fn layout(
 pub struct Tray<R: Runtime> {
     pub icon: TrayIcon<R>,
     updates: Option<MenuItem<R>>,
+    checks: HashMap<String, CheckMenuItem<R>>,
 }
 
 impl<R: Runtime> Tray<R> {
+    /// Updates a `TrayItem::Check` item; unknown ids are ignored.
+    pub fn set_checked(&self, id: &str, checked: bool) {
+        if let Some(item) = self.checks.get(id) {
+            let _ = item.set_checked(checked);
+        }
+    }
+
+    pub fn set_enabled(&self, id: &str, enabled: bool) {
+        if let Some(item) = self.checks.get(id) {
+            let _ = item.set_enabled(enabled);
+        }
+    }
+
     /// `Some("1.2.0")` relabels the item "Update to v1.2.0"; `None` restores "Check for updates".
     pub fn set_update_available(&self, version: Option<&str>) {
         if let Some(item) = &self.updates {
             let _ = item.set_text(update_label(version));
         }
     }
+}
+
+/// Keeps the tray's updates item in step with update checks ("Update to vX" once one is found).
+pub fn relabel_on_updates<R: Runtime>(app: &AppHandle<R>) {
+    let handle = app.clone();
+    app.listen(crate::updates::EVENT_UPDATE_AVAILABLE, move |event| {
+        let version = serde_json::from_str::<serde_json::Value>(event.payload())
+            .ok()
+            .and_then(|v| v["version"].as_str().map(str::to_owned));
+        if let Some(tray) = handle.try_state::<Tray<R>>() {
+            tray.set_update_available(version.as_deref());
+        }
+    });
 }
 
 pub fn update_label(version: Option<&str>) -> String {
@@ -77,6 +106,7 @@ pub fn update_label(version: Option<&str>) -> String {
 pub fn build<R: Runtime>(app: &AppHandle<R>, config: TrayConfig<R>) -> tauri::Result<Tray<R>> {
     let menu = Menu::new(app)?;
     let mut updates = None;
+    let mut checks = HashMap::new();
     for item in layout(&config.show_label, &config.extra_items, config.updates_item) {
         match item {
             TrayItem::Normal { id, label } => {
@@ -87,7 +117,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, config: TrayConfig<R>) -> tauri::Re
                 }
             }
             TrayItem::Check { id, label, checked } => {
-                menu.append(&CheckMenuItemBuilder::with_id(id, label).checked(checked).build(app)?)?
+                let item = CheckMenuItemBuilder::with_id(id.clone(), label).checked(checked).build(app)?;
+                menu.append(&item)?;
+                checks.insert(id, item);
             }
             TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
         }
@@ -117,7 +149,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, config: TrayConfig<R>) -> tauri::Re
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
-    Ok(Tray { icon: tray.build(app)?, updates })
+    Ok(Tray { icon: tray.build(app)?, updates, checks })
 }
 
 #[cfg(test)]

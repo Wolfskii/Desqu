@@ -166,6 +166,27 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     Ok(())
 }
 
+/// Pauses or resumes Screenbound (`enabled = false` in its config) without stopping the engine.
+pub fn set_paused<R: Runtime>(app: &AppHandle<R>, paused: bool) -> Result<(), String> {
+    let state = app
+        .try_state::<ModuleState>()
+        .ok_or("Screenbound plugin is not registered")?;
+    state.with_engine(move |e| {
+        let mut config = e.config();
+        config.enabled = !paused;
+        e.set_config(config)
+    })??;
+    Ok(())
+}
+
+/// Gives every constrained window back its original size and position.
+pub fn release_all<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let state = app
+        .try_state::<ModuleState>()
+        .ok_or("Screenbound plugin is not registered")?;
+    state.with_engine(|e| e.release_all())
+}
+
 /// Restores every managed window, then removes the native hooks. A no-op when already off.
 pub fn stop<R: Runtime>(app: &AppHandle<R>, timeout: Duration) {
     let Some(state) = app.try_state::<ModuleState>() else {

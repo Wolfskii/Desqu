@@ -4,7 +4,8 @@
   import { shellApi, type ShellSettings } from "./shell-api";
   import Switch from "./Switch.svelte";
 
-  let { appName = "this app" }: { appName?: string } = $props();
+  // Desqu derives "start with system" from its modules, so it hides the row here.
+  let { appName = "this app", showStartWithSystem = true }: { appName?: string; showStartWithSystem?: boolean } = $props();
 
   let settings = $state<ShellSettings | null>(null);
   let error = $state<string | null>(null);
@@ -29,17 +30,19 @@
 </script>
 
 <section class="card">
-  <SettingsRow
-    label="Start with system"
-    description="Launch {appName} when you sign in to Windows. It stays in the tray so it works without opening the window first."
-  >
-    <Switch
-      checked={settings?.startWithSystem ?? false}
+  {#if showStartWithSystem}
+    <SettingsRow
       label="Start with system"
-      disabled={!settings}
-      onchange={(next) => update({ startWithSystem: next })}
-    />
-  </SettingsRow>
+      description="Launch {appName} when you sign in to Windows. It stays in the tray so it works without opening the window first."
+    >
+      <Switch
+        checked={settings?.startWithSystem ?? false}
+        label="Start with system"
+        disabled={!settings}
+        onchange={(next) => update({ startWithSystem: next })}
+      />
+    </SettingsRow>
+  {/if}
   <SettingsRow label="Start minimized to tray" description="Keep the window hidden when {appName} starts.">
     <Switch
       checked={settings?.startMinimized ?? false}

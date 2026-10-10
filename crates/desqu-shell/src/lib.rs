@@ -15,4 +15,4 @@ pub mod tray;
 pub mod updates;
 pub mod window;
 
-pub use plugin::{current as current_settings, init};
+pub use plugin::{current as current_settings, init, init_with, ShellOptions};

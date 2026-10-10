@@ -13,6 +13,16 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::module;
 use crate::plugin;
+use crate::window;
+
+/// The updater plugin. Apps register it on the `Builder` (`.plugin(updates::plugin())`).
+///
+/// It must NOT be registered from inside another plugin's `setup`: Tauri holds its plugin-store
+/// lock while a plugin initialises, so a nested `app.plugin(..)` deadlocks and the app never
+/// starts its event loop.
+pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R, tauri_plugin_updater::Config> {
+    tauri_plugin_updater::Builder::new().build()
+}
 
 pub const EVENT_UPDATE_AVAILABLE: &str = "desqu://update-available";
 /// Where portable builds send the user instead of installing.
@@ -164,6 +174,30 @@ pub async fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         return Err(format!("install failed: {e}"));
     }
     app.restart()
+}
+
+/// The tray's updates item: "Check for updates" checks and shows the window; once an update is
+/// known the same item ("Update to vX") installs it, or opens the download page for portable builds.
+pub fn on_tray_click<R: Runtime>(app: &AppHandle<R>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if status(&app).available.is_some() {
+            let result = if plugin::is_portable_build() {
+                crate::platform::open_url(RELEASES_URL)
+            } else {
+                install(&app).await
+            };
+            if let Err(e) = result {
+                tracing::warn!("update from tray failed: {e}");
+                window::show_main(&app);
+            }
+        } else {
+            if let Err(e) = check(&app).await {
+                tracing::info!("update check failed: {e}");
+            }
+            window::show_main(&app);
+        }
+    });
 }
 
 /// Background checks: once shortly after startup, then daily, if the user wants them.
