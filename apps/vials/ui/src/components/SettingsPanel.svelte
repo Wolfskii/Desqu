@@ -22,6 +22,21 @@
         }}
       />
     </SettingsRow>
+    <SettingsRow label="Look of vials" description="Glass blurs the desktop behind a vial with rounded corners and light edges. Classic is a plain dark panel.">
+      <select
+        value={vials.config?.theme ?? "glass"}
+        disabled={!vials.config}
+        aria-label="Look of vials"
+        onchange={(e) => {
+          if (!vials.config) return;
+          vials.config.theme = e.currentTarget.value === "classic" ? "classic" : "glass";
+          vials.scheduleSave(true);
+        }}
+      >
+        <option value="glass">Glass</option>
+        <option value="classic">Classic</option>
+      </select>
+    </SettingsRow>
     <SettingsRow
       label="Create vials by dragging a box on the desktop"
       description="Drag a box over empty space on the desktop and a small menu offers to create a vial there. Dragging over icons selects them as usual."

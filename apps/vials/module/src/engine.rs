@@ -23,7 +23,7 @@ use tauri::{
 
 use crate::core::gesture;
 use crate::core::layout::{self, MonitorRef};
-use crate::core::model::{PixelRect, Vial, VialsConfig};
+use crate::core::model::{PixelRect, Vial, VialTheme, VialsConfig};
 use crate::core::rules;
 use crate::platform::{self, MouseEvent, MouseWatcher};
 
@@ -80,6 +80,8 @@ pub struct ModuleState {
     context_point: Mutex<Option<(i32, i32)>>,
     /// Where the popup is on screen while it is open.
     menu_rect: Mutex<Option<PixelRect>>,
+    /// The theme the open vial windows were built with; a change rebuilds them.
+    applied_theme: Mutex<Option<VialTheme>>,
     problem: Mutex<Option<String>>,
     icons: Mutex<HashMap<String, String>>,
 }
@@ -109,6 +111,7 @@ impl ModuleState {
             pending: Mutex::new(None),
             context_point: Mutex::new(None),
             menu_rect: Mutex::new(None),
+            applied_theme: Mutex::new(None),
             problem: Mutex::new(None),
             icons: Mutex::new(HashMap::new()),
         }
@@ -455,6 +458,14 @@ fn close_vial_windows<R: Runtime>(app: &AppHandle<R>, keep: &HashSet<String>) {
 fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender<Job>) {
     let monitors = monitor_refs(app);
     let wanted: HashSet<String> = cfg.vials.iter().map(|v| label_for(&v.id)).collect();
+    // Window effects are fixed when a window is built, so a new theme means new windows.
+    if let Some(state) = app.try_state::<ModuleState>() {
+        let mut applied = lock(&state.applied_theme);
+        if applied.is_some_and(|t| t != cfg.theme) {
+            close_vial_windows(app, &HashSet::new());
+        }
+        *applied = Some(cfg.theme);
+    }
     close_vial_windows(app, &wanted);
 
     for vial in &cfg.vials {
@@ -487,7 +498,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
             .skip_taskbar(true)
             .always_on_bottom(true)
             .focusable(false)
-            .shadow(true)
+            .shadow(cfg.theme == VialTheme::Glass)
             .transparent(true)
             .visible(false)
             .build();
@@ -504,7 +515,9 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                 let _ = window.show();
                 // Keep it out of Alt+Tab too (skip_taskbar alone does not). After show(): Tauri
                 // rewrites the extended style while showing.
-                apply_glass(&window);
+                if cfg.theme == VialTheme::Glass {
+                    apply_glass(&window);
+                }
                 if let Ok(hwnd) = window.hwnd() {
                     if let Err(e) = platform::mark_as_tool_window(hwnd.0 as isize) {
                         tracing::warn!("could not make the vial window a tool window: {e}");
@@ -609,6 +622,7 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
     let size = ((MENU_SIZE.0 * monitor.scale).round() as i32, (MENU_SIZE.1 * monitor.scale).round() as i32);
     let (x, y) = gesture::popup_position(cursor, size, &monitor.bounds);
 
+    let glass = app.try_state::<ModuleState>().is_some_and(|s| s.config().theme == VialTheme::Glass);
     let window = WebviewWindowBuilder::new(app, MENU_LABEL, WebviewUrl::App("vials-menu".into()))
         .title("Create a vial")
         .decorations(false)
@@ -616,12 +630,14 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
         .skip_taskbar(true)
         .always_on_top(true)
         .focused(false)
-        .shadow(true)
+        .shadow(glass)
         .transparent(true)
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
-    apply_glass(&window);
+    if glass {
+        apply_glass(&window);
+    }
     let _ = window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
     let _ = window.set_position(PhysicalPosition::new(x, y));
     if let Some(state) = app.try_state::<ModuleState>() {

@@ -30,6 +30,11 @@ and they come back exactly where they were.
 
 Windows 10/11 with WebView2. Windows only for now.
 
+## Looks
+
+Settings has a *Look of vials* choice: **Glass** (default; blurred desktop behind the vial, rounded
+corners, light edges) or **Classic** (a plain dark panel). Switching rebuilds the vial windows.
+
 ## Known limits
 
 - Vials start empty: nothing is created until you make a vial.

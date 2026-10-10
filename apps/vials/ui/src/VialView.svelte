@@ -107,7 +107,7 @@
   }
 </script>
 
-<div class="vial" class:dropping>
+<div class="vial" class:dropping class:glass={vials.config?.theme !== "classic"}>
   <header data-tauri-drag-region>
     {#if editing}
       <input
@@ -176,25 +176,14 @@
     flex-direction: column;
     height: 100vh;
     box-sizing: border-box;
-    color: rgba(255, 255, 255, 0.94);
-    /* Liquid glass: the blur comes from the window itself; this is the light on top of it. */
-    border: 1px solid rgba(255, 255, 255, 0.26);
-    border-radius: 12px;
-    background:
-      radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.22), transparent 55%),
-      linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0.07));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.55),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.1),
-      inset 0 0 28px rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: rgba(24, 27, 32, 0.9);
     overflow: hidden;
-    transition: background 0.15s, border-color 0.15s;
   }
   .vial.dropping {
-    border-color: rgba(170, 210, 255, 0.85);
-    background:
-      radial-gradient(120% 80% at 0% 0%, rgba(190, 220, 255, 0.34), transparent 55%),
-      linear-gradient(160deg, rgba(120, 175, 255, 0.28), rgba(120, 175, 255, 0.12));
+    border-color: var(--accent);
+    background: rgba(34, 52, 76, 0.85);
   }
   header {
     display: flex;
@@ -203,9 +192,7 @@
     height: 34px;
     flex: none;
     padding: 0 6px 0 12px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
-    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    background: rgba(34, 38, 45, 0.85);
     cursor: default;
   }
   .title {
@@ -224,8 +211,7 @@
     cursor: text;
   }
   .title:hover {
-    border-color: rgba(255, 255, 255, 0.35);
-    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-strong);
   }
   .name-input {
     flex: 1;
@@ -269,13 +255,10 @@
     border-radius: 6px;
   }
   .open:hover {
-    background: rgba(255, 255, 255, 0.16);
-    border-color: rgba(255, 255, 255, 0.34);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    background: var(--surface-2);
+    border-color: var(--border-strong);
   }
   .label {
-    color: rgba(255, 255, 255, 0.95);
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
     max-width: 100%;
     font-size: 12px;
     text-align: center;
@@ -288,5 +271,46 @@
   }
   .item.missing .label {
     opacity: 0.5;
+  }
+
+  /* Glass theme: the blur comes from the window itself; this is the light on top of it. */
+  .vial.glass {
+    color: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    border-radius: 12px;
+    background:
+      radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.22), transparent 55%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0.07));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.1),
+      inset 0 0 28px rgba(255, 255, 255, 0.05);
+    transition:
+      background 0.15s,
+      border-color 0.15s;
+  }
+  .vial.glass.dropping {
+    border-color: rgba(170, 210, 255, 0.85);
+    background:
+      radial-gradient(120% 80% at 0% 0%, rgba(190, 220, 255, 0.34), transparent 55%),
+      linear-gradient(160deg, rgba(120, 175, 255, 0.28), rgba(120, 175, 255, 0.12));
+  }
+  .glass header {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+  .glass .title:hover {
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .glass .open:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.34);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+  .glass .label {
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   }
 </style>

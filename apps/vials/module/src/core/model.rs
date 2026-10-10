@@ -97,6 +97,17 @@ fn yes() -> bool {
     true
 }
 
+/// How vial windows look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VialTheme {
+    /// Frosted glass: blur behind the window, rounded corners, a shadow and light edges.
+    #[default]
+    Glass,
+    /// The plain dark panel: a flat, mostly opaque box with no blur.
+    Classic,
+}
+
 fn default_version() -> u32 {
     CONFIG_VERSION
 }
@@ -122,6 +133,8 @@ pub struct VialsConfig {
     /// "Create vial here" in the desktop's right-click menu.
     #[serde(default = "yes")]
     pub context_menu: bool,
+    #[serde(default)]
+    pub theme: VialTheme,
     /// Items the user took out of a vial on purpose: rules never put them back.
     #[serde(default)]
     pub declined: Vec<String>,
@@ -137,6 +150,7 @@ impl Default for VialsConfig {
             hide_on_desktop: true,
             create_on_drag: true,
             context_menu: true,
+            theme: VialTheme::default(),
             declined: Vec::new(),
         }
     }
@@ -365,6 +379,16 @@ mod tests {
         format!(
             r#"{{"version":1,"vials":[{{"id":"vial-1","name":"Vial 1","rect":{{"x":0.02,"y":0.05,"width":0.2,"height":0.35}},"items":[{extra}]}}],"rules":[]}}"#
         )
+    }
+
+    #[test]
+    fn the_theme_defaults_to_glass_and_round_trips_by_name() {
+        assert_eq!(VialsConfig::default().theme, VialTheme::Glass);
+        let cfg: VialsConfig = serde_json::from_str(r#"{"theme":"classic"}"#).unwrap();
+        assert_eq!(cfg.theme, VialTheme::Classic);
+        assert!(serde_json::to_string(&cfg).unwrap().contains("\"theme\":\"classic\""));
+        let old: VialsConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.theme, VialTheme::Glass);
     }
 
     #[test]

@@ -39,6 +39,8 @@ export interface SortRule {
     targetVial: string;
 }
 
+export type VialTheme = "glass" | "classic";
+
 export interface VialsConfig {
     version: number;
     vials: Vial[];
@@ -49,6 +51,8 @@ export interface VialsConfig {
     createOnDrag: boolean;
     /** "Create vial here" in the desktop's right-click menu. */
     contextMenu: boolean;
+    /** How vial windows look. */
+    theme: VialTheme;
     /** Items the user took out of a vial on purpose; rules never put them back. */
     declined?: string[];
 }

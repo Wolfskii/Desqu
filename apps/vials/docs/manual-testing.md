@@ -36,6 +36,8 @@ Vials never moves or deletes files, but items are hidden while a vial holds them
 0g7. Quit Vials; right-click the desktop. Expect the "Create vial here" entry to be gone.
 0i. Settings: turn off "Create vials by dragging a box". Expect no menu any more.
 0j. Menu near a screen edge and on a second monitor / at 125-150% scaling: expect it fully visible.
+0l. Settings: switch "Look of vials" between Glass and Classic. Expect the vials to be rebuilt in the
+    chosen look at the same place with the same items, and the create popup to follow the choice.
 0k. Check the vial looks right (translucent, rounded, readable over your wallpaper, also with a
     live wallpaper).
 
