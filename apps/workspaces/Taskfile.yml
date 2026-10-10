@@ -80,4 +80,4 @@ tasks:
     desc: Build release artifacts and install the NSIS setup for the current user
     cmds:
       - task: release
-      - powershell -NoProfile -ExecutionPolicy Bypass -Command "$setup = Get-ChildItem -Path '../../dist/workspaces' -Filter '*-setup.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if (-not $setup) { throw 'NSIS installer not found under dist/workspaces/' }; Write-Host ('Installing ' + $setup.FullName); $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru; if ($p.ExitCode -ne 0) { exit $p.ExitCode }"
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/install-local.ps1 -App workspaces
