@@ -13,4 +13,7 @@ permissions = [
     "allow-module-start",
     "allow-module-stop",
     "allow-module-status",
+    "allow-legacy-status",
+    "allow-legacy-uninstall-old",
+    "allow-legacy-delete-settings-backup",
 ]

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-legacy-status"
+description = "Enables the legacy_status command without any pre-configured scope."
+commands.allow = ["legacy_status"]
+
+[[permission]]
+identifier = "deny-legacy-status"
+description = "Denies the legacy_status command without any pre-configured scope."
+commands.deny = ["legacy_status"]

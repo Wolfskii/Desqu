@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from "../state.svelte";
   import { ShellSettingsSection } from "@desqu/ui";
+  import LegacySection from "./LegacySection.svelte";
   import type { TransitionSpeed } from "../types";
 
   const speeds: { id: TransitionSpeed; label: string; hint: string }[] = [
@@ -21,6 +22,8 @@
 
 <div class="settings">
   <ShellSettingsSection appName="Screenbound" />
+
+  <LegacySection />
 
   <section class="card">
     <h3>Fullscreen animation</h3>

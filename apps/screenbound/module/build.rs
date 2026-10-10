@@ -11,6 +11,9 @@ const COMMANDS: &[&str] = &[
     "module_start",
     "module_stop",
     "module_status",
+    "legacy_status",
+    "legacy_uninstall_old",
+    "legacy_delete_settings_backup",
 ];
 
 fn main() {

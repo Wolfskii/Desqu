@@ -27,6 +27,10 @@
     {:else if app.moduleStatus === "unsupported"}
       <h2>Screenbound is not supported here</h2>
       <p class="dim">This operating system has no Screenbound backend yet.</p>
+    {:else if app.legacy?.olderRunning}
+      <h2>An older Screenbound is running</h2>
+      <p class="dim">Right-click its tray icon and choose Exit. Two copies would fight over the same windows.</p>
+      <button onclick={() => app.turnOn()}>Done, turn on</button>
     {:else}
       <h2>Screenbound is off</h2>
       <p class="dim">Fullscreen windows are not being constrained.</p>

@@ -16,6 +16,9 @@ Everything the Screenbound UI needs
 - `allow-module-start`
 - `allow-module-stop`
 - `allow-module-status`
+- `allow-legacy-status`
+- `allow-legacy-uninstall-old`
+- `allow-legacy-delete-settings-backup`
 
 ## Permission Table
 
@@ -126,6 +129,84 @@ Enables the get_status command without any pre-configured scope.
 <td>
 
 Denies the get_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:allow-legacy-delete-settings-backup`
+
+</td>
+<td>
+
+Enables the legacy_delete_settings_backup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:deny-legacy-delete-settings-backup`
+
+</td>
+<td>
+
+Denies the legacy_delete_settings_backup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:allow-legacy-status`
+
+</td>
+<td>
+
+Enables the legacy_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:deny-legacy-status`
+
+</td>
+<td>
+
+Denies the legacy_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:allow-legacy-uninstall-old`
+
+</td>
+<td>
+
+Enables the legacy_uninstall_old command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:deny-legacy-uninstall-old`
+
+</td>
+<td>
+
+Denies the legacy_uninstall_old command without any pre-configured scope.
 
 </td>
 </tr>

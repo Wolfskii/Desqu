@@ -12,6 +12,7 @@ use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 
 use crate::core::config::AppConfig;
+use crate::legacy;
 use crate::migrate;
 use crate::engine::{Engine, EngineHandle, EngineMessage, EnginePaths, Notification, Notifier};
 use crate::platform::{self, EventSubscription};
@@ -79,6 +80,10 @@ impl ModuleState {
         }
     }
 
+    pub fn legacy_dir(&self) -> Option<&std::path::Path> {
+        self.legacy_dir.as_deref()
+    }
+
     pub fn status(&self) -> ModuleStatus {
         match self.with_engine(|e| e.config().enabled) {
             Ok(true) => ModuleStatus::On,
@@ -108,6 +113,11 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         return Err("Screenbound is already running in another process".into());
     };
     state.owned_elsewhere.store(false, Ordering::Relaxed);
+    // The old app does not take the lock, so check for it after we own the lock ourselves: a *new*
+    // standalone copy would have made us return above. Never fight an older instance.
+    if legacy::older_instance_running() {
+        return Err(legacy::OLDER_RUNNING_MESSAGE.into());
+    }
     tracing::info!(
         config = %state.config_path.display(),
         journal = %state.journal_path.display(),
@@ -186,6 +196,9 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             crate::commands::module_start,
             crate::commands::module_stop,
             crate::commands::module_status,
+            crate::commands::legacy_status,
+            crate::commands::legacy_uninstall_old,
+            crate::commands::legacy_delete_settings_backup,
         ])
         .setup(move |app, _api| {
             // Before the engine reads its config, so the first run after the rebrand sees the old settings.

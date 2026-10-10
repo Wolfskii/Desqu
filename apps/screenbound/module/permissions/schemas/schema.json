@@ -343,6 +343,42 @@
           "markdownDescription": "Denies the get_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the legacy_delete_settings_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-legacy-delete-settings-backup",
+          "markdownDescription": "Enables the legacy_delete_settings_backup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the legacy_delete_settings_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-legacy-delete-settings-backup",
+          "markdownDescription": "Denies the legacy_delete_settings_backup command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the legacy_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-legacy-status",
+          "markdownDescription": "Enables the legacy_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the legacy_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-legacy-status",
+          "markdownDescription": "Denies the legacy_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the legacy_uninstall_old command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-legacy-uninstall-old",
+          "markdownDescription": "Enables the legacy_uninstall_old command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the legacy_uninstall_old command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-legacy-uninstall-old",
+          "markdownDescription": "Denies the legacy_uninstall_old command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_windows command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-windows",
@@ -439,10 +475,10 @@
           "markdownDescription": "Denies the set_enabled command without any pre-configured scope."
         },
         {
-          "description": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`\n- `allow-legacy-status`\n- `allow-legacy-uninstall-old`\n- `allow-legacy-delete-settings-backup`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`\n- `allow-legacy-status`\n- `allow-legacy-uninstall-old`\n- `allow-legacy-delete-settings-backup`"
         }
       ]
     }

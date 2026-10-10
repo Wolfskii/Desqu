@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-legacy-uninstall-old"
+description = "Enables the legacy_uninstall_old command without any pre-configured scope."
+commands.allow = ["legacy_uninstall_old"]
+
+[[permission]]
+identifier = "deny-legacy-uninstall-old"
+description = "Denies the legacy_uninstall_old command without any pre-configured scope."
+commands.deny = ["legacy_uninstall_old"]

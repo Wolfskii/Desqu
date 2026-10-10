@@ -1,6 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityEntry, AppConfig, EngineStatus, ModuleStatus, MonitorInfo, WindowInfo } from "./types";
+import type {
+    ActivityEntry,
+    AppConfig,
+    EngineStatus,
+    LegacyStatus,
+    ModuleStatus,
+    MonitorInfo,
+    WindowInfo,
+} from "./types";
 
 export const api = {
     getMonitors: () => invoke<MonitorInfo[]>("plugin:screenbound-module|get_monitors"),
@@ -15,6 +23,9 @@ export const api = {
     moduleStart: () => invoke<void>("plugin:screenbound-module|module_start"),
     moduleStop: () => invoke<void>("plugin:screenbound-module|module_stop"),
     moduleStatus: () => invoke<ModuleStatus>("plugin:screenbound-module|module_status"),
+    legacyStatus: () => invoke<LegacyStatus>("plugin:screenbound-module|legacy_status"),
+    legacyUninstallOld: () => invoke<void>("plugin:screenbound-module|legacy_uninstall_old"),
+    legacyDeleteSettingsBackup: () => invoke<void>("plugin:screenbound-module|legacy_delete_settings_backup"),
 };
 
 export const events = {

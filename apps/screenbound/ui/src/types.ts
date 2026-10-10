@@ -186,3 +186,17 @@ export const fmtRect = (r: Rect) => `(${r.left}, ${r.top}) ${rectW(r)}×${rectH(
  * `ownedElsewhere`: another process (standalone app or Desqu) runs the engine; `unsupported`: no OS backend.
  */
 export type ModuleStatus = "off" | "paused" | "on" | "unsupported" | "ownedElsewhere";
+
+export interface OldInstall {
+    version: string | null;
+    uninstallString: string;
+}
+
+/** Leftovers of the pre-rebrand Screenbound (mirrors the module's `legacy::LegacyStatus`). */
+export interface LegacyStatus {
+    /** Another screenbound.exe (not this process) is running. */
+    olderRunning: boolean;
+    oldInstall: OldInstall | null;
+    /** Old settings folder kept as a backup after migration. */
+    settingsBackup: string | null;
+}

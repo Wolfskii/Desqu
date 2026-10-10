@@ -8,6 +8,7 @@ use crate::core::monitor::MonitorInfo;
 use crate::core::window::{WindowId, WindowInfo};
 use crate::engine::activity::ActivityEntry;
 use crate::engine::EngineStatus;
+use crate::legacy::{self, LegacyStatus};
 use crate::plugin::{self, ModuleState};
 
 type CmdResult<T> = Result<T, String>;
@@ -76,4 +77,20 @@ pub async fn module_stop<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
 #[tauri::command]
 pub async fn module_status(state: State<'_, ModuleState>) -> CmdResult<ModuleStatus> {
     Ok(state.status())
+}
+
+#[tauri::command]
+pub async fn legacy_status(state: State<'_, ModuleState>) -> CmdResult<LegacyStatus> {
+    Ok(legacy::status(state.legacy_dir()))
+}
+
+#[tauri::command]
+pub async fn legacy_uninstall_old() -> CmdResult<()> {
+    legacy::uninstall_old()
+}
+
+#[tauri::command]
+pub async fn legacy_delete_settings_backup(state: State<'_, ModuleState>) -> CmdResult<()> {
+    let dir = state.legacy_dir().ok_or("no legacy settings folder configured")?;
+    legacy::delete_settings_backup(dir)
 }

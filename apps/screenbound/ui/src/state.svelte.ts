@@ -1,5 +1,5 @@
 import { api, events, type UnlistenFn } from "./api";
-import type { ActivityEntry, AppConfig, EngineStatus, ModuleStatus, MonitorInfo, Zone } from "./types";
+import type { ActivityEntry, AppConfig, EngineStatus, LegacyStatus, ModuleStatus, MonitorInfo, Zone } from "./types";
 
 const SAVE_DELAY_MS = 350;
 const ACTIVITY_LIMIT = 300;
@@ -11,6 +11,7 @@ export function newId(prefix: string): string {
 
 class AppState {
     moduleStatus = $state<ModuleStatus | null>(null);
+    legacy = $state<LegacyStatus | null>(null);
     monitors = $state<MonitorInfo[]>([]);
     config = $state<AppConfig | null>(null);
     status = $state<EngineStatus | null>(null);
@@ -39,8 +40,34 @@ class AppState {
             this.error = String(e);
             return;
         }
+        await this.refreshLegacy();
         if (!this.isRunning) return;
         await this.#load();
+    }
+
+    async refreshLegacy() {
+        try {
+            this.legacy = await api.legacyStatus();
+        } catch (e) {
+            this.error = String(e);
+        }
+    }
+
+    async uninstallOld() {
+        try {
+            await api.legacyUninstallOld();
+        } catch (e) {
+            this.error = String(e);
+        }
+    }
+
+    async deleteSettingsBackup() {
+        try {
+            await api.legacyDeleteSettingsBackup();
+            await this.refreshLegacy();
+        } catch (e) {
+            this.error = String(e);
+        }
     }
 
     /** `on` or `paused`: the engine runs in this process, so the tabs can load. */
@@ -58,6 +85,7 @@ class AppState {
             this.error = String(e);
             // The module may now be `ownedElsewhere`; show that instead of a stale `off`.
             this.moduleStatus = await api.moduleStatus().catch(() => this.moduleStatus);
+            await this.refreshLegacy();
         }
     }
 

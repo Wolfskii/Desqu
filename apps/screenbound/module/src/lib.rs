@@ -4,6 +4,7 @@
 mod commands;
 pub mod core;
 pub mod engine;
+pub mod legacy;
 pub mod migrate;
 pub mod platform;
 pub mod plugin;
