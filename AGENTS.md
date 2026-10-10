@@ -31,4 +31,4 @@ and platform (native code).
 - Windows only for now (decision D3): keep platform traits and `unsupported` stubs, and never claim
   macOS or Linux support in docs or UI.
 - Commit per completed plan step, using conventional messages (`feat:`, `fix:`, `docs:`,
-  `refactor:`, `build:`, `chore:`). The owner makes the commits; agents only suggest the message.
+  `refactor:`, `build:`, `chore:`). Agents may commit but never push; the owner pushes.

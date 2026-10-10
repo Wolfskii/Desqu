@@ -37,10 +37,10 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 7. If you discover the plan is wrong, fix the plan in this file (and note it in the log) rather than
    silently doing something else.
 8. Never delete user data folders, registry entries or git branches without the owner confirming.
-9. **The owner makes every commit** (and any push or history rewrite). After each completed step,
-   stop and give the owner a short suggested commit message (conventional style, e.g.
-   `feat: implement x and y`); do not start the next step until they have committed. Never add
-   Claude/Anthropic attribution to commits or PRs.
+9. Commit after each completed step with a short conventional message (`feat:`, `fix:`, `docs:`,
+   `refactor:`, `build:`, `chore:`; e.g. `feat: implement x and y`). **Never push**, force-push or
+   rewrite pushed history without the owner's explicit say-so (the owner pushes). Stage explicit
+   paths only. Never add Claude/Anthropic attribution to commits or PRs.
 
 ### Phase overview
 
