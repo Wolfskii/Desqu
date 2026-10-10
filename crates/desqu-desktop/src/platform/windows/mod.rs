@@ -47,6 +47,7 @@ impl State {
 
 /// The process-wide layer. Dropping the last handle drops it, which restores every parked item.
 struct Host {
+    journal_path: PathBuf,
     tx: Mutex<Sender<Command>>,
     thread: Mutex<Option<JoinHandle<()>>>,
     _lock: lock::NamedLock,
@@ -68,6 +69,13 @@ pub(crate) fn open(owner: &str, journal_path: &Path) -> DesktopResult<Arc<dyn De
 }
 
 pub(crate) fn recover_from(journal_path: &Path) -> DesktopResult<usize> {
+    // The journal of this process's own live layer is not "left over": it describes items that
+    // are hidden on purpose right now. Touching it would unhide them behind its owners' backs.
+    if let Some(host) = HOST.lock().unwrap_or_else(|e| e.into_inner()).upgrade() {
+        if host.journal_path == journal_path {
+            return Ok(0);
+        }
+    }
     let path = journal_path.to_path_buf();
     // Shell calls need a COM apartment of their own, so use a short-lived thread.
     std::thread::Builder::new()
@@ -98,6 +106,7 @@ impl Host {
             .name("desqu-desktop".into())
             .spawn(move || with_com(|| worker(rx, path)))?;
         Ok(Arc::new(Self {
+            journal_path: journal_path.to_path_buf(),
             tx: Mutex::new(tx),
             thread: Mutex::new(Some(thread)),
             _lock: lock,

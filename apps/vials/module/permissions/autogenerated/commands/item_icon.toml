@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-item-icon"
+description = "Enables the item_icon command without any pre-configured scope."
+commands.allow = ["item_icon"]
+
+[[permission]]
+identifier = "deny-item-icon"
+description = "Denies the item_icon command without any pre-configured scope."
+commands.deny = ["item_icon"]

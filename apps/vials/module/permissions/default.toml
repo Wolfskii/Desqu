@@ -1,0 +1,15 @@
+[default]
+description = "Everything the Vials UI needs"
+permissions = [
+    "allow-get-config",
+    "allow-set-config",
+    "allow-list-items",
+    "allow-item-icon",
+    "allow-assign-item",
+    "allow-open-item",
+    "allow-get-monitors",
+    "allow-desktop-status",
+    "allow-module-start",
+    "allow-module-stop",
+    "allow-module-status",
+]

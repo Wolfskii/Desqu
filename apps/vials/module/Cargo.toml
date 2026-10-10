@@ -1,0 +1,24 @@
+[package]
+name = "vials-module"
+version = "0.1.0"
+description = "Vials: desktop containers for shortcuts, apps and folders with optional auto-sort rules"
+authors = ["Desqu contributors"]
+edition = "2021"
+rust-version = "1.80"
+# Required by tauri-plugin: must equal the package name, which is also the plugin name.
+links = "vials-module"
+
+[lib]
+name = "vials_module"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+desqu-desktop = { path = "../../../crates/desqu-desktop" }
+desqu-shell = { path = "../../../crates/desqu-shell" }
+tauri = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"

@@ -1,0 +1,313 @@
+## Default Permission
+
+Everything the Vials UI needs
+
+#### This default permission set includes the following:
+
+- `allow-get-config`
+- `allow-set-config`
+- `allow-list-items`
+- `allow-item-icon`
+- `allow-assign-item`
+- `allow-open-item`
+- `allow-get-monitors`
+- `allow-desktop-status`
+- `allow-module-start`
+- `allow-module-stop`
+- `allow-module-status`
+
+## Permission Table
+
+<table>
+<tr>
+<th>Identifier</th>
+<th>Description</th>
+</tr>
+
+
+<tr>
+<td>
+
+`vials-module:allow-assign-item`
+
+</td>
+<td>
+
+Enables the assign_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-assign-item`
+
+</td>
+<td>
+
+Denies the assign_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-desktop-status`
+
+</td>
+<td>
+
+Enables the desktop_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-desktop-status`
+
+</td>
+<td>
+
+Denies the desktop_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-get-config`
+
+</td>
+<td>
+
+Enables the get_config command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-get-config`
+
+</td>
+<td>
+
+Denies the get_config command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-get-monitors`
+
+</td>
+<td>
+
+Enables the get_monitors command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-get-monitors`
+
+</td>
+<td>
+
+Denies the get_monitors command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-item-icon`
+
+</td>
+<td>
+
+Enables the item_icon command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-item-icon`
+
+</td>
+<td>
+
+Denies the item_icon command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-list-items`
+
+</td>
+<td>
+
+Enables the list_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-list-items`
+
+</td>
+<td>
+
+Denies the list_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-module-start`
+
+</td>
+<td>
+
+Enables the module_start command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-module-start`
+
+</td>
+<td>
+
+Denies the module_start command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-module-status`
+
+</td>
+<td>
+
+Enables the module_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-module-status`
+
+</td>
+<td>
+
+Denies the module_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-module-stop`
+
+</td>
+<td>
+
+Enables the module_stop command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-module-stop`
+
+</td>
+<td>
+
+Denies the module_stop command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-open-item`
+
+</td>
+<td>
+
+Enables the open_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-open-item`
+
+</td>
+<td>
+
+Denies the open_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-set-config`
+
+</td>
+<td>
+
+Enables the set_config command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-set-config`
+
+</td>
+<td>
+
+Denies the set_config command without any pre-configured scope.
+
+</td>
+</tr>
+</table>
