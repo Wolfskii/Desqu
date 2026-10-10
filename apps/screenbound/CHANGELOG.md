@@ -7,6 +7,8 @@ version being released as the release notes and as the in-app update description
 
 ### Added
 
+- **Borderless windows**: a rule can make a windowed app (for example a game running in a window)
+  borderless and fit it to a monitor or zone, then put everything back on release, exit or crash.
 - In-app updates: Settings shows the current version, checks for updates (shortly after start and
   daily) and installs them. Portable builds link to the download page instead.
 - **Start with system**, **Start minimized to tray** and **Close to tray** settings.

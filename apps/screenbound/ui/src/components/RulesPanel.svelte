@@ -4,8 +4,42 @@
   import { app, newId } from "../state.svelte";
   import type { Action, ChromeMode, RuleScope, WindowRule } from "../types";
 
-  function zoneAction(rule: WindowRule): Action | undefined {
-    return rule.actions.find((a) => a.type === "fullscreenZone");
+  type FullscreenAction = Extract<Action, { type: "fullscreenZone" }>;
+  type BorderlessAction = Extract<Action, { type: "borderless" }>;
+
+  function fullscreenAction(rule: WindowRule): FullscreenAction | undefined {
+    return rule.actions.find((a): a is FullscreenAction => a.type === "fullscreenZone");
+  }
+
+  function borderlessAction(rule: WindowRule): BorderlessAction | undefined {
+    return rule.actions.find((a): a is BorderlessAction => a.type === "borderless");
+  }
+
+  function kindOf(rule: WindowRule): "fullscreen" | "borderless" {
+    return borderlessAction(rule) ? "borderless" : "fullscreen";
+  }
+
+  /** A rule has one action in this UI; switching kind replaces it with that kind's defaults. */
+  function setKind(rule: WindowRule, kind: string) {
+    if (kind === kindOf(rule)) return;
+    const zoneId = app.config?.zones[0]?.id;
+    if (kind === "borderless") {
+      rule.actions = [{ type: "borderless", target: { type: "monitor" }, topmost: false }];
+    } else if (zoneId) {
+      rule.actions = [{ type: "fullscreenZone", zoneId, chrome: "keep", useSnappedZone: true }];
+    } else {
+      return;
+    }
+    app.scheduleSave(true);
+  }
+
+  function targetValue(action: BorderlessAction): string {
+    return action.target.type === "zone" ? `zone:${action.target.zoneId}` : "monitor";
+  }
+
+  function setTarget(action: BorderlessAction, value: string) {
+    action.target = value.startsWith("zone:") ? { type: "zone", zoneId: value.slice(5) } : { type: "monitor" };
+    app.scheduleSave(true);
   }
 
   function scopeKind(rule: WindowRule): "legacy" | RuleScope["type"] {
@@ -39,6 +73,19 @@
     app.scheduleSave(true);
   }
 
+  function addBorderlessRule() {
+    if (!app.config) return;
+    app.config.rules.push({
+      id: newId("rule"),
+      name: "New borderless rule",
+      enabled: true,
+      matcher: { type: "any", value: [] },
+      scope: { type: "all" },
+      actions: [{ type: "borderless", target: { type: "monitor" }, topmost: false }],
+    });
+    app.scheduleSave(true);
+  }
+
   function removeRule(id: string) {
     if (!app.config) return;
     app.config.rules = app.config.rules.filter((r) => r.id !== id);
@@ -61,11 +108,15 @@
       Rules are checked top to bottom; the first enabled match wins. A rule applies to apps that are turned on:
       every one of them, specific groups, or specific apps. Put a narrower rule above an All rule.
     </p>
-    <button onclick={addRule} disabled={!app.config?.zones.length}>+ New rule</button>
+    <div class="add">
+      <button onclick={addRule} disabled={!app.config?.zones.length}>+ New rule</button>
+      <button onclick={addBorderlessRule} title="For apps that run in a window, e.g. games">+ Borderless rule</button>
+    </div>
   </div>
 
   {#each app.config?.rules ?? [] as rule, i (rule.id)}
-    {@const action = zoneAction(rule)}
+    {@const fullscreen = fullscreenAction(rule)}
+    {@const borderless = borderlessAction(rule)}
     <div class="card rule" class:disabled={!rule.enabled}>
       <div class="row">
         <label class="toggle">
@@ -89,10 +140,18 @@
           </select>
         </label>
 
-        {#if action}
+        <label>
+          Action
+          <select value={kindOf(rule)} onchange={(e) => setKind(rule, e.currentTarget.value)}>
+            <option value="fullscreen">Fullscreen → zone</option>
+            <option value="borderless">Borderless window</option>
+          </select>
+        </label>
+
+        {#if fullscreen}
           <label>
             Fullscreen zone
-            <select bind:value={action.zoneId} onchange={() => app.scheduleSave(true)}>
+            <select bind:value={fullscreen.zoneId} onchange={() => app.scheduleSave(true)}>
               {#each app.config?.zones ?? [] as z (z.id)}
                 <option value={z.id}>{z.name}</option>
               {/each}
@@ -101,9 +160,9 @@
           <label>
             Window chrome
             <select
-              value={action.chrome}
+              value={fullscreen.chrome}
               onchange={(e) => {
-                action.chrome = e.currentTarget.value as ChromeMode;
+                fullscreen.chrome = e.currentTarget.value as ChromeMode;
                 app.scheduleSave(true);
               }}
             >
@@ -111,10 +170,20 @@
               <option value="hide">Hide title bar (borderless)</option>
             </select>
           </label>
+        {:else if borderless}
+          <label>
+            Fit to
+            <select value={targetValue(borderless)} onchange={(e) => setTarget(borderless, e.currentTarget.value)}>
+              <option value="monitor">Whole monitor</option>
+              {#each app.config?.zones ?? [] as z (z.id)}
+                <option value="zone:{z.id}">Zone: {z.name}</option>
+              {/each}
+            </select>
+          </label>
         {/if}
       </div>
 
-      {#if action}
+      {#if fullscreen}
         <div class="option">
           <div class="info">
             <span>Use FancyZones zone</span>
@@ -124,14 +193,34 @@
             </span>
           </div>
           <Switch
-            checked={action.useSnappedZone ?? true}
+            checked={fullscreen.useSnappedZone ?? true}
             label="Use the FancyZones zone for snapped windows in {rule.name}"
             onchange={(next) => {
-              action.useSnappedZone = next;
+              fullscreen.useSnappedZone = next;
               app.scheduleSave(true);
             }}
           />
         </div>
+      {:else if borderless}
+        <div class="option">
+          <div class="info">
+            <span>Keep on top</span>
+            <span class="dim">Keep the window above other windows while it is borderless.</span>
+          </div>
+          <Switch
+            checked={borderless.topmost ?? false}
+            label="Keep {rule.name} on top"
+            onchange={(next) => {
+              borderless.topmost = next;
+              app.scheduleSave(true);
+            }}
+          />
+        </div>
+        <p class="dim hint">
+          For apps that run in a window, such as many games: Screenbound removes the title bar and fits the window to the
+          monitor or zone, and puts everything back when you release it or quit. Games in exclusive fullscreen, or running
+          as administrator, cannot be changed.
+        </p>
       {/if}
 
       {#if rule.scope?.type === "groups"}
@@ -218,8 +307,16 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 10px;
+  }
+  .add {
+    display: flex;
+    gap: 6px;
+    flex: none;
+  }
+  .hint {
+    margin: 0;
   }
   .option {
     display: flex;

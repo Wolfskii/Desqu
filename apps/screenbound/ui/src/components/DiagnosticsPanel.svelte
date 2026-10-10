@@ -57,13 +57,16 @@
     {#if app.status?.managed.length}
       <table>
         <thead>
-          <tr><th>HWND</th><th>Process</th><th>Title</th><th>Fullscreen bounds</th><th>Zone bounds</th><th>Pre-fullscreen</th><th></th></tr>
+          <tr><th>HWND</th><th>Process</th><th>Title</th><th>Original bounds</th><th>Target bounds</th><th>Pre-fullscreen</th><th></th></tr>
         </thead>
         <tbody>
           {#each app.status.managed as m (m.id)}
             <tr class:warn={m.gaveUp}>
               <td class="mono">{m.idHex}</td>
-              <td>{m.processName}</td>
+              <td>
+                {m.processName}
+                {#if m.kind === "borderless"}<span class="tag accent">borderless</span>{/if}
+              </td>
               <td class="ellipsis">{m.title}</td>
               <td class="mono">{fmtRect(m.detectedBounds)}</td>
               <td class="mono">{fmtRect(m.target)}{m.gaveUp ? " (app refused)" : ""}</td>

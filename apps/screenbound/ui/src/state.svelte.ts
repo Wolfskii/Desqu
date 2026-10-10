@@ -182,7 +182,13 @@ class AppState {
     }
 
     zoneInUse(zoneId: string): boolean {
-        return !!this.config?.rules.some((r) => r.actions.some((a) => a.zoneId === zoneId));
+        return !!this.config?.rules.some((r) =>
+            r.actions.some(
+                (a) =>
+                    (a.type === "fullscreenZone" && a.zoneId === zoneId) ||
+                    (a.type === "borderless" && a.target.type === "zone" && a.target.zoneId === zoneId),
+            ),
+        );
     }
 
     deleteZone(zoneId: string) {

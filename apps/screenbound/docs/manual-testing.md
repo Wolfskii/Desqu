@@ -25,6 +25,45 @@ For each case record result + date in PLAN.md / docs/fullscreen-research.md.
 4. In a browser, open a menu or bubble near the zone edge while fullscreen; expect it untouched.
 5. With a second browser window on the same monitor, expect that window untouched.
 
+## Borderless gaming (windowed games and apps)
+
+Setup: Rules tab → **+ Borderless rule**, set *Applies to* the game (turn it on in the Apps tab
+first), *Fit to* **Whole monitor** or a zone, *Keep on top* off. Keep Diagnostics open: the
+constrained table shows a **borderless** tag and the activity log explains every action.
+
+A quick no-game check (also what `task screenbound:probe` automates with `winver.exe`): a rule for
+`winver.exe`, open it → it loses its title bar and fills the monitor; **Release** → title bar and
+exact position come back.
+
+For each case record result + date in PLAN.md.
+
+1. **Windowed game.** Start the game in windowed mode. Expect "Made borderless on monitor…", no
+   title bar, the window fills the monitor, the taskbar is not painted over it once the game is
+   focused. Quit the game from its menu; expect the entry to disappear ("Window closed while
+   borderless") and no leftover change.
+2. **Game that recreates its swapchain on resize.** The picture must stay correct after the move
+   (no black frame or stretched image). If it re-asserts its own window size, expect at most four
+   re-fits in three seconds and then "Application keeps changing its window; leaving it as it is".
+3. **Zone target.** Use *Fit to* a zone. Expect the window to fill exactly that zone. Edit the zone
+   size in the Zones tab; expect the window to re-fit immediately.
+4. **Keep on top.** Turn it on; expect the game above other windows (alt-tab still works). Turn the
+   rule off; expect it to drop back.
+5. **Elevated game** (run as administrator while Screenbound is not). Expect a clear
+   "Could not make window borderless: access denied…" entry and no change to the window.
+6. **Exclusive fullscreen game.** Expect nothing to happen (it is not a window we can style) and no
+   error loop.
+7. **Release.** Press **Release** (or **Release all**): the frame and the original position
+   return, and the window is not grabbed again until you edit the config or restart the game.
+8. **Pause.** Untick **Enabled**: expect borderless windows to be released.
+9. **Quit Screenbound** while a game is borderless: expect the game window restored to framed.
+10. **Kill Screenbound** (`taskkill /f /im screenbound.exe`) while borderless, then start it again:
+    expect "Restored borderless window left by a previous session".
+11. **Both rule kinds.** A browser with a fullscreen rule and a game with a borderless rule at the
+    same time: each follows its own rule; a borderless rule listed above a fullscreen rule never
+    hides the fullscreen rule.
+12. **Display change.** Unplug or change the resolution of the monitor while a game is borderless
+    on *Whole monitor*: expect it to re-fit the new monitor size.
+
 ## Lifecycle
 
 - Close the browser while constrained → "Window closed while managed", journal cleared.
