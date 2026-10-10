@@ -2,6 +2,9 @@
 
 Read this and [PLAN.md](PLAN.md) before changing code. PLAN.md is the source of truth for status.
 
+The repo is being turned into the Desqu collection: follow and update [DESQU-PLAN.md](DESQU-PLAN.md)
+(step-by-step tracker with statuses and a progress log) for any restructuring work.
+
 ## What ScreenBound is
 
 A native window-behavior manager. MVP: when a window enters fullscreen, constrain the *real native
