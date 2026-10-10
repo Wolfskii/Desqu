@@ -9,6 +9,9 @@ includes:
   vials:
     taskfile: ./apps/vials/Taskfile.yml
     dir: ./apps/vials
+  workspaces:
+    taskfile: ./apps/workspaces/Taskfile.yml
+    dir: ./apps/workspaces
   screenbound:
     taskfile: ./apps/screenbound/Taskfile.yml
     dir: ./apps/screenbound
@@ -36,6 +39,7 @@ tasks:
     cmds:
       - cargo test -p desqu-desktop --test real_desktop -- --ignored --nocapture
       - task: screenbound:probe
+      - cargo test -p workspaces-module -- --ignored real_running
 
   ci:
     desc: CI for every app and shared crate
@@ -44,3 +48,4 @@ tasks:
       - task: screenbound:ci
       - task: desqu:ci
       - task: vials:ci
+      - task: workspaces:ci
