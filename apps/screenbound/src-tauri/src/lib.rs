@@ -1,77 +1,61 @@
-mod autostart;
+use tauri::{AppHandle, Manager};
 
-use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Listener, Manager, WindowEvent};
-
+use desqu_shell::args;
+use desqu_shell::settings;
+use desqu_shell::tray::{self, TrayConfig};
+use desqu_shell::{autostart, instance, logging, window};
 use screenbound_module::core::config::AppConfig;
-use screenbound_module::plugin::events;
 use screenbound_module::{platform, ModuleOptions};
-
-fn init_logging() {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        tracing_subscriber::EnvFilter::new("screenbound_lib=info,screenbound_module=info,warn")
-    });
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .try_init();
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    init_logging();
+    logging::init("screenbound_lib=info,screenbound_module=info,desqu_shell=info,warn");
     platform::init_process();
+    let launch = args::parse(std::env::args());
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_autostart::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // Two instances would fight over the same windows; show the one already running.
-            show_main(app);
-        }))
-        .setup(|app| {
-            // The module is registered here (not on the Builder) because the folders come from
+        .plugin(instance::plugin())
+        .plugin(autostart::plugin())
+        .setup(move |app| {
+            // `--quit` with nothing running: leave before any module starts.
+            if instance::exit_if_quit_requested(app.handle(), &launch) {
+                return Ok(());
+            }
+
+            let config_dir = app.path().app_config_dir()?;
+            let data_dir = app.path().app_data_dir()?;
+            migrate_legacy_start_at_boot(&config_dir);
+
+            // Plugins are registered here (not on the Builder) because the folders come from
             // the resolved app identifier.
+            app.handle().plugin(desqu_shell::init(config_dir.clone()))?;
             app.handle().plugin(screenbound_module::init(ModuleOptions {
-                config_dir: app.path().app_config_dir()?,
-                data_dir: app.path().app_data_dir()?,
+                config_dir,
+                data_dir,
                 start_immediately: true,
             }))?;
 
-            if let Some(config) = screenbound_module::current_config(app.handle()) {
-                if let Err(e) = autostart::sync(app.handle(), config.start_at_boot) {
-                    tracing::warn!("autostart sync on startup failed: {e}");
-                }
+            let shell = desqu_shell::current_settings(app.handle());
+            if let Err(e) = autostart::sync_at_startup(app.handle(), shell.start_with_system) {
+                tracing::warn!("autostart sync on startup failed: {e}");
             }
-            // Keep the Run entry aligned whenever the UI saves settings.
-            let handle = app.handle().clone();
-            app.listen(events::CONFIG_CHANGED, move |event| {
-                match serde_json::from_str::<AppConfig>(event.payload()) {
-                    Ok(config) => {
-                        if let Err(e) = autostart::sync(&handle, config.start_at_boot) {
-                            tracing::warn!("autostart sync failed: {e}");
-                        }
-                    }
-                    Err(e) => tracing::warn!("unreadable config-changed payload: {e}"),
-                }
-            });
 
-            // Closing the window hides it. The process keeps managing windows until Exit.
-            match install_tray(app.handle()) {
+            // Closing the window hides it; the process keeps managing windows until Exit.
+            let tray_ok = match install_tray(app.handle()) {
                 Ok(icon) => {
                     app.manage(icon);
-                    if let Some(window) = app.get_webview_window("main") {
-                        let hidden = window.clone();
-                        window.on_window_event(move |event| {
-                            if let WindowEvent::CloseRequested { api, .. } = event {
-                                api.prevent_close();
-                                let _ = hidden.hide();
-                            }
-                        });
-                    }
+                    true
                 }
-                Err(e) => tracing::error!("tray icon failed; closing the window will quit: {e}"),
-            }
+                Err(e) => {
+                    tracing::error!("tray icon failed; closing the window will quit: {e}");
+                    false
+                }
+            };
+            let handle = app.handle().clone();
+            window::install_close_handler(app.handle(), tray_ok, move || {
+                desqu_shell::current_settings(&handle).close_to_tray
+            });
+            window::on_startup(app.handle(), &launch, &shell, tray_ok);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -81,39 +65,31 @@ pub fn run() {
     app.run(|_, _| {});
 }
 
-fn show_main(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+/// Config v1 kept "start at boot" inside config.json; it now lives in the shell settings.
+/// Runs before the engine and the shell load their files. Failures only cost the old value.
+fn migrate_legacy_start_at_boot(config_dir: &std::path::Path) {
+    let legacy = match AppConfig::migrate_legacy_start_at_boot(&config_dir.join("config.json")) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("config migration skipped: {e}");
+            return;
+        }
+    };
+    let shell_path = config_dir.join(desqu_shell::plugin::SETTINGS_FILE);
+    if let Err(e) = settings::adopt_legacy_start_with_system(&shell_path, legacy) {
+        tracing::warn!("could not carry startAtBoot over to the shell settings: {e}");
     }
 }
 
 fn install_tray(app: &AppHandle) -> tauri::Result<tauri::tray::TrayIcon> {
-    let show = MenuItemBuilder::with_id("show", "Show ScreenBound").build(app)?;
-    let exit = MenuItemBuilder::with_id("exit", "Exit").build(app)?;
-    let menu = Menu::with_items(app, &[&show, &PredefinedMenuItem::separator(app)?, &exit])?;
-    let mut tray = TrayIconBuilder::new()
-        .tooltip("ScreenBound")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => show_main(app),
-            "exit" => app.exit(0),
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                show_main(tray.app_handle());
-            }
-        });
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
-    }
-    tray.build(app)
+    tray::build(
+        app,
+        TrayConfig {
+            tooltip: "ScreenBound".into(),
+            show_label: "Show ScreenBound".into(),
+            extra_items: Vec::new(),
+            updates_item: false,
+            on_item: Box::new(|_, _| {}),
+        },
+    )
 }

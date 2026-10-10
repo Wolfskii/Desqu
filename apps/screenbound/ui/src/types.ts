@@ -100,8 +100,6 @@ export interface AppConfig {
     enabled: boolean;
     /** Omitted in configs written before this field existed; the engine treats that as "normal". */
     transition?: TransitionSpeed;
-    /** Omitted in older configs; treated as off. */
-    startAtBoot?: boolean;
     zones: Zone[];
     rules: WindowRule[];
     groups?: AppGroup[];

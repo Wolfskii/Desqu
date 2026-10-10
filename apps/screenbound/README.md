@@ -53,7 +53,7 @@ else stays visible next to it.
    fullscreen and it goes back to normal.
 
 ScreenBound runs quietly in the system tray, reacts only when windows change (it doesn't poll in
-the background), and keeps your settings across updates. Turn on **Start at boot** in Settings if
+the background), and keeps your settings across updates. Turn on **Start with system** in Settings if
 you want it ready from sign-in without opening the window.
 
 ## What to expect

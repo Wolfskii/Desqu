@@ -17,8 +17,7 @@
     "dependencies": {
         "@desqu/screenbound-ui": "*",
         "@desqu/ui": "*",
-        "@tauri-apps/api": "^2",
-        "@tauri-apps/plugin-autostart": "^2.6.0"
+        "@tauri-apps/api": "^2"
     },
     "devDependencies": {
         "@sveltejs/adapter-static": "^3.0.10",

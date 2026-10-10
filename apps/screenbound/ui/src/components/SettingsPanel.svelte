@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from "../state.svelte";
-  import { Switch } from "@desqu/ui";
+  import { ShellSettingsSection } from "@desqu/ui";
   import type { TransitionSpeed } from "../types";
 
   const speeds: { id: TransitionSpeed; label: string; hint: string }[] = [
@@ -20,26 +20,7 @@
 </script>
 
 <div class="settings">
-  <section class="card">
-    <div class="row">
-      <div>
-        <h3>Start at boot</h3>
-        <p class="dim">
-          Launch ScreenBound when you sign in to Windows. It stays in the tray so fullscreen apps are managed
-          without opening the window first.
-        </p>
-      </div>
-      <Switch
-        checked={app.config?.startAtBoot ?? false}
-        label="Start at boot"
-        onchange={(next) => {
-          if (!app.config) return;
-          app.config.startAtBoot = next;
-          app.scheduleSave(true);
-        }}
-      />
-    </div>
-  </section>
+  <ShellSettingsSection appName="ScreenBound" />
 
   <section class="card">
     <h3>Fullscreen animation</h3>
@@ -76,15 +57,6 @@
   }
   .card p {
     margin: 0 0 10px;
-  }
-  .row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-  }
-  .row p {
-    margin: 0;
   }
   .options {
     display: grid;

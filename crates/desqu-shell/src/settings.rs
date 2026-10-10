@@ -76,6 +76,23 @@ pub fn save(path: &Path, settings: &ShellSettings) -> Result<(), JsonError> {
     write_json_atomic(path, settings)
 }
 
+/// Carries a legacy per-app "start at boot" value (Screenbound config v1) over to the shell
+/// settings. Only when `shell.json` does not exist yet, so a user's later choice is never
+/// overwritten. Returns whether it wrote the file.
+pub fn adopt_legacy_start_with_system(
+    path: &Path,
+    legacy: Option<bool>,
+) -> Result<bool, JsonError> {
+    let Some(start_with_system) = legacy else {
+        return Ok(false);
+    };
+    if path.exists() {
+        return Ok(false);
+    }
+    save(path, &ShellSettings { start_with_system, ..ShellSettings::default() })?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,5 +156,31 @@ mod tests {
         std::fs::write(&path, "{ not json").unwrap();
         assert!(load(&path).is_err());
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn legacy_value_seeds_a_new_shell_file() {
+        let path = temp_path("legacy-new");
+        assert!(adopt_legacy_start_with_system(&path, Some(true)).unwrap());
+        let loaded = load(&path).unwrap();
+        assert!(loaded.start_with_system);
+        assert!(loaded.close_to_tray);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn legacy_value_never_overwrites_an_existing_shell_file() {
+        let path = temp_path("legacy-existing");
+        save(&path, &ShellSettings { start_with_system: false, ..ShellSettings::default() }).unwrap();
+        assert!(!adopt_legacy_start_with_system(&path, Some(true)).unwrap());
+        assert!(!load(&path).unwrap().start_with_system);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn no_legacy_value_writes_nothing() {
+        let path = temp_path("legacy-none");
+        assert!(!adopt_legacy_start_with_system(&path, None).unwrap());
+        assert!(!path.exists());
     }
 }

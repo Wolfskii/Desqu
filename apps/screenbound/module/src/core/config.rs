@@ -7,7 +7,8 @@ use super::transition::TransitionSpeed;
 use super::window::ChromeMode;
 use super::zone::{NormalizedRect, Zone, ZoneReference, ZoneUnit};
 
-pub const CONFIG_VERSION: u32 = 1;
+/// v2: `startAtBoot` moved out to the shell's settings (`shell.json`).
+pub const CONFIG_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,9 +21,9 @@ pub struct AppConfig {
     /// How entering and leaving the zone is animated.
     #[serde(default)]
     pub transition: TransitionSpeed,
-    /// Register ScreenBound to launch at Windows sign-in (tray only; main window stays hidden).
-    #[serde(default)]
-    pub start_at_boot: bool,
+    /// v1 only: read so it can be handed to the shell once, never written back.
+    #[serde(rename = "startAtBoot", default, skip_serializing)]
+    pub legacy_start_at_boot: Option<bool>,
     pub zones: Vec<Zone>,
     pub rules: Vec<WindowRule>,
     /// Named groups apps can be placed in. A rule can target one or more of these.
@@ -71,7 +72,7 @@ impl Default for AppConfig {
             version: CONFIG_VERSION,
             enabled: true,
             transition: TransitionSpeed::default(),
-            start_at_boot: false,
+            legacy_start_at_boot: None,
             zones: vec![Zone {
                 id: "zone-left-75".into(),
                 name: "75% Left".into(),
@@ -115,6 +116,26 @@ pub enum ConfigError {
 }
 
 impl AppConfig {
+    /// Takes the v1 `startAtBoot` value (once). The caller passes it to the shell settings and
+    /// saves the config, which then no longer contains the key.
+    pub fn take_legacy_start_at_boot(&mut self) -> Option<bool> {
+        self.legacy_start_at_boot.take()
+    }
+
+    /// Reads `path`, and if it still holds a v1 `startAtBoot`, rewrites it as v2 without the key
+    /// and returns the value. `Ok(None)` when there is no file or nothing to migrate.
+    pub fn migrate_legacy_start_at_boot(path: &Path) -> Result<Option<bool>, ConfigError> {
+        if !path.exists() {
+            return Ok(None);
+        }
+        let mut config = Self::load(path)?;
+        let legacy = config.take_legacy_start_at_boot();
+        if legacy.is_some() {
+            config.save(path)?;
+        }
+        Ok(legacy)
+    }
+
     pub fn zone(&self, id: &str) -> Option<&Zone> {
         self.zones.iter().find(|z| z.id == id)
     }
@@ -318,5 +339,62 @@ mod tests {
             .join("screenbound-does-not-exist")
             .join("config.json");
         assert_eq!(AppConfig::load(&path).unwrap(), AppConfig::default());
+    }
+
+    #[test]
+    fn v1_start_at_boot_is_taken_once_and_not_written_back() {
+        let mut cfg: AppConfig = serde_json::from_str(
+            r#"{"version":1,"startAtBoot":true,"zones":[],"rules":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.take_legacy_start_at_boot(), Some(true));
+        assert_eq!(cfg.take_legacy_start_at_boot(), None);
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(!json.contains("startAtBoot"), "{json}");
+    }
+
+    #[test]
+    fn v2_config_has_nothing_to_migrate() {
+        let mut cfg = AppConfig::default();
+        assert_eq!(cfg.take_legacy_start_at_boot(), None);
+        assert_eq!(cfg.version, CONFIG_VERSION);
+    }
+
+    #[test]
+    fn migrating_a_file_rewrites_it_as_v2_and_keeps_everything_else() {
+        let dir = std::env::temp_dir().join(format!("sb-config-migrate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+
+        let mut original = AppConfig::default();
+        original.groups.push(AppGroup {
+            id: "g1".into(),
+            name: "Browsers".into(),
+            color: "#4fa3ff".into(),
+            icon: "apps".into(),
+        });
+        let mut v1 = serde_json::to_value(&original).unwrap();
+        v1["version"] = 1.into();
+        v1["startAtBoot"] = true.into();
+        std::fs::write(&path, serde_json::to_vec(&v1).unwrap()).unwrap();
+
+        assert_eq!(AppConfig::migrate_legacy_start_at_boot(&path).unwrap(), Some(true));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("startAtBoot"));
+        let migrated = AppConfig::load(&path).unwrap();
+        assert_eq!(migrated.version, CONFIG_VERSION);
+        assert_eq!(migrated.zones, original.zones);
+        assert_eq!(migrated.groups, original.groups);
+        // Second run is a no-op.
+        assert_eq!(AppConfig::migrate_legacy_start_at_boot(&path).unwrap(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migrating_a_missing_file_is_a_no_op() {
+        let path = std::env::temp_dir().join("sb-config-does-not-exist.json");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(AppConfig::migrate_legacy_start_at_boot(&path).unwrap(), None);
     }
 }
