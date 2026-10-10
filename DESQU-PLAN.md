@@ -1330,3 +1330,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P3.1 — ✅ — crates/desqu-shell skeleton (deps per plan; all modules declared; json.rs write_json_atomic and logging.rs init implemented, others are doc stubs). Added to workspace; cargo build/clippy clean.
 - 2026-10-10 — P3.2 — ✅ — ShellSettings/UpdateSettings (camelCase, defaults keep current behaviour), load (missing=default, corrupt=error)/save (atomic). 6 unit tests.
 - 2026-10-10 — P3.3 — ✅ — args::parse recognises --autostart and --quit, ignores others. 3 unit tests (9 total in desqu-shell pass; clippy clean).
+- 2026-10-10 — P0.3/P0.4 — ✅ — Read the registry/files of the owner's installed 0.1.0 (see §3 'Measured'): Run value 'ScreenBound' with no args, install dir %LOCALAPPDATA%\ScreenBound with uninstall.exe, uninstall key 'ScreenBound'. Key finding: case-only rebrand overwrites the same Run value. P0.2 (hidden-at-boot, tray, CPU/RAM) still needs a human.
