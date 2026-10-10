@@ -65,16 +65,17 @@ impl Fixture {
     }
 
     fn config(&self, target: BorderlessTarget) -> AppConfig {
-        let mut cfg = AppConfig::default();
-        cfg.rules = vec![WindowRule {
-            id: "game".into(),
-            name: "Test game".into(),
-            enabled: true,
-            matcher: Matcher::ProcessName("winver.exe".into()),
-            scope: None,
-            actions: vec![Action::Borderless { target, topmost: false }],
-        }];
-        cfg
+        AppConfig {
+            rules: vec![WindowRule {
+                id: "game".into(),
+                name: "Test game".into(),
+                enabled: true,
+                matcher: Matcher::ProcessName("winver.exe".into()),
+                scope: None,
+                actions: vec![Action::Borderless { target, topmost: false }],
+            }],
+            ..AppConfig::default()
+        }
     }
 }
 
