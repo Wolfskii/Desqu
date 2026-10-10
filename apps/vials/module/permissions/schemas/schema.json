@@ -343,6 +343,18 @@
           "markdownDescription": "Denies the dismiss_menu command without any pre-configured scope."
         },
         {
+          "description": "Enables the drag_item_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-drag-item-out",
+          "markdownDescription": "Enables the drag_item_out command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the drag_item_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-drag-item-out",
+          "markdownDescription": "Denies the drag_item_out command without any pre-configured scope."
+        },
+        {
           "description": "Enables the drop_items command without any pre-configured scope.",
           "type": "string",
           "const": "allow-drop-items",
@@ -463,10 +475,10 @@
           "markdownDescription": "Denies the set_config command without any pre-configured scope."
         },
         {
-          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-drop-items`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-drop-items`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
         }
       ]
     }

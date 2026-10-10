@@ -10,8 +10,13 @@ and they come back exactly where they were.
 - **Make one right on the desktop.** Drag a selection box over empty desktop space (the same
   gesture you use to select icons). If it selects nothing, a small menu pops up at the cursor:
   *Create vial here*. The vial appears exactly where you dragged. Turn this off in Settings.
-- **Drag icons in.** Drag shortcuts, files and folders from the desktop onto a vial. Rename a vial in
-  the Vials window.
+- **Or right-click the desktop.** *Create vial here* in the desktop's right-click menu makes a vial
+  with its corner where you clicked (Windows 11: under *Show more options*). The entry exists only
+  while Vials runs.
+- **Drag icons in and out like Explorer.** Drag shortcuts, files and folders from the desktop onto a
+  vial. Drag one out of a vial and drop it on the desktop (it lands where you drop it), on another
+  vial, or in a folder: it is a normal Windows drag with the icon under the cursor; Ctrl, Shift and
+  Alt choose copy, move or shortcut, Esc cancels. Rename a vial in the Vials window.
 - **Vials on the desktop.** Drag the title bar to move one, collapse it to just its title, double
   click an item to open it, press × to take an item out. Vials sit below your other windows and
   never take focus or show up in Alt+Tab.
@@ -27,6 +32,7 @@ Windows 10/11 with WebView2. Windows only for now.
 
 ## Known limits
 
+- Vials start empty: nothing is created until you make a vial.
 - The drag-a-box gesture needs a system-wide mouse hook that only looks at left-button presses and
   releases that start on the desktop icon view. It works only while Vials is on.
 

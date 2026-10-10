@@ -1,7 +1,7 @@
 //! The desktop layer's public contract. One process-wide layer serves every module (Vials,
 //! Workspaces); each module talks to it through its own handle, tagged with an *owner* name.
 
-use crate::model::DesktopItem;
+use crate::model::{DesktopItem, Point};
 
 #[derive(Debug, thiserror::Error)]
 pub enum DesktopError {
@@ -80,6 +80,11 @@ pub trait DesktopLayer: Send + Sync {
 
     /// Stops hiding items for this owner.
     fn show(&self, ids: &[String]) -> DesktopResult<()>;
+
+    /// Like `show`, but puts the item where the cursor is (`screen`: screen pixels) instead of
+    /// where it was. Used when the user drags an item out of a container onto the desktop. If another
+    /// owner still hides the item it stays hidden and nothing moves.
+    fn show_at(&self, id: &str, screen: Point) -> DesktopResult<()>;
 
     /// Stops hiding everything this owner hid.
     fn show_all(&self) -> DesktopResult<()>;

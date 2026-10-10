@@ -163,6 +163,15 @@ pub async fn drop_items(state: State<'_, ModuleState>, vial_id: String, paths: V
     }
 }
 
+/// Starts the native drag of an item that sits in a vial (called when the user pulls an icon out
+/// of its vial). Dropped on the desktop, the item leaves the vial and lands where it was dropped;
+/// dropped on another vial, that vial's own drop handling takes it; dropped anywhere else the target
+/// does what Windows would do for the real file (move, copy or shortcut).
+#[tauri::command]
+pub async fn drag_item_out<R: Runtime>(app: AppHandle<R>, item_id: String) -> CmdResult<()> {
+    engine::drag_item_out(&app, &item_id).await
+}
+
 #[tauri::command]
 pub async fn get_monitors<R: Runtime>(app: AppHandle<R>) -> CmdResult<Vec<MonitorInfo>> {
     Ok(engine::monitors(&app)

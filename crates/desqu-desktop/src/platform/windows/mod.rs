@@ -29,6 +29,7 @@ enum Command {
     CanHide(Reply<bool>),
     Hide { owner: String, ids: Vec<String>, reply: Reply<HideReport> },
     Show { owner: String, ids: Vec<String>, reply: Reply<()> },
+    ShowAt { owner: String, id: String, screen: Point, reply: Reply<()> },
     ShowAll { owner: String, reply: Reply<()> },
     Hidden { owner: String, reply: Reply<Vec<String>> },
     Shutdown,
@@ -193,6 +194,9 @@ fn worker(rx: Receiver<Command>, path: PathBuf) {
             Command::Show { owner, ids, reply } => {
                 let _ = reply.send(show(&mut state, &owner, &ids));
             }
+            Command::ShowAt { owner, id, screen, reply } => {
+                let _ = reply.send(show_at(&mut state, &owner, &id, screen));
+            }
             Command::ShowAll { owner, reply } => {
                 let _ = reply.send(show_all(&mut state, &owner));
             }
@@ -300,6 +304,25 @@ fn show(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<()> {
     state.save()
 }
 
+/// Half an icon: the cursor ends up over the middle of the icon, not at its corner.
+const ICON_HALF: i32 = 32;
+
+fn show_at(state: &mut State, owner: &str, id: &str, screen: Point) -> DesktopResult<()> {
+    let mut next = state.journal.clone();
+    // Only when this was the last owner does the item come back at all.
+    if next.unpark(owner, id).is_some() {
+        // SAFETY: on the COM thread.
+        let at = unsafe {
+            let lv = shell::listview()?;
+            let p = shell::screen_to_client(lv, screen);
+            Point { x: p.x - ICON_HALF, y: p.y - ICON_HALF }
+        };
+        restore_positions(&[ParkedItem { id: id.to_string(), original: at, owners: Vec::new() }])?;
+    }
+    state.journal = next;
+    state.save()
+}
+
 fn show_all(state: &mut State, owner: &str) -> DesktopResult<()> {
     let mut next = state.journal.clone();
     let restore = next.release_owner(owner);
@@ -366,6 +389,10 @@ impl DesktopLayer for Handle {
 
     fn show(&self, ids: &[String]) -> DesktopResult<()> {
         self.host.call(|reply| Command::Show { owner: self.owner.clone(), ids: ids.to_vec(), reply })
+    }
+
+    fn show_at(&self, id: &str, screen: Point) -> DesktopResult<()> {
+        self.host.call(|reply| Command::ShowAt { owner: self.owner.clone(), id: id.to_string(), screen, reply })
     }
 
     fn show_all(&self) -> DesktopResult<()> {

@@ -10,6 +10,7 @@ permissions = [
     "allow-create-vial-from-menu",
     "allow-dismiss-menu",
     "allow-drop-items",
+    "allow-drag-item-out",
     "allow-get-monitors",
     "allow-desktop-status",
     "allow-module-start",

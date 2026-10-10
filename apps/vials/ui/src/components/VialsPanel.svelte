@@ -22,8 +22,9 @@
 <div class="panel">
   <div class="head">
     <p class="dim">
-      A vial is a window on your desktop that holds shortcuts, apps and folders. Drag it by its title bar or resize
-      its edges right on the desktop; the position is saved. The numbers below are percentages of the monitor.
+      A vial is a box on your desktop that holds shortcuts, files and folders. Make one by dragging a box over empty
+      desktop space, or right-click the desktop and choose “Create vial here”. Drag icons in and out like any desktop
+      icon, and move or resize a vial right on the desktop; the position is saved.
     </p>
     <button onclick={() => vials.addVial()}>+ New vial</button>
   </div>
@@ -84,7 +85,7 @@
       </div>
     </div>
   {:else}
-    <p class="dim">No vials yet. Create one to get started.</p>
+    <p class="dim">No vials yet. Drag a box on your empty desktop to create one.</p>
   {/each}
 </div>
 

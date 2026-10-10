@@ -20,6 +20,15 @@ Vials never moves or deletes files, but items are hidden while a vial holds them
 0g. Drag an icon from the desktop onto the vial. Expect the vial to highlight while you hover and
     the icon to move into the vial (and disappear from the loose desktop) a moment after you drop.
 0h. Drag a file from an Explorer window (not the desktop) onto the vial. Expect nothing to happen.
+0g2. Drag an icon out of the vial onto the empty desktop. Expect the normal Windows drag (icon follows
+    the cursor), the icon to land where you dropped it and to be gone from the vial.
+0g3. Drag an icon from one vial onto another vial. Expect it to move there.
+0g4. Drag an icon out of a vial into an open Explorer folder window. Expect Windows to move the real
+    file (Ctrl copies, Alt makes a shortcut, Esc cancels with nothing changed).
+0g5. A vial has no x buttons, no item counter and no "Empty" text.
+0g6. Start Vials with no config: expect no vial at all. Right-click empty desktop, "Show more
+    options", "Create vial here": expect a vial with its corner at the right-click spot.
+0g7. Quit Vials; right-click the desktop. Expect the "Create vial here" entry to be gone.
 0i. Settings: turn off "Create vials by dragging a box". Expect no menu any more.
 0j. Menu near a screen edge and on a second monitor / at 125-150% scaling: expect it fully visible.
 0k. Check the vial looks right (translucent, rounded, readable over your wallpaper, also with a

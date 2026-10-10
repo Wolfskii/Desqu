@@ -97,6 +97,8 @@ pub fn run() {
                 desqu_shell::current_settings(&handle).close_to_tray
             });
             window::on_startup(app.handle(), &launch, &shell, tray_ok);
+            // `--action=...` from a context menu entry that had to start the app.
+            instance::deliver_launch_action(app.handle(), &launch);
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -119,6 +119,9 @@ pub struct VialsConfig {
     /// Dragging a box on the empty desktop offers to create a vial there.
     #[serde(default = "yes")]
     pub create_on_drag: bool,
+    /// "Create vial here" in the desktop's right-click menu.
+    #[serde(default = "yes")]
+    pub context_menu: bool,
     /// Items the user took out of a vial on purpose: rules never put them back.
     #[serde(default)]
     pub declined: Vec<String>,
@@ -128,18 +131,12 @@ impl Default for VialsConfig {
     fn default() -> Self {
         Self {
             version: CONFIG_VERSION,
-            vials: vec![Vial {
-                id: "vial-1".into(),
-                name: "Vial 1".into(),
-                monitor: None,
-                rect: NormalizedRect { x: 0.02, y: 0.05, width: 0.2, height: 0.35 },
-                items: Vec::new(),
-                collapsed: false,
-            }],
+            vials: Vec::new(),
             rules: Vec::new(),
             auto_sort: true,
             hide_on_desktop: true,
             create_on_drag: true,
+            context_menu: true,
             declined: Vec::new(),
         }
     }
@@ -245,11 +242,27 @@ impl VialsConfig {
         Ok(self)
     }
 
+    /// Early builds created an empty "Vial 1" on first start. Vials are made on the desktop now, so
+    /// that untouched starter (empty, default name and id, no rules) is dropped. Anything the user
+    /// changed or filled is kept.
+    fn without_untouched_starter(mut self) -> Self {
+        let untouched = self.vials.len() == 1
+            && self.rules.is_empty()
+            && self.vials[0].id == "vial-1"
+            && self.vials[0].name == "Vial 1"
+            && self.vials[0].items.is_empty()
+            && self.vials[0].rect == (NormalizedRect { x: 0.02, y: 0.05, width: 0.2, height: 0.35 });
+        if untouched {
+            self.vials.clear();
+        }
+        self
+    }
+
     /// A missing file yields defaults; a corrupt one is an error so the caller can back it up
     /// instead of silently overwriting the user's vials.
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         match std::fs::read_to_string(path) {
-            Ok(text) => serde_json::from_str::<VialsConfig>(&text)?.validated(),
+            Ok(text) => Ok(serde_json::from_str::<VialsConfig>(&text)?.validated()?.without_untouched_starter()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e.into()),
         }
@@ -346,6 +359,29 @@ mod tests {
         assert_eq!(json["value"][0]["type"], "extension");
         assert_eq!(json["value"][1]["value"], "folder");
         assert_eq!(serde_json::from_value::<ItemMatcher>(json).unwrap(), m);
+    }
+
+    fn starter_json(extra: &str) -> String {
+        format!(
+            r#"{{"version":1,"vials":[{{"id":"vial-1","name":"Vial 1","rect":{{"x":0.02,"y":0.05,"width":0.2,"height":0.35}},"items":[{extra}]}}],"rules":[]}}"#
+        )
+    }
+
+    #[test]
+    fn a_fresh_config_has_no_vials() {
+        assert!(VialsConfig::default().vials.is_empty());
+    }
+
+    #[test]
+    fn the_untouched_starter_vial_of_early_builds_is_dropped_but_a_used_one_is_kept() {
+        let dir = std::env::temp_dir().join(format!("desqu-vials-starter-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        std::fs::write(&path, starter_json("")).unwrap();
+        assert!(VialsConfig::load(&path).unwrap().vials.is_empty());
+        std::fs::write(&path, starter_json(r#""C:\\x\\a.txt""#)).unwrap();
+        assert_eq!(VialsConfig::load(&path).unwrap().vials.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

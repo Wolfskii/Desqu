@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 
 use windows::core::{GUID, PCWSTR};
 use windows::Win32::Foundation::ERROR_SUCCESS;
+use windows::Win32::System::Registry::{RegNotifyChangeKeyValue, KEY_NOTIFY, REG_NOTIFY_CHANGE_LAST_SET};
+use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject, INFINITE};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED};
 use windows::Win32::System::Registry::{
     RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
@@ -48,6 +50,29 @@ fn registry_current() -> String {
     }
 }
 
+/// Prints `NOTIFY` whenever the registry change notification the product relies on fires.
+fn watch_notifications(start: Instant) {
+    let path = wide(KEY);
+    let mut key = HKEY::default();
+    // SAFETY: standard registry/event calls on this thread; the handles live for the whole run.
+    unsafe {
+        if RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(path.as_ptr()), None, KEY_NOTIFY, &mut key) != ERROR_SUCCESS {
+            println!("NOTIFY watcher: could not open the key");
+            return;
+        }
+        let event = CreateEventW(None, false, false, None).unwrap();
+        loop {
+            let armed = RegNotifyChangeKeyValue(key, true, REG_NOTIFY_CHANGE_LAST_SET, Some(event), true);
+            if armed != ERROR_SUCCESS {
+                println!("NOTIFY watcher: arming failed {armed:?}");
+                return;
+            }
+            WaitForSingleObject(event, INFINITE);
+            println!("{:>7.2}s NOTIFY (registry change notification fired)", start.elapsed().as_secs_f32());
+        }
+    }
+}
+
 fn main() {
     let seconds: u64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(600);
     // SAFETY: COM on this thread for the whole run.
@@ -57,6 +82,7 @@ fn main() {
         let end = Instant::now() + Duration::from_secs(seconds);
         let mut last = String::new();
         let start = Instant::now();
+        std::thread::spawn(move || watch_notifications(start));
         while Instant::now() < end {
             let hwnd = GetForegroundWindow();
             let mut class = [0u16; 64];

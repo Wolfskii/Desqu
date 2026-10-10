@@ -35,6 +35,36 @@
     unlistenDrop?.();
   });
 
+  // Dragging an icon out starts the standard Windows drag (the icon follows the cursor, targets see a
+  // real file), so it can be dropped on the desktop, another vial or a folder like any desktop icon.
+  const DRAG_THRESHOLD = 5;
+  let press: { id: string; x: number; y: number } | null = null;
+  let dragging = false;
+
+  function beginPress(e: PointerEvent, id: string, missing: boolean) {
+    if (e.button !== 0 || missing) return;
+    press = { id, x: e.clientX, y: e.clientY };
+  }
+
+  function movePress(e: PointerEvent) {
+    if (!press || dragging || !(e.buttons & 1)) return;
+    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_THRESHOLD) return;
+    const id = press.id;
+    press = null;
+    dragging = true;
+    api
+      .dragItemOut(id)
+      .catch((err) => (vials.error = String(err)))
+      .finally(() => {
+        dragging = false;
+        void vials.refresh();
+      });
+  }
+
+  function endPress() {
+    press = null;
+  }
+
   function toggleCollapsed() {
     if (!vial) return;
     vial.collapsed = !vial.collapsed;
@@ -45,7 +75,6 @@
 <div class="vial" class:dropping>
   <header data-tauri-drag-region>
     <span class="title" data-tauri-drag-region>{vial?.name ?? "Vial"}</span>
-    <span class="count dim" data-tauri-drag-region>{items.length}</span>
     <button
       class="chevron"
       title={vial?.collapsed ? "Expand" : "Collapse"}
@@ -58,8 +87,6 @@
     <div class="body">
       {#if !vial}
         <p class="dim msg">This vial no longer exists.</p>
-      {:else if items.length === 0}
-        <p class="dim msg">Empty. Drag icons from the desktop into this vial.</p>
       {:else}
         <div class="grid">
           {#each items as item (item.id)}
@@ -68,12 +95,15 @@
                 class="open"
                 ondblclick={() => !item.missing && vials.open(item.id)}
                 onkeydown={(e) => e.key === "Enter" && !item.missing && vials.open(item.id)}
+                onpointerdown={(e) => beginPress(e, item.id, item.missing)}
+                onpointermove={(e) => movePress(e)}
+                onpointerup={endPress}
+                onpointercancel={endPress}
                 aria-label="Open {item.name}"
               >
                 <ItemIcon id={item.id} size={40} dim={item.missing} />
                 <span class="label">{item.name}</span>
               </button>
-              <button class="remove" title="Take out of this vial" aria-label="Remove {item.name} from the vial" onclick={() => vials.assign(item.id, null)}>×</button>
             </div>
           {/each}
         </div>
@@ -96,7 +126,7 @@
     height: 100vh;
     border: 1px solid var(--border-strong);
     border-radius: 8px;
-    background: rgba(24, 27, 32, 0.78);
+    background: rgba(24, 27, 32, 0.9);
     overflow: hidden;
   }
   .vial.dropping {
@@ -120,9 +150,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .count {
-    font-size: 12px;
-  }
   .chevron {
     width: 26px;
     padding: 0;
@@ -134,9 +161,6 @@
     overflow: auto;
     padding: 8px;
     min-height: 0;
-  }
-  .msg {
-    margin: 6px;
   }
   .grid {
     display: grid;
@@ -174,20 +198,5 @@
   }
   .item.missing .label {
     opacity: 0.5;
-  }
-  .remove {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    line-height: 1;
-    opacity: 0;
-    border-radius: 50%;
-  }
-  .item:hover .remove,
-  .remove:focus-visible {
-    opacity: 1;
   }
 </style>

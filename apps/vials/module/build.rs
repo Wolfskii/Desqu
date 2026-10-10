@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     "create_vial_from_menu",
     "dismiss_menu",
     "drop_items",
+    "drag_item_out",
     "get_monitors",
     "desktop_status",
     "module_start",

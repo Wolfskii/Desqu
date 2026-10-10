@@ -46,15 +46,22 @@ use ::windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use ::windows::Win32::System::Threading::GetCurrentThreadId;
 use ::windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetClassNameW, GetMessageW, GetParent, PostThreadMessageW, SetWindowsHookExW,
-    UnhookWindowsHookEx, WindowFromPoint, MSG, MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_QUIT,
+    UnhookWindowsHookEx, WindowFromPoint, MSG, MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_QUIT, WM_RBUTTONDOWN,
 };
 
-/// Called with the press and release points of a drag that started on the desktop icon view.
-pub(crate) type MarqueeHandler = Box<dyn Fn((i32, i32), (i32, i32)) + Send>;
+/// Mouse gestures on the desktop icon view.
+pub(crate) enum MouseEvent {
+    /// A drag from the press point to the release point.
+    Marquee((i32, i32), (i32, i32)),
+    /// The right button went down here (the desktop's context menu is about to open).
+    ContextDown((i32, i32)),
+}
+
+pub(crate) type MouseHandler = Box<dyn Fn(MouseEvent) + Send>;
 
 struct HookState {
     down: Option<(i32, i32)>,
-    on_marquee: MarqueeHandler,
+    on_event: MouseHandler,
 }
 
 thread_local! {
@@ -94,10 +101,19 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
                     }
                 });
             }
+            WM_RBUTTONDOWN => {
+                if on_desktop_view(pt.x, pt.y) {
+                    HOOK.with(|h| {
+                        if let Some(state) = h.borrow_mut().as_ref() {
+                            (state.on_event)(MouseEvent::ContextDown((pt.x, pt.y)));
+                        }
+                    });
+                }
+            }
             WM_LBUTTONUP => HOOK.with(|h| {
                 if let Some(state) = h.borrow_mut().as_mut() {
                     if let Some(down) = state.down.take() {
-                        (state.on_marquee)(down, (pt.x, pt.y));
+                        (state.on_event)(MouseEvent::Marquee(down, (pt.x, pt.y)));
                     }
                 }
             }),
@@ -116,12 +132,12 @@ pub(crate) struct MouseWatcher {
 }
 
 impl MouseWatcher {
-    pub(crate) fn start(on_marquee: MarqueeHandler) -> Result<Self, String> {
+    pub(crate) fn start(on_event: MouseHandler) -> Result<Self, String> {
         let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
         let thread = std::thread::Builder::new()
             .name("vials-mouse-hook".into())
             .spawn(move || {
-                HOOK.with(|h| *h.borrow_mut() = Some(HookState { down: None, on_marquee }));
+                HOOK.with(|h| *h.borrow_mut() = Some(HookState { down: None, on_event }));
                 // SAFETY: the hook is removed below on this same thread, before it ends.
                 unsafe {
                     let module = GetModuleHandleW(None).unwrap_or_default();
@@ -155,4 +171,198 @@ impl Drop for MouseWatcher {
             let _ = t.join();
         }
     }
+}
+
+// --------------------------------------------------------------- the desktop's right-click menu
+
+use ::windows::core::{HSTRING, PCWSTR};
+use ::windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+use ::windows::Win32::System::Registry::{
+    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_WRITE,
+    REG_OPTION_NON_VOLATILE, REG_SZ,
+};
+
+/// `DesktopBackground` is the desktop only (not Explorer folder windows). Per user, so no admin.
+const VERB_KEY: &str = r"Software\Classes\DesktopBackground\Shell\DesquVials";
+
+fn set_string(key: HKEY, name: Option<&str>, value: &str) -> Result<(), String> {
+    let name = name.map(HSTRING::from);
+    let data: Vec<u8> = value.encode_utf16().chain(Some(0)).flat_map(u16::to_le_bytes).collect();
+    // SAFETY: `key` is open for writing; the buffers outlive the call.
+    let status = unsafe {
+        RegSetValueExW(
+            key,
+            name.as_ref().map_or(PCWSTR::null(), |n| PCWSTR(n.as_ptr())),
+            None,
+            REG_SZ,
+            Some(&data),
+        )
+    };
+    status.ok().map_err(|e| e.to_string())
+}
+
+fn create_key(path: &str) -> Result<HKEY, String> {
+    let path = HSTRING::from(path);
+    let mut key = HKEY::default();
+    // SAFETY: creates or opens a key under the current user's hive.
+    unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(path.as_ptr()),
+            None,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_WRITE,
+            None,
+            &mut key,
+            None,
+        )
+    }
+    .ok()
+    .map_err(|e| e.to_string())?;
+    Ok(key)
+}
+
+/// Adds (`Some(exe)`) or removes (`None`) a "Create vial here" entry in the desktop's right-click
+/// menu. It runs `exe --action=create-vial`, which the running app turns into a vial at the spot
+/// that was right-clicked. On Windows 11 the entry is under "Show more options".
+pub(crate) fn set_context_menu(exe: Option<&str>) -> Result<(), String> {
+    match exe {
+        Some(exe) => {
+            let key = create_key(VERB_KEY)?;
+            let result = set_string(key, None, "Create vial here")
+                .and_then(|()| set_string(key, Some("Icon"), &format!("\"{exe}\",0")));
+            // SAFETY: closes the key opened above.
+            unsafe {
+                let _ = RegCloseKey(key);
+            }
+            result?;
+            let command = create_key(&format!(r"{VERB_KEY}\command"))?;
+            let result = set_string(command, None, &format!("\"{exe}\" --action=create-vial"));
+            // SAFETY: closes the key opened above.
+            unsafe {
+                let _ = RegCloseKey(command);
+            }
+            result
+        }
+        None => {
+            let path = HSTRING::from(VERB_KEY);
+            // SAFETY: deletes only our own verb key and its `command` subkey.
+            let status = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, PCWSTR(path.as_ptr())) };
+            if status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND {
+                Ok(())
+            } else {
+                Err(format!("could not remove the menu entry: {status:?}"))
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------- dragging an item out (OLE)
+
+use ::windows::core::{implement, BOOL, HRESULT};
+use ::windows::Win32::Foundation::{S_OK, SIZE};
+use ::windows::Win32::Graphics::Gdi::DeleteObject;
+use ::windows::Win32::System::Com::{CoCreateInstance, IDataObject, CLSCTX_INPROC_SERVER};
+use ::windows::Win32::System::Ole::{
+    DoDragDrop, IDropSource, IDropSource_Impl, OleInitialize, DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_LINK,
+    DROPEFFECT_MOVE,
+};
+use ::windows::Win32::System::SystemServices::{MK_LBUTTON, MODIFIERKEYS_FLAGS};
+use ::windows::Win32::UI::Shell::{
+    IDragSourceHelper, IShellItem, IShellItemImageFactory, SHCreateItemFromParsingName,
+    BHID_DataObject, SHDRAGIMAGE, SIIGBF_ICONONLY,
+};
+use ::windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use ::windows::core::Interface;
+
+/// CLSID_DragDropHelper: the shell's drag image helper.
+const DRAG_DROP_HELPER: ::windows::core::GUID = ::windows::core::GUID::from_u128(0x4657278a_411b_11d2_839a_00c04fd918d0);
+
+const DRAGDROP_S_DROP: HRESULT = HRESULT(0x0004_0100);
+const DRAGDROP_S_CANCEL: HRESULT = HRESULT(0x0004_0101);
+const DRAGDROP_S_USEDEFAULTCURSORS: HRESULT = HRESULT(0x0004_0102);
+
+/// The mouse button and Esc rules of a native drag: let go to drop, Esc to cancel.
+#[implement(IDropSource)]
+struct DropSource;
+
+impl IDropSource_Impl for DropSource_Impl {
+    fn QueryContinueDrag(&self, escape_pressed: BOOL, key_state: MODIFIERKEYS_FLAGS) -> HRESULT {
+        if escape_pressed.as_bool() {
+            DRAGDROP_S_CANCEL
+        } else if key_state.0 & MK_LBUTTON.0 == 0 {
+            DRAGDROP_S_DROP
+        } else {
+            S_OK
+        }
+    }
+
+    fn GiveFeedback(&self, _effect: DROPEFFECT) -> HRESULT {
+        DRAGDROP_S_USEDEFAULTCURSORS
+    }
+}
+
+/// How a drag ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DragEnd {
+    Cancelled,
+    /// Dropped at this screen position and `moved_or_copied` tells whether a target accepted it.
+    Dropped { at: (i32, i32), accepted: bool },
+}
+
+/// Starts the standard Windows drag of one file or folder (its icon follows the cursor, targets
+/// see a real shell item, Ctrl/Shift/Alt choose copy/move/link) and returns when it ends. Must run
+/// on the thread that owns the window the drag started from, because the drag runs a modal loop.
+pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
+    // SAFETY: COM/OLE calls on the calling (UI) thread; all interface pointers stay alive across
+    // the drag, and the bitmap handle is released afterwards.
+    unsafe {
+        let _ = OleInitialize(None);
+        let item: IShellItem =
+            SHCreateItemFromParsingName(&HSTRING::from(path), None).map_err(|e| e.to_string())?;
+        let data: IDataObject = item.BindToHandler(None, &BHID_DataObject).map_err(|e| e.to_string())?;
+
+        // The ghost icon under the cursor, like Explorer shows. Optional: a drag without it still works.
+        let helper = CoCreateInstance::<_, IDragSourceHelper>(&DRAG_DROP_HELPER, None, CLSCTX_INPROC_SERVER).ok();
+        let mut bitmap = None;
+        if let (Some(helper), Ok(factory)) = (&helper, item.cast::<IShellItemImageFactory>()) {
+            if let Ok(hbmp) = factory.GetImage(SIZE { cx: 48, cy: 48 }, SIIGBF_ICONONLY) {
+                let image = SHDRAGIMAGE {
+                    sizeDragImage: SIZE { cx: 48, cy: 48 },
+                    ptOffset: POINT { x: 24, y: 24 },
+                    hbmpDragImage: hbmp,
+                    // No colour key: the bitmap carries its own alpha.
+                    crColorKey: ::windows::Win32::Foundation::COLORREF(0xFFFF_FFFF),
+                };
+                if helper.InitializeFromBitmap(&image, &data).is_ok() {
+                    bitmap = Some(hbmp);
+                }
+            }
+        }
+
+        let source: IDropSource = DropSource.into();
+        let mut effect = DROPEFFECT(0);
+        let result = DoDragDrop(&data, &source, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &mut effect);
+        let mut at = POINT::default();
+        let _ = GetCursorPos(&mut at);
+        if let Some(hbmp) = bitmap {
+            // The drag helper released its copy when the drag ended; this handle is ours.
+            let _ = DeleteObject(hbmp.into());
+        }
+        drop(helper);
+
+        if result == DRAGDROP_S_DROP {
+            Ok(DragEnd::Dropped { at: (at.x, at.y), accepted: effect.0 != 0 })
+        } else if result == DRAGDROP_S_CANCEL || result.is_ok() {
+            Ok(DragEnd::Cancelled)
+        } else {
+            Err(format!("the drag failed: {result:?}"))
+        }
+    }
+}
+
+/// Whether the screen point is on the desktop's icon view (not on a window above it).
+pub(crate) fn is_over_desktop(x: i32, y: i32) -> bool {
+    on_desktop_view(x, y)
 }

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use desqu_shell::module::{Module, ModuleStatus};
 use tauri::plugin::{Builder, TauriPlugin};
-use tauri::{AppHandle, Manager, RunEvent, Runtime};
+use tauri::{AppHandle, Listener, Manager, RunEvent, Runtime};
 
 use crate::commands;
 use crate::engine::{self, ModuleState};
@@ -33,6 +33,7 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             commands::create_vial_from_menu,
             commands::dismiss_menu,
             commands::drop_items,
+            commands::drag_item_out,
             commands::get_monitors,
             commands::desktop_status,
             commands::module_start,
@@ -44,6 +45,18 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
                 options.config_dir.join("config.json"),
                 options.data_dir.join("desktop-journal.json"),
             ));
+            // `<exe> --action=create-vial` (the desktop right-click entry) arrives here.
+            let handle = app.clone();
+            app.listen(desqu_shell::instance::ACTION_EVENT, move |event| {
+                if event.payload().trim_matches('"') == "create-vial" {
+                    let handle = handle.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = engine::create_vial_at_context(&handle) {
+                            tracing::debug!("create-vial action ignored: {e}");
+                        }
+                    });
+                }
+            });
             if options.start_immediately {
                 // Not fatal: another process may own the module, and the UI shows that state.
                 if let Err(e) = engine::start(app) {

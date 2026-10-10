@@ -7,7 +7,7 @@ use windows::core::{w, Interface, BOOL, GUID, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
-    BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+    ScreenToClient, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
 };
 use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, IServiceProvider, CLSCTX_ALL};
 use windows::Win32::System::Variant::VARIANT;
@@ -125,6 +125,13 @@ pub(super) unsafe fn listview() -> DesktopResult<HWND> {
 }
 
 /// Moves one item (by its index in the view). Negative coordinates park it off-screen.
+/// A point in screen pixels as the desktop list view's client coordinates (what item positions use).
+pub(super) unsafe fn screen_to_client(lv: HWND, p: Point) -> Point {
+    let mut pt = windows::Win32::Foundation::POINT { x: p.x, y: p.y };
+    let _ = ScreenToClient(lv, &mut pt);
+    Point { x: pt.x, y: pt.y }
+}
+
 pub(super) unsafe fn set_position(lv: HWND, index: i32, p: Point) -> DesktopResult<()> {
     let pack = |v: i32| v.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16 as u16 as u32;
     let lparam = LPARAM(((pack(p.y) << 16) | pack(p.x)) as isize);

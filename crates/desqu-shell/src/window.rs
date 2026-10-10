@@ -20,7 +20,7 @@ pub enum CloseAction {
 }
 
 pub fn should_show_on_startup(launch: &LaunchArgs, settings: &ShellSettings, tray_ok: bool) -> bool {
-    let wants_hidden = launch.autostart || settings.start_minimized;
+    let wants_hidden = launch.autostart || launch.action.is_some() || settings.start_minimized;
     !(wants_hidden && tray_ok)
 }
 
@@ -84,7 +84,7 @@ mod tests {
     use super::*;
 
     fn launch(autostart: bool) -> LaunchArgs {
-        LaunchArgs { autostart, quit: false }
+        LaunchArgs { autostart, ..Default::default() }
     }
 
     fn settings(start_minimized: bool) -> ShellSettings {

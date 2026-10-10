@@ -3,7 +3,9 @@
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
-pub(crate) use self::windows::{mark_as_tool_window, MouseWatcher};
+pub(crate) use self::windows::{
+    drag_item, is_over_desktop, mark_as_tool_window, set_context_menu, DragEnd, MouseEvent, MouseWatcher,
+};
 
 #[cfg(not(windows))]
 pub(crate) fn mark_as_tool_window(_hwnd: isize) -> Result<(), String> {
@@ -16,7 +18,38 @@ pub(crate) struct MouseWatcher;
 
 #[cfg(not(windows))]
 impl MouseWatcher {
-    pub(crate) fn start(_on_marquee: Box<dyn Fn((i32, i32), (i32, i32)) + Send>) -> Result<Self, String> {
+    pub(crate) fn start(_on_event: MouseHandler) -> Result<Self, String> {
         Err("Vials is only available on Windows".into())
     }
+}
+
+#[cfg(not(windows))]
+pub(crate) enum MouseEvent {
+    Marquee((i32, i32), (i32, i32)),
+    ContextDown((i32, i32)),
+}
+
+#[cfg(not(windows))]
+pub(crate) type MouseHandler = Box<dyn Fn(MouseEvent) + Send>;
+
+#[cfg(not(windows))]
+pub(crate) fn set_context_menu(_exe: Option<&str>) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DragEnd {
+    Cancelled,
+    Dropped { at: (i32, i32), accepted: bool },
+}
+
+#[cfg(not(windows))]
+pub(crate) fn drag_item(_path: &str) -> Result<DragEnd, String> {
+    Err("Vials is only available on Windows".into())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn is_over_desktop(_x: i32, _y: i32) -> bool {
+    false
 }

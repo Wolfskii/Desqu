@@ -13,6 +13,7 @@ Everything the Vials UI needs
 - `allow-create-vial-from-menu`
 - `allow-dismiss-menu`
 - `allow-drop-items`
+- `allow-drag-item-out`
 - `allow-get-monitors`
 - `allow-desktop-status`
 - `allow-module-start`
@@ -128,6 +129,32 @@ Enables the dismiss_menu command without any pre-configured scope.
 <td>
 
 Denies the dismiss_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-drag-item-out`
+
+</td>
+<td>
+
+Enables the drag_item_out command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-drag-item-out`
+
+</td>
+<td>
+
+Denies the drag_item_out command without any pre-configured scope.
 
 </td>
 </tr>

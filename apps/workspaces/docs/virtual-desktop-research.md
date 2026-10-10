@@ -35,13 +35,14 @@ hidden on the others. That needs only questions 1 and 2, which work without any 
 
 1. **Registry only:** desktop ids and names from `VirtualDesktopIDs` and `Desktops\{GUID}\Name`,
    the current desktop from `CurrentVirtualDesktop`. Hiding goes through `desqu-desktop`.
-2. **Switch detection is event-driven.** The current desktop is the desktop of the foreground window
-   (public `IVirtualDesktopManager::GetWindowDesktopId`), re-checked on every foreground change
-   (`SetWinEventHook`) and on `RegNotifyChangeKeyValue` signals; the registry value
-   `CurrentVirtualDesktop` is only the fallback because it is not guaranteed to track the visible
-   desktop (`SessionInfo\<n>\VirtualDesktops` has no such value on this build). No polling. Diagnostic:
-   `cargo run -p desqu-desktop --example vdwatch` prints both while you switch. If the value cannot be read (unknown
-   layout on another build) nothing is hidden and every item is shown, never guessed.
+2. **Switch detection is event-driven.** The current desktop is `CurrentVirtualDesktop`; a diagnostic run
+   (`cargo run -p desqu-desktop --example vdwatch`, about 18 minutes, many switches, build 26300) showed
+   the value changing together with the desktop on screen. It is re-read on `RegNotifyChangeKeyValue`
+   signals and on every foreground change (`SetWinEventHook`, which also covers a missing or lagging
+   registry value); the foreground window's desktop (public `IVirtualDesktopManager`) is the fallback
+   when the registry value is missing. During a switch the foreground window is briefly the taskbar or
+   Progman, which the shell reports as `TYPE_E_ELEMENTNOTFOUND`, and pinned windows report the all-zero
+   GUID; neither is treated as a desktop. No polling.
 3. **Apps and windows are out of scope.** Answers 3 to 6 above are kept as research: moving other
    apps' windows is refused by Windows (`E_ACCESSDENIED`), so Workspaces does not try, and it does
    not save or relaunch apps or folders.

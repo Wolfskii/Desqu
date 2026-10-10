@@ -24,7 +24,7 @@ use crate::core::gesture;
 use crate::core::layout::{self, MonitorRef};
 use crate::core::model::{PixelRect, Vial, VialsConfig};
 use crate::core::rules;
-use crate::platform::{self, MouseWatcher};
+use crate::platform::{self, MouseEvent, MouseWatcher};
 
 /// Id of the cross-process module lock.
 pub const MODULE_ID: &str = "vials";
@@ -51,6 +51,8 @@ pub(crate) enum Job {
     WindowChanged,
     /// The user dragged a box (screen pixels: start, end) over the desktop's icon view.
     Marquee((i32, i32), (i32, i32)),
+    /// The right button went down on the desktop here: remembered for "Create vial here".
+    ContextDown((i32, i32)),
     Stop,
 }
 
@@ -71,6 +73,8 @@ pub struct ModuleState {
     owned_elsewhere: AtomicBool,
     /// The box the user dragged, waiting for them to pick "create a vial" in the popup.
     pending: Mutex<Option<PixelRect>>,
+    /// Where the desktop was last right-clicked (screen pixels).
+    context_point: Mutex<Option<(i32, i32)>>,
     problem: Mutex<Option<String>>,
     icons: Mutex<HashMap<String, String>>,
 }
@@ -98,6 +102,7 @@ impl ModuleState {
             running: Mutex::new(None),
             owned_elsewhere: AtomicBool::new(false),
             pending: Mutex::new(None),
+            context_point: Mutex::new(None),
             problem: Mutex::new(None),
             icons: Mutex::new(HashMap::new()),
         }
@@ -113,6 +118,9 @@ impl ModuleState {
         config.save(&self.config_path).map_err(|e| e.to_string())?;
         *lock(&self.config) = config.clone();
         self.request_reconcile();
+        if self.is_running() {
+            apply_context_menu(config.context_menu);
+        }
         Ok(config)
     }
 
@@ -208,8 +216,11 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     // Not fatal: without the hook everything works except creating vials by dragging a box.
     let mouse = {
         let sink = jobs.clone();
-        MouseWatcher::start(Box::new(move |down, up| {
-            let _ = sink.send(Job::Marquee(down, up));
+        MouseWatcher::start(Box::new(move |event| {
+            let _ = sink.send(match event {
+                MouseEvent::Marquee(down, up) => Job::Marquee(down, up),
+                MouseEvent::ContextDown(at) => Job::ContextDown(at),
+            });
         }))
         .map_err(|e| tracing::warn!("could not watch the desktop for dragged boxes: {e}"))
         .ok()
@@ -225,6 +236,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             .map_err(|e| e.to_string())?
     };
     let _ = jobs.send(Job::Reconcile);
+    apply_context_menu(state.config().context_menu);
     tracing::info!(config = %state.config_path.display(), "starting Vials");
     *running = Some(Running {
         layer,
@@ -253,6 +265,7 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>) {
     }
     close_vial_windows(app, &HashSet::new());
     close_menu(app);
+    apply_context_menu(false);
     if let Err(e) = running.layer.show_all() {
         tracing::warn!("could not restore hidden desktop items: {e}");
     }
@@ -291,6 +304,11 @@ fn worker<R: Runtime>(app: AppHandle<R>, rx: Receiver<Job>, jobs: Sender<Job>, l
             }
             Ok(Job::WindowChanged) => moved = Some(now + MOVE_DEBOUNCE),
             Ok(Job::Marquee(down, up)) => offer_new_vial(&app, down, up),
+            Ok(Job::ContextDown(at)) => {
+                if let Some(state) = app.try_state::<ModuleState>() {
+                    *lock(&state.context_point) = Some(at);
+                }
+            }
             Err(RecvTimeoutError::Timeout) => {
                 if later.is_some_and(|t| t <= now) {
                     later = None;
@@ -601,8 +619,36 @@ pub fn create_vial_from_pending<R: Runtime>(app: &AppHandle<R>) -> Result<String
     let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
     let rect = lock(&state.pending).take().ok_or("there is no box to make a vial from")?;
     close_menu(app);
+    create_vial_in(app, rect)
+}
+
+/// Default size of a vial made from the right-click menu, in logical pixels.
+const CONTEXT_VIAL_SIZE: (f64, f64) = (380.0, 260.0);
+
+/// "Create vial here" from the desktop's right-click menu: a vial with its top-left corner where
+/// the desktop was right-clicked.
+pub fn create_vial_at_context<R: Runtime>(app: &AppHandle<R>) -> Result<String, String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    if !state.is_running() {
+        return Err("Vials is off".into());
+    }
     let monitors = monitor_refs(app);
-    let monitor = layout::monitor_containing(&rect, &monitors).ok_or("the box is not on a monitor")?;
+    let primary = monitors.iter().find(|m| m.primary).or(monitors.first()).ok_or("no monitor")?;
+    let point = lock(&state.context_point).take().unwrap_or((
+        (primary.bounds.left + primary.bounds.right) / 2,
+        (primary.bounds.top + primary.bounds.bottom) / 2,
+    ));
+    let at = PixelRect { left: point.0, top: point.1, right: point.0 + 1, bottom: point.1 + 1 };
+    let monitor = layout::monitor_containing(&at, &monitors).unwrap_or(primary);
+    let size = ((CONTEXT_VIAL_SIZE.0 * monitor.scale).round() as i32, (CONTEXT_VIAL_SIZE.1 * monitor.scale).round() as i32);
+    let (x, y) = gesture::popup_position(point, size, &monitor.bounds);
+    create_vial_in(app, PixelRect { left: x, top: y, right: x + size.0, bottom: y + size.1 })
+}
+
+fn create_vial_in<R: Runtime>(app: &AppHandle<R>, rect: PixelRect) -> Result<String, String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    let monitors = monitor_refs(app);
+    let monitor = layout::monitor_containing(&rect, &monitors).ok_or("that spot is not on a monitor")?;
     let normalized = layout::to_normalized(&rect, &monitor.bounds);
 
     let mut cfg = state.config();
@@ -618,4 +664,48 @@ pub fn create_vial_from_pending<R: Runtime>(app: &AppHandle<R>) -> Result<String
     });
     state.set_config(cfg)?;
     Ok(id)
+}
+
+/// Adds or removes the "Create vial here" entry of the desktop's right-click menu. It points at the
+/// running executable, so it is only present while Vials runs.
+fn apply_context_menu(enabled: bool) {
+    let exe = enabled.then(|| std::env::current_exe().ok()).flatten();
+    let result = platform::set_context_menu(exe.as_deref().and_then(|p| p.to_str()));
+    if let Err(e) = result {
+        tracing::warn!("could not update the desktop right-click menu: {e}");
+    }
+}
+
+// --------------------------------------------------------------------- dragging an item out
+
+/// Runs the native drag on the main (UI) thread, waits for it to end and settles the result.
+pub async fn drag_item_out<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Result<(), String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    if state.config().vial_of(item_id).is_none() {
+        return Err(format!("{item_id} is not in a vial"));
+    }
+    let path = item_id.to_string();
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(platform::drag_item(&path));
+    })
+    .map_err(|e| e.to_string())?;
+    // The drag is modal on the main thread: wait for it without blocking this async worker's peers.
+    let end = tauri::async_runtime::spawn_blocking(move || rx.recv().map_err(|e| e.to_string())?)
+        .await
+        .map_err(|e| e.to_string())??;
+
+    if let platform::DragEnd::Dropped { at, accepted: true } = end {
+        if platform::is_over_desktop(at.0, at.1) {
+            // Back on the desktop: it lands where it was dropped and stops belonging to the vial.
+            let layer = state.layer()?;
+            if let Err(e) = layer.show_at(item_id, desqu_desktop::Point { x: at.0, y: at.1 }) {
+                tracing::warn!("could not place the item where it was dropped: {e}");
+            }
+            let mut cfg = state.config();
+            cfg.assign(item_id, None);
+            state.set_config(cfg)?;
+        }
+    }
+    Ok(())
 }

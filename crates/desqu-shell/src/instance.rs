@@ -10,15 +10,19 @@ use tauri::{AppHandle, Runtime};
 use crate::args::{self, LaunchArgs};
 use crate::window;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SecondLaunch {
     Show,
     Quit,
+    /// Hand the named action to the running modules; do not touch the window.
+    Action(String),
 }
 
 pub fn decide(args: &LaunchArgs) -> SecondLaunch {
     if args.quit {
         SecondLaunch::Quit
+    } else if let Some(name) = &args.action {
+        SecondLaunch::Action(name.clone())
     } else {
         SecondLaunch::Show
     }
@@ -29,8 +33,25 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
         match decide(&args::parse(argv)) {
             SecondLaunch::Quit => app.exit(0),
             SecondLaunch::Show => window::show_main(app),
+            SecondLaunch::Action(name) => deliver_action(app, &name),
         }
     })
+}
+
+/// Event a module can listen to for `--action=<name>` launches; the payload is the name.
+pub const ACTION_EVENT: &str = "shell://action";
+
+fn deliver_action<R: Runtime>(app: &AppHandle<R>, name: &str) {
+    use tauri::Emitter;
+    let _ = app.emit(ACTION_EVENT, name);
+}
+
+/// For the first instance, at the end of `setup` (after modules started): hands a `--action=<name>`
+/// the app was started with to the modules.
+pub fn deliver_launch_action<R: Runtime>(app: &AppHandle<R>, launch: &LaunchArgs) {
+    if let Some(name) = &launch.action {
+        deliver_action(app, name);
+    }
 }
 
 /// For the first instance: `--quit` with nothing to quit means exit before any module starts.
@@ -54,13 +75,19 @@ mod tests {
 
     #[test]
     fn autostart_second_launch_still_shows() {
-        let a = LaunchArgs { autostart: true, quit: false };
+        let a = LaunchArgs { autostart: true, ..Default::default() };
         assert_eq!(decide(&a), SecondLaunch::Show);
     }
 
     #[test]
     fn quit_wins() {
-        let a = LaunchArgs { autostart: true, quit: true };
+        let a = LaunchArgs { autostart: true, quit: true, action: Some("x".into()) };
         assert_eq!(decide(&a), SecondLaunch::Quit);
+    }
+
+    #[test]
+    fn an_action_is_forwarded_without_showing_the_window() {
+        let a = LaunchArgs { action: Some("create-vial".into()), ..Default::default() };
+        assert_eq!(decide(&a), SecondLaunch::Action("create-vial".into()));
     }
 }

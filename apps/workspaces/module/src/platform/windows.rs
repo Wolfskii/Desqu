@@ -104,11 +104,11 @@ pub(super) fn desktops() -> Result<Desktops, String> {
     let from_registry = read_value("", "CurrentVirtualDesktop")
         .and_then(|b| guid_from_registry_bytes(&b))
         .filter(|c| list.iter().any(|d| &d.id == c));
-    // What is on screen wins over what the registry says: the window you are working in lives on
-    // the current desktop (the public IVirtualDesktopManager answers for it).
-    let current = foreground_desktop()
-        .filter(|c| list.iter().any(|d| &d.id == c))
-        .or(from_registry);
+    // The registry value follows the desktop on screen within a fraction of a second (observed with
+    // `vdwatch` on build 26300). If it is missing, the desktop of the window you are working in is
+    // the next best answer (public IVirtualDesktopManager).
+    let current =
+        from_registry.or_else(|| foreground_desktop().filter(|c| list.iter().any(|d| &d.id == c)));
     Ok(Desktops { list, current })
 }
 

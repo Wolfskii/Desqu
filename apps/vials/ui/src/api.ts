@@ -16,6 +16,7 @@ export const api = {
     createVialFromMenu: () => invoke<string>(`${PLUGIN}|create_vial_from_menu`),
     dismissMenu: () => invoke<void>(`${PLUGIN}|dismiss_menu`),
     dropItems: (vialId: string, paths: string[]) => invoke<VialsConfig>(`${PLUGIN}|drop_items`, { vialId, paths }),
+    dragItemOut: (itemId: string) => invoke<void>(`${PLUGIN}|drag_item_out`, { itemId }),
     getMonitors: () => invoke<MonitorInfo[]>(`${PLUGIN}|get_monitors`),
     desktopStatus: () => invoke<DesktopStatus>(`${PLUGIN}|desktop_status`),
     moduleStart: () => invoke<void>(`${PLUGIN}|module_start`),

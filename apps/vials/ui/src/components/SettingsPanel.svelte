@@ -38,6 +38,21 @@
       />
     </SettingsRow>
     <SettingsRow
+      label="Add “Create vial here” to the desktop right-click menu"
+      description="Right-click empty desktop space and choose it to make a vial there. On Windows 11 it is under “Show more options”. The entry exists only while Vials is running."
+    >
+      <Switch
+        checked={vials.config?.contextMenu ?? true}
+        label="Add Create vial here to the desktop right-click menu"
+        disabled={!vials.config}
+        onchange={(next) => {
+          if (!vials.config) return;
+          vials.config.contextMenu = next;
+          vials.scheduleSave(true);
+        }}
+      />
+    </SettingsRow>
+    <SettingsRow
       label="Hide items on the desktop"
       description="Items in a vial are moved out of sight on the desktop (never deleted or changed) and put back when you take them out of the vial, turn Vials off, or quit. If Vials crashes, they are restored the next time it starts."
     >
