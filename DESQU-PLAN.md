@@ -488,7 +488,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
 - **Done when:**
   - [ ] Both root and app-folder invocations work.
 
-#### P1.6 Parameterize release scripts — Status: ⬜
+#### P1.6 Parameterize release scripts — Status: 🟡
 - **Depends on:** P1.2
 - **Files:** `scripts/publish-artifacts.ps1`, rename `scripts/stop-screenbound.ps1` → `scripts/stop-app.ps1` (`git mv`)
 - **Do:**
@@ -1316,3 +1316,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P1.3 — ✅ — Root package.json (desqu-repo, workspaces). App renamed to screenbound-app. npm install OK; npm run check -w screenbound-app: 189 files, 0 errors. node_modules only at root.
 - 2026-10-10 — P1.4 — ✅ — .gitignore replaced with P1.4 content (adds /target; **/build and **/.svelte-kit now match in apps). Found while doing P1.2: git add -A had staged 3278 files from root target/ into a commit; undone (soft reset, unpushed) before commit f64f9d0.
 - 2026-10-10 — P1.5 — ✅ — apps/screenbound/Taskfile.yml holds all screenbound tasks (paths adapted). Root Taskfile includes it (screenbound:*) + install/ci. Verified: task --list; task screenbound:ci and (cd apps/screenbound) task ci both pass. Note: root no longer has dev/release/deploy; use screenbound:dev etc. release task references scripts/stop-app.ps1 and publish-artifacts.ps1 -App, which P1.6 creates (release not yet verified).
+- 2026-10-10 — P1.6 — ✅ — stop-screenbound.ps1 → scripts/stop-app.ps1 (-Names). publish-artifacts.ps1 -App <name> (reads apps/<name>, root target/, writes dist/<name>/ and clears only that folder). task screenbound:release OK: dist/screenbound/ names identical to P0.5, sizes within 0.1% (setup 2,506,870 B; msi 3,813,376 B; portable 10,522,624 B). Old root dist/ files from baseline left in place (ignored build output; delete when owner agrees).
