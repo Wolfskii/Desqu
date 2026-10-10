@@ -37,8 +37,10 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 7. If you discover the plan is wrong, fix the plan in this file (and note it in the log) rather than
    silently doing something else.
 8. Never delete user data folders, registry entries or git branches without the owner confirming.
-9. Commit after each completed step (one step = one commit is ideal). Commit message:
-   `desqu(P<phase>.<step>): <short summary>`.
+9. **The owner makes every commit** (and any push or history rewrite). After each completed step,
+   stop and give the owner a short suggested commit message (conventional style, e.g.
+   `feat: implement x and y`); do not start the next step until they have committed. Never add
+   Claude/Anthropic attribution to commits or PRs.
 
 ### Phase overview
 
@@ -752,7 +754,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Behaviour confirmed (🧪 until manual check).
 
-#### P3.5 Autostart with `--autostart` arg — Status: ⬜
+#### P3.5 Autostart with `--autostart` arg — Status: 🟡
 - **Depends on:** P3.3, P0.3
 - **Files:** `crates/desqu-shell/src/autostart.rs`
 - **Do:**
@@ -1351,3 +1353,6 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P3.2 — ✅ — ShellSettings/UpdateSettings (camelCase, defaults keep current behaviour), load (missing=default, corrupt=error)/save (atomic). 6 unit tests.
 - 2026-10-10 — P3.3 — ✅ — args::parse recognises --autostart and --quit, ignores others. 3 unit tests (9 total in desqu-shell pass; clippy clean).
 - 2026-10-10 — P0.3/P0.4 — ✅ — Read the registry/files of the owner's installed 0.1.0 (see §3 'Measured'): Run value 'ScreenBound' with no args, install dir %LOCALAPPDATA%\ScreenBound with uninstall.exe, uninstall key 'ScreenBound'. Key finding: case-only rebrand overwrites the same Run value. P0.2 (hidden-at-boot, tray, CPU/RAM) still needs a human.
+- 2026-10-10 — P3.4 — 🧪 — instance::plugin (decide(): --quit exits the running app via app.exit, else show_main), exit_if_quit_requested for first launch; window::show_main added early. 3 unit tests. Manual check (screenbound.exe --quit) possible only after P3.11 adopts the shell.
+- 2026-10-10 — workflow — rule 9 changed — Owner now makes all commits; after each step Claude suggests a short commit message and waits. History-rewrite to drop Claude Co-Authored-By trailers was blocked by the permission system; backup branch backup/pre-attribution-cleanup exists; owner to run the filter-branch themselves or allow it.
+- 2026-10-10 — P3.5 — 🧪 — autostart::plugin() (args --autostart), sync(), sync_at_startup() (disable+enable so old entries are rewritten). platform::remove_run_value(name) deletes the HKCU Run value + StartupApproved value (unsupported stub returns Ok(false)); tested against the real registry with a throwaway value. 13 tests pass, clippy clean. Still to verify by a human after P3.11: enabling writes exe path + --autostart in the Run key.
