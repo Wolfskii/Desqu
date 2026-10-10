@@ -1,0 +1,76 @@
+version: "3"
+
+# Workspaces. Run from here (`task ci`) or from the repo root as `task workspaces:<task>`.
+# Dependencies are installed once at the repo root (npm workspace).
+
+tasks:
+  default:
+    desc: List tasks
+    silent: true
+    cmds:
+      - task --list
+
+  install:
+    desc: Install npm dependencies (repo root workspace)
+    dir: ../..
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/.package-lock.json
+    cmds:
+      - npm install
+
+  dev:
+    desc: Run Workspaces locally (Vite + Tauri)
+    deps: [install]
+    interactive: true
+    cmds:
+      - npm run tauri dev
+
+  dev:logs:
+    desc: Run Workspaces locally with engine debug logs
+    deps: [install]
+    interactive: true
+    env:
+      RUST_LOG: workspaces_lib=debug,workspaces_module=debug,desqu_desktop=debug,desqu_shell=debug
+    cmds:
+      - npm run tauri dev
+
+  check:
+    desc: Frontend type check
+    deps: [install]
+    cmds:
+      - npm run check
+
+  test:
+    desc: Rust unit tests
+    cmds:
+      - cargo test -p workspaces-module -p workspaces
+
+  lint:
+    desc: Clippy on all Rust targets
+    cmds:
+      - cargo clippy -p workspaces-module -p workspaces --all-targets
+
+  ci:
+    desc: Typecheck, unit tests, and clippy
+    cmds:
+      - task: check
+      - task: test
+      - task: lint
+
+  release:
+    aliases: [build]
+    desc: Production build — NSIS + MSI installers and a portable exe in dist/workspaces/
+    deps: [install]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/stop-app.ps1 -Names workspaces,Workspaces
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/tauri-build.ps1 -App workspaces
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App workspaces
+
+  deploy:
+    desc: Build release artifacts and install the NSIS setup for the current user
+    cmds:
+      - task: release
+      - powershell -NoProfile -ExecutionPolicy Bypass -Command "$setup = Get-ChildItem -Path '../../dist/workspaces' -Filter '*-setup.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if (-not $setup) { throw 'NSIS installer not found under dist/workspaces/' }; Write-Host ('Installing ' + $setup.FullName); $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru; if ($p.ExitCode -ne 0) { exit $p.ExitCode }"

@@ -1,0 +1,36 @@
+[package]
+name = "workspaces-module"
+version = "0.1.0"
+description = "Workspaces: a different desktop setup per virtual desktop"
+authors = ["Desqu contributors"]
+edition = "2021"
+rust-version = "1.80"
+# Required by tauri-plugin: must equal the package name, which is also the plugin name.
+links = "workspaces-module"
+
+[lib]
+name = "workspaces_module"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+desqu-desktop = { path = "../../../crates/desqu-desktop" }
+desqu-shell = { path = "../../../crates/desqu-shell" }
+tauri = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]

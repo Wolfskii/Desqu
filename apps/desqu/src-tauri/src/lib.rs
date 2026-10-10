@@ -14,7 +14,7 @@ use commands::DesquState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    logging::init("desqu_lib=info,screenbound_module=info,vials_module=info,desqu_shell=info,warn");
+    logging::init("desqu_lib=info,screenbound_module=info,vials_module=info,workspaces_module=info,desqu_shell=info,warn");
     platform::init_process();
     let launch = args::parse(std::env::args());
 

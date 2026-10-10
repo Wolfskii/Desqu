@@ -9,6 +9,7 @@
     "core:default",
     "desqu-shell:default",
     "screenbound-module:default",
-    "vials-module:default"
+    "vials-module:default",
+    "workspaces-module:default"
   ]
 }

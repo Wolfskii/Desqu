@@ -65,6 +65,15 @@ fn init_vials(roaming: &Path) -> TauriPlugin<Wry> {
     })
 }
 
+fn init_workspaces(roaming: &Path) -> TauriPlugin<Wry> {
+    let dir = roaming.join("io.github.wolfskii.workspaces");
+    workspaces_module::init(workspaces_module::ModuleOptions {
+        config_dir: dir.clone(),
+        data_dir: dir,
+        start_immediately: false,
+    })
+}
+
 /// Static facts about every hosted module. Kept free of the window runtime so unit tests can use it
 /// (a test binary that links Wry cannot start on Windows without the app manifest).
 pub fn descriptors() -> Vec<Descriptor> {
@@ -97,6 +106,20 @@ pub fn descriptors() -> Vec<Descriptor> {
             run_value: "Vials",
         },
     },
+        Descriptor {
+            id: "workspaces",
+            name: "Workspaces",
+            description: "A different desktop setup per virtual desktop: hide icons and relaunch your apps and folders.",
+            version: workspaces_module::VERSION,
+            supported: cfg!(windows),
+            settings_files: &["config.json"],
+            standalone: Standalone {
+                exe_name: "workspaces.exe",
+                identifier: "io.github.wolfskii.workspaces",
+                uninstall_key: "Workspaces",
+                run_value: "Workspaces",
+            },
+        },
     ]
 }
 
@@ -111,6 +134,10 @@ pub fn entries() -> Vec<Entry> {
                     init_screenbound,
                 ),
                 "vials" => (Arc::new(vials_module::VialsModule), init_vials),
+                "workspaces" => (
+                    Arc::new(workspaces_module::WorkspacesModule),
+                    init_workspaces,
+                ),
                 _ => return None,
             };
             Some(Entry {
@@ -152,6 +179,15 @@ mod tests {
     fn vials_descriptor_matches_its_crate() {
         let v = descriptors().into_iter().find(|d| d.id == "vials").unwrap();
         assert_eq!(v.id, vials_module::engine::MODULE_ID);
+    }
+
+    #[test]
+    fn workspaces_descriptor_matches_its_crate() {
+        let w = descriptors()
+            .into_iter()
+            .find(|d| d.id == "workspaces")
+            .unwrap();
+        assert_eq!(w.id, workspaces_module::engine::MODULE_ID);
     }
 
     #[test]

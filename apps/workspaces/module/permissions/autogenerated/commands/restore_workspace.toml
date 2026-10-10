@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-restore-workspace"
+description = "Enables the restore_workspace command without any pre-configured scope."
+commands.allow = ["restore_workspace"]
+
+[[permission]]
+identifier = "deny-restore-workspace"
+description = "Denies the restore_workspace command without any pre-configured scope."
+commands.deny = ["restore_workspace"]

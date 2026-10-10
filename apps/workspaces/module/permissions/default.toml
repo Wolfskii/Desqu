@@ -1,0 +1,15 @@
+[default]
+description = "Everything the Workspaces UI needs"
+permissions = [
+    "allow-get-config",
+    "allow-set-config",
+    "allow-list-desktops",
+    "allow-list-items",
+    "allow-item-icon",
+    "allow-capture-workspace",
+    "allow-restore-workspace",
+    "allow-desktop-status",
+    "allow-module-start",
+    "allow-module-stop",
+    "allow-module-status",
+]

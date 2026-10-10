@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-module-start"
+description = "Enables the module_start command without any pre-configured scope."
+commands.allow = ["module_start"]
+
+[[permission]]
+identifier = "deny-module-start"
+description = "Denies the module_start command without any pre-configured scope."
+commands.deny = ["module_start"]

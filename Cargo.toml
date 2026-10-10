@@ -6,6 +6,8 @@ members = [
     "apps/screenbound/src-tauri",
     "apps/vials/module",
     "apps/vials/src-tauri",
+    "apps/workspaces/module",
+    "apps/workspaces/src-tauri",
     "crates/desqu-desktop",
     "crates/desqu-shell",
 ]

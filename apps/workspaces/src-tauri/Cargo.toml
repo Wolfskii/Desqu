@@ -1,0 +1,22 @@
+[package]
+name = "workspaces"
+version = "0.1.0"
+description = "Workspaces: a different desktop setup per virtual desktop"
+authors = ["Desqu contributors"]
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+# The `_lib` suffix avoids a bin/lib name clash on Windows (cargo#8519).
+name = "workspaces_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+desqu-shell = { path = "../../../crates/desqu-shell" }
+workspaces-module = { path = "../module" }
+serde_json = "1"
+tracing = "0.1"

@@ -2,6 +2,7 @@
   import { page } from "$app/state";
   import { ScreenboundView } from "@desqu/screenbound-ui";
   import { VialsView } from "@desqu/vials-ui";
+  import { WorkspacesView } from "@desqu/workspaces-ui";
   import { desqu } from "$lib/state.svelte";
 
   const id = $derived(page.params.module ?? "");
@@ -30,7 +31,7 @@
         <div class="menu" role="menu">
           {#if confirmingReset}
             <p class="warn">
-              This deletes {entry.name}'s settings: zones, rules, vials and groups. They are shared with the standalone
+              This deletes {entry.name}'s settings: zones, rules, vials, workspaces and groups. They are shared with the standalone
               {entry.name} app, so it loses them too.
             </p>
             <button
@@ -68,6 +69,8 @@
       <ScreenboundView />
     {:else if entry.id === "vials"}
       <VialsView showShellSettings={false} />
+    {:else if entry.id === "workspaces"}
+      <WorkspacesView showShellSettings={false} />
     {/if}
   </div>
 {/if}
