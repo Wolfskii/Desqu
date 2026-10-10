@@ -338,12 +338,12 @@ Each step has: **Status**, **Depends on**, **Files**, **Do**, **Verify**, **Done
 - **Done when:**
   - [ ] All values recorded in §3.
 
-#### P0.5 Record artifact baseline — Status: ⬜
+#### P0.5 Record artifact baseline — Status: ✅
 - **Depends on:** —
 - **Do:** Run `task release`. Record the exact file names and sizes in `dist/` in the Progress log.
   Run `task ci` and record pass/fail and test count.
 - **Done when:**
-  - [ ] Artifact names/sizes and `task ci` result recorded.
+  - [x] Artifact names/sizes and `task ci` result recorded.
 
 ---
 
@@ -1310,3 +1310,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 
 - 2026-10-10 — plan — created — Plan written from repo inspection. Next: P0.1 (answer Q1–Q11) and P0.2–P0.5 baseline on real Windows.
 - 2026-10-10 — P0.1 — 🟡 — Q4 answered: yes, monorepo. Phase 1 now only waits on P0.5 (artifact baseline). Remaining: Q1–Q3, Q5–Q11.
+- 2026-10-10 — P0.5 — ✅ — `task ci` passes: svelte-check clean, 37 Rust unit tests passed + 2 ignored (probes), clippy clean. `task release` → `dist/ScreenBound_0.1.0_x64-setup.exe` 2,506,038 B; `dist/ScreenBound_0.1.0_x64.msi` 3,813,376 B; `dist/ScreenBound_0.1.0_x64-portable.exe` 10,521,088 B. Next: P1.1.
