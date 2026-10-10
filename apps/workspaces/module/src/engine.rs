@@ -17,7 +17,6 @@ use desqu_desktop::{DesktopError, DesktopLayer, Subscription};
 use desqu_shell::mutex::{self, ModuleLock};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::core::apps;
 use crate::core::model::WorkspacesConfig;
 use crate::core::visibility;
 use crate::platform::{self, SwitchWatcher};
@@ -225,7 +224,8 @@ fn worker<R: Runtime>(
     layer: Arc<dyn DesktopLayer>,
 ) {
     let mut watcher: Option<SwitchWatcher> = None;
-    let mut last_desktop: Option<String> = None;
+    // Items seen so far; a file that shows up later is "new" and may be given to the current desktop.
+    let mut known: Option<HashSet<String>> = None;
     let mut later: Option<Instant> = None;
     let mut retries = 0u8;
     loop {
@@ -250,62 +250,21 @@ fn worker<R: Runtime>(
                 retries = 0;
                 later = Some(now + LAG_RECHECK);
             }
-            Err(RecvTimeoutError::Timeout) => {
-                later = None;
-            }
+            Err(RecvTimeoutError::Timeout) => later = None,
         }
-        let current = platform::current_desktop();
-        if current != last_desktop {
-            if let (Some(previous), true) = (last_desktop.as_deref(), current.is_some()) {
-                auto_save(&app, previous);
-            }
-            last_desktop = current.clone();
-        }
-        if reconcile(&app, &layer, current.as_deref()) && retries < MAX_RETRIES && later.is_none() {
+        if reconcile(&app, &layer, &mut known) && retries < MAX_RETRIES && later.is_none() {
             retries += 1;
             later = Some(now + RETRY_DELAY);
         }
     }
 }
 
-/// Leaving a desktop with auto-save on: refresh its apps and folders from what is open there.
-fn auto_save<R: Runtime>(app: &AppHandle<R>, desktop_id: &str) {
-    let Some(state) = app.try_state::<ModuleState>() else {
-        return;
-    };
-    if !state.config().auto_save || state.config().workspace(desktop_id).is_none() {
-        return;
-    }
-    let (apps_now, folders_now) = capture(desktop_id);
-    let mut cfg = lock(&state.config);
-    if let Some(ws) = cfg
-        .workspaces
-        .iter_mut()
-        .find(|w| w.desktop_id == desktop_id)
-    {
-        ws.apps = apps_now;
-        ws.folders = folders_now;
-    }
-    if let Err(e) = cfg.save(&state.config_path) {
-        tracing::warn!("could not save workspaces config: {e}");
-    }
-}
-
-/// Apps and folders currently open on a desktop.
-pub(crate) fn capture(desktop_id: &str) -> (Vec<crate::core::model::AppLaunch>, Vec<String>) {
-    let running = platform::running_apps(Some(desktop_id));
-    (
-        apps::launches_from(&running),
-        platform::explorer_folders(Some(desktop_id)),
-    )
-}
-
-/// Makes the hidden icons match the workspace of `current`. Returns whether a listed item was not
-/// in the desktop view yet (worth another look shortly).
+/// Makes the hidden icons match the current virtual desktop. Returns whether the desktop view
+/// could not be read (worth another look shortly).
 fn reconcile<R: Runtime>(
     app: &AppHandle<R>,
     layer: &Arc<dyn DesktopLayer>,
-    current: Option<&str>,
+    known: &mut Option<HashSet<String>>,
 ) -> bool {
     let Some(state) = app.try_state::<ModuleState>() else {
         return false;
@@ -320,32 +279,66 @@ fn reconcile<R: Runtime>(
         }
     };
     let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+    let desktops = platform::desktops().unwrap_or_default();
+    let live: Vec<String> = desktops.list.iter().map(|d| d.id.clone()).collect();
+    let current = desktops.current.clone();
+
+    // A file that appeared since the last look belongs to the desktop you are on.
+    let fresh: Vec<String> = match known.as_ref() {
+        Some(seen) => ids
+            .iter()
+            .filter(|id| !seen.contains(*id))
+            .cloned()
+            .collect(),
+        None => Vec::new(),
+    };
+    known
+        .get_or_insert_with(HashSet::new)
+        .extend(ids.iter().cloned());
+    if !fresh.is_empty() {
+        if let Some(cur) = current
+            .as_deref()
+            .filter(|_| state.config().auto_assign_new)
+        {
+            let index = desktops.list.iter().position(|d| d.id == cur).unwrap_or(0);
+            let name = match desktops.list.get(index).map(|d| d.name.as_str()) {
+                Some(n) if !n.is_empty() => n.to_string(),
+                _ => format!("Desktop {}", index + 1),
+            };
+            let mut cfg = lock(&state.config);
+            // Only files nobody owns yet; a restored or re-listed item keeps its owner.
+            let mut changed = false;
+            for id in &fresh {
+                if cfg.owner_of(id).is_none() {
+                    changed |= cfg.assign(id, Some((cur, name.as_str())));
+                }
+            }
+            if changed {
+                if let Err(e) = cfg.save(&state.config_path) {
+                    tracing::warn!("could not save workspaces config: {e}");
+                }
+            }
+        }
+    }
+
     let hidden = layer.hidden().unwrap_or_default();
     let cfg = state.config();
-    let workspace = current.and_then(|id| cfg.workspace(id));
-    let plan = visibility::plan(&ids, &hidden, workspace);
+    let plan = visibility::plan(&ids, &hidden, &cfg, current.as_deref(), &live);
 
     let mut problem = None;
-    let mut missing = false;
     if !plan.show.is_empty() {
         if let Err(e) = layer.show(&plan.show) {
             problem = Some(e.to_string());
         }
     }
+    let mut lagging = false;
     if !plan.hide.is_empty() {
         match layer.hide(&plan.hide) {
-            Ok(report) => missing = !report.missing.is_empty(),
+            Ok(report) => lagging = !report.missing.is_empty(),
             Err(e) => problem = Some(e.to_string()),
         }
     }
-    if let Some(ws) = workspace.filter(|w| w.manage_icons) {
-        let on_desktop: HashSet<&str> = ids.iter().map(String::as_str).collect();
-        missing |= ws
-            .hidden_items
-            .iter()
-            .any(|id| !on_desktop.contains(id.as_str()));
-    }
     *lock(&state.problem) = problem;
     let _ = app.emit(EVENT_CHANGED, ());
-    missing
+    lagging
 }

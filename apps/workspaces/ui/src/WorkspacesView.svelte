@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import DesktopCard from "./components/DesktopCard.svelte";
+  import ItemsPanel from "./components/ItemsPanel.svelte";
   import SettingsPanel from "./components/SettingsPanel.svelte";
   import { workspaces } from "./state.svelte";
 
   // Desqu shows its own start-up and update settings, so it hides these.
   let { showShellSettings = true }: { showShellSettings?: boolean } = $props();
 
-  type Tab = "desktops" | "settings";
+  type Tab = "desktops" | "items" | "settings";
   let tab = $state<Tab>("desktops");
 
   onMount(() => void workspaces.init());
@@ -35,7 +36,7 @@
     <header>
       <div class="brand">Workspaces</div>
       <nav>
-        {#each [["desktops", "Desktops"], ["settings", "Settings"]] as [id, label] (id)}
+        {#each [["desktops", "Desktops"], ["items", "Items"], ["settings", "Settings"]] as [id, label] (id)}
           <button class:active={tab === id} onclick={() => (tab = id as Tab)}>{label}</button>
         {/each}
       </nav>
@@ -69,6 +70,8 @@
             </section>
           {/each}
         </div>
+      {:else if tab === "items"}
+        <ItemsPanel />
       {:else}
         <SettingsPanel {showShellSettings} />
       {/if}

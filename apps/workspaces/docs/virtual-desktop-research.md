@@ -30,19 +30,15 @@ Nothing here is claimed for any other build. The undocumented COM interfaces
 
 ## Decision
 
-1. **Public/documented surface only:** registry for ids, names and the current desktop, the public
-   `IVirtualDesktopManager` for reading which desktop a window is on, `QueryFullProcessImageNameW`
-   and `NtQueryInformationProcess` for launch info, `IShellWindows` for folders.
+The product idea is: desktop items (shortcuts, files, folders) belong to a virtual desktop and are
+hidden on the others. That needs only questions 1 and 2, which work without any undocumented API.
+
+1. **Registry only:** desktop ids and names from `VirtualDesktopIDs` and `Desktops\{GUID}\Name`,
+   the current desktop from `CurrentVirtualDesktop`. Hiding goes through `desqu-desktop`.
 2. **Switch detection is event-driven** through `RegNotifyChangeKeyValue`, re-reading
    `CurrentVirtualDesktop` after each signal. No polling. If the value cannot be read (unknown
-   layout on another build) the module reports "virtual desktops not supported on this Windows
-   build" and the workspace features that need the current desktop are switched off, not guessed.
-3. **No moving of foreign windows.** The "Restore" action therefore **launches** the workspace's
-   apps and folders on whichever desktop is current when the user presses it (Windows opens a new
-   window on the current desktop). The UI says so: switch to the desktop first, then restore.
-   This is the planned "launch only" fallback and it is also the behaviour on every build until a
-   build is proven otherwise by a human.
-4. **Supported-builds list for window moving: empty.** It stays empty until someone verifies an
-   approach on a named build and records it here.
-5. **What Workspaces can do reliably on a desktop switch:** show/hide desktop icons per desktop via
-   `desqu-desktop` (owner id `workspaces`), which does not need any window move.
+   layout on another build) nothing is hidden and every item is shown, never guessed.
+3. **Apps and windows are out of scope.** Answers 3 to 6 above are kept as research: moving other
+   apps' windows is refused by Windows (`E_ACCESSDENIED`), so Workspaces does not try, and it does
+   not save or relaunch apps or folders.
+4. **Supported-builds list for anything beyond the registry: empty.**

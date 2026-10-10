@@ -8,16 +8,16 @@
 <div class="settings">
   <section class="card">
     <SettingsRow
-      label="Refresh a workspace when I leave its desktop"
-      description="Replaces the saved apps and folders of that desktop with what is open there. Off by default because it overwrites your lists."
+      label="New files join the desktop I am on"
+      description="A file that appears on your desktop while Workspaces is running is tied to the virtual desktop you are on, so it does not show up on the others. Files that were already there stay on every desktop until you choose."
     >
       <Switch
-        checked={workspaces.config?.autoSave ?? false}
-        label="Refresh a workspace when I leave its desktop"
+        checked={workspaces.config?.autoAssignNew ?? true}
+        label="New files join the desktop I am on"
         disabled={!workspaces.config}
         onchange={(next) => {
           if (!workspaces.config) return;
-          workspaces.config.autoSave = next;
+          workspaces.config.autoAssignNew = next;
           workspaces.scheduleSave(true);
         }}
       />
@@ -36,13 +36,9 @@
     {:else}
       <p class="dim">
         {workspaces.desktop?.hiddenCount ?? 0}
-        {(workspaces.desktop?.hiddenCount ?? 0) === 1 ? "item is" : "items are"} currently hidden on the desktop.
+        {(workspaces.desktop?.hiddenCount ?? 0) === 1 ? "item is" : "items are"} hidden on this desktop right now.
       </p>
     {/if}
-    <p class="dim">
-      Workspaces starts apps and folders on the desktop you are on; Windows does not let an app move other apps'
-      windows to another virtual desktop.
-    </p>
   </section>
 
   {#if showShellSettings}

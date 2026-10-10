@@ -1,4 +1,6 @@
-//! The Workspaces data model: one workspace per virtual desktop, kept by the desktop's id.
+//! The Workspaces data model: each virtual desktop can own desktop items (shortcuts, files,
+//! folders). An owned item is shown only on its desktop and hidden on the others; items nobody
+//! owns stay visible everywhere. Items never move out of the Desktop folders.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -8,31 +10,6 @@ use serde::{Deserialize, Serialize};
 pub const CONFIG_VERSION: u32 = 1;
 const MAX_NAME: usize = 80;
 
-/// An app to start again when a workspace is restored.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AppLaunch {
-    /// Absolute path of the executable.
-    pub exe: String,
-    /// Command-line arguments, as one string (what follows the executable in the command line).
-    #[serde(default)]
-    pub args: Option<String>,
-    /// Shown in the UI; defaults to the file name.
-    #[serde(default)]
-    pub name: String,
-}
-
-impl AppLaunch {
-    pub fn display_name(&self) -> String {
-        if !self.name.trim().is_empty() {
-            return self.name.clone();
-        }
-        Path::new(&self.exe)
-            .file_stem()
-            .map_or_else(|| self.exe.clone(), |s| s.to_string_lossy().into_owned())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
@@ -41,17 +18,9 @@ pub struct Workspace {
     /// Remembered so a workspace is still recognisable after its desktop was renamed or removed.
     #[serde(default)]
     pub name: String,
-    /// When on, the desktop icons in `hidden_items` are hidden while this desktop is current.
+    /// Desktop item ids (absolute parsing names) that belong to this desktop.
     #[serde(default)]
-    pub manage_icons: bool,
-    /// Desktop item ids hidden on this desktop. Items not listed (new files) stay visible.
-    #[serde(default)]
-    pub hidden_items: Vec<String>,
-    #[serde(default)]
-    pub apps: Vec<AppLaunch>,
-    /// Folders opened in Explorer when the workspace is restored.
-    #[serde(default)]
-    pub folders: Vec<String>,
+    pub items: Vec<String>,
 }
 
 impl Workspace {
@@ -59,16 +28,17 @@ impl Workspace {
         Self {
             desktop_id: desktop_id.to_string(),
             name: name.to_string(),
-            manage_icons: false,
-            hidden_items: Vec::new(),
-            apps: Vec::new(),
-            folders: Vec::new(),
+            items: Vec::new(),
         }
     }
 }
 
 fn default_version() -> u32 {
     CONFIG_VERSION
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,10 +48,9 @@ pub struct WorkspacesConfig {
     pub version: u32,
     #[serde(default)]
     pub workspaces: Vec<Workspace>,
-    /// Leaving a desktop refreshes its saved apps and folders from what is open there. Off by
-    /// default: it silently replaces the lists.
-    #[serde(default)]
-    pub auto_save: bool,
+    /// A file that appears on the desktop while Workspaces runs belongs to the desktop you are on.
+    #[serde(default = "yes")]
+    pub auto_assign_new: bool,
 }
 
 impl Default for WorkspacesConfig {
@@ -89,7 +58,7 @@ impl Default for WorkspacesConfig {
         Self {
             version: CONFIG_VERSION,
             workspaces: Vec::new(),
-            auto_save: false,
+            auto_assign_new: true,
         }
     }
 }
@@ -139,23 +108,40 @@ impl WorkspacesConfig {
         self.workspaces.iter().find(|w| w.desktop_id == desktop_id)
     }
 
-    /// The workspace of `desktop_id`, created empty (named `name`) when there is none yet.
-    pub fn workspace_mut_or_create(&mut self, desktop_id: &str, name: &str) -> &mut Workspace {
-        if let Some(i) = self
-            .workspaces
+    /// The desktop that owns `item_id`, if any.
+    pub fn owner_of(&self, item_id: &str) -> Option<&str> {
+        self.workspaces
             .iter()
-            .position(|w| w.desktop_id == desktop_id)
-        {
-            return &mut self.workspaces[i];
-        }
-        self.workspaces.push(Workspace::new(desktop_id, name));
-        self.workspaces.last_mut().expect("just pushed")
+            .find(|w| w.items.iter().any(|i| i == item_id))
+            .map(|w| w.desktop_id.as_str())
     }
 
-    /// Fixes what can be fixed (names, duplicates) and rejects what cannot (a bad desktop id, an
-    /// app without an absolute executable path).
+    /// Gives `item_id` to `desktop` (id, name; the workspace is created when it has none yet), or
+    /// with `None` makes it visible everywhere again. Returns whether anything changed.
+    pub fn assign(&mut self, item_id: &str, desktop: Option<(&str, &str)>) -> bool {
+        let already = self.owner_of(item_id).map(str::to_string);
+        if already.as_deref() == desktop.map(|(id, _)| id) {
+            return false;
+        }
+        for ws in &mut self.workspaces {
+            ws.items.retain(|i| i != item_id);
+        }
+        if let Some((id, name)) = desktop {
+            if !self.workspaces.iter().any(|w| w.desktop_id == id) {
+                self.workspaces.push(Workspace::new(id, name));
+            }
+            if let Some(ws) = self.workspaces.iter_mut().find(|w| w.desktop_id == id) {
+                ws.items.push(item_id.to_string());
+            }
+        }
+        true
+    }
+
+    /// Fixes what can be fixed (names, an item listed twice) and rejects what cannot (a bad or
+    /// duplicated desktop id).
     pub fn validated(mut self) -> Result<Self, ConfigError> {
         let mut seen = HashSet::new();
+        let mut owned = HashSet::new();
         for ws in &mut self.workspaces {
             let id = normalize_guid(&ws.desktop_id).ok_or_else(|| {
                 ConfigError::Invalid(format!("'{}' is not a virtual desktop id", ws.desktop_id))
@@ -167,33 +153,9 @@ impl WorkspacesConfig {
             }
             ws.desktop_id = id;
             ws.name = ws.name.trim().chars().take(MAX_NAME).collect();
-
-            let mut items = HashSet::new();
-            ws.hidden_items
-                .retain(|i| !i.trim().is_empty() && items.insert(i.clone()));
-
-            let mut exes = HashSet::new();
-            for app in &mut ws.apps {
-                if !Path::new(&app.exe).is_absolute() {
-                    return Err(ConfigError::Invalid(format!(
-                        "'{}' is not an absolute path",
-                        app.exe
-                    )));
-                }
-                app.args = app
-                    .args
-                    .take()
-                    .map(|a| a.trim().to_string())
-                    .filter(|a| !a.is_empty());
-                app.name = app.name.trim().chars().take(MAX_NAME).collect();
-            }
-            // The same exe with the same arguments is one entry.
-            ws.apps
-                .retain(|a| exes.insert((a.exe.to_ascii_lowercase(), a.args.clone())));
-
-            let mut folders = HashSet::new();
-            ws.folders
-                .retain(|f| !f.trim().is_empty() && folders.insert(f.to_ascii_lowercase()));
+            // An item belongs to one desktop: the first workspace that lists it wins.
+            ws.items
+                .retain(|i| !i.trim().is_empty() && owned.insert(i.clone()));
         }
         self.version = CONFIG_VERSION;
         Ok(self)
@@ -226,6 +188,7 @@ mod tests {
     use super::*;
 
     const ID: &str = "{753C9B0D-EDAA-45D2-AC5A-5740141905EA}";
+    const ID2: &str = "{3FEBEE14-E0E2-4DCE-A63D-09646A16F375}";
 
     #[test]
     fn guids_are_normalized_and_bad_ones_rejected() {
@@ -250,59 +213,50 @@ mod tests {
         assert!(guid_from_registry_bytes(&bytes[..10]).is_none());
     }
 
-    fn app(exe: &str, args: Option<&str>) -> AppLaunch {
-        AppLaunch {
-            exe: exe.into(),
-            args: args.map(str::to_string),
-            name: String::new(),
-        }
+    #[test]
+    fn assigning_moves_an_item_between_desktops_and_releases_it() {
+        let mut cfg = WorkspacesConfig::default();
+        assert!(cfg.assign("a.txt", Some((ID, "Work"))));
+        assert!(!cfg.assign("a.txt", Some((ID, "Work"))));
+        assert_eq!(cfg.owner_of("a.txt"), Some(ID));
+        assert!(cfg.assign("a.txt", Some((ID2, "Play"))));
+        assert_eq!(cfg.owner_of("a.txt"), Some(ID2));
+        assert!(cfg.workspace(ID).unwrap().items.is_empty());
+        assert!(cfg.assign("a.txt", None));
+        assert_eq!(cfg.owner_of("a.txt"), None);
+        assert!(!cfg.assign("a.txt", None));
     }
 
     #[test]
-    fn validation_normalizes_and_deduplicates() {
-        let mut ws = Workspace::new("753c9b0d-edaa-45d2-ac5a-5740141905ea", "  Work  ");
-        ws.hidden_items = vec!["a".into(), "a".into(), " ".into(), "b".into()];
-        ws.apps = vec![
-            app(r"C:\x\a.exe", Some(" -f ")),
-            app(r"c:\x\A.EXE", Some("-f")),
-            app(r"C:\x\a.exe", None),
-        ];
-        ws.folders = vec![r"C:\Work".into(), r"c:\work".into(), "".into()];
+    fn validation_normalizes_and_gives_an_item_to_one_desktop() {
+        let mut a = Workspace::new("753c9b0d-edaa-45d2-ac5a-5740141905ea", "  Work  ");
+        a.items = vec!["x".into(), "x".into(), " ".into(), "y".into()];
+        let mut b = Workspace::new(ID2, "Play");
+        b.items = vec!["y".into(), "z".into()];
         let cfg = WorkspacesConfig {
-            workspaces: vec![ws],
+            workspaces: vec![a, b],
             ..Default::default()
         }
         .validated()
         .unwrap();
-        let ws = &cfg.workspaces[0];
-        assert_eq!(ws.desktop_id, ID);
-        assert_eq!(ws.name, "Work");
-        assert_eq!(ws.hidden_items, vec!["a", "b"]);
-        assert_eq!(ws.apps.len(), 2);
-        assert_eq!(ws.apps[0].args.as_deref(), Some("-f"));
-        assert_eq!(ws.folders, vec![r"C:\Work"]);
+        assert_eq!(cfg.workspaces[0].desktop_id, ID);
+        assert_eq!(cfg.workspaces[0].name, "Work");
+        assert_eq!(cfg.workspaces[0].items, vec!["x", "y"]);
+        assert_eq!(cfg.workspaces[1].items, vec!["z"]);
     }
 
     #[test]
-    fn validation_rejects_bad_desktop_ids_duplicates_and_relative_exes() {
-        let bad_id = WorkspacesConfig {
+    fn validation_rejects_bad_desktop_ids_and_duplicates() {
+        let bad = WorkspacesConfig {
             workspaces: vec![Workspace::new("nope", "x")],
             ..Default::default()
         };
-        assert!(bad_id.validated().is_err());
+        assert!(bad.validated().is_err());
         let dup = WorkspacesConfig {
             workspaces: vec![Workspace::new(ID, "a"), Workspace::new(ID, "b")],
             ..Default::default()
         };
         assert!(dup.validated().is_err());
-        let mut ws = Workspace::new(ID, "a");
-        ws.apps = vec![app("notepad.exe", None)];
-        assert!(WorkspacesConfig {
-            workspaces: vec![ws],
-            ..Default::default()
-        }
-        .validated()
-        .is_err());
     }
 
     #[test]
@@ -315,7 +269,7 @@ mod tests {
         );
 
         let mut cfg = WorkspacesConfig::default();
-        cfg.workspace_mut_or_create(ID, "Main").manage_icons = true;
+        cfg.assign("a.txt", Some((ID, "Main")));
         cfg.save(&path).unwrap();
         assert_eq!(WorkspacesConfig::load(&path).unwrap(), cfg);
 
@@ -325,10 +279,11 @@ mod tests {
     }
 
     #[test]
-    fn display_name_falls_back_to_the_file_name() {
-        assert_eq!(app(r"C:\Tools\code.exe", None).display_name(), "code");
-        let mut a = app(r"C:\Tools\code.exe", None);
-        a.name = "Editor".into();
-        assert_eq!(a.display_name(), "Editor");
+    fn configs_from_the_first_draft_still_load() {
+        let text = format!(
+            r#"{{"version":1,"autoSave":true,"workspaces":[{{"desktopId":"{ID}","manageIcons":true,"hiddenItems":["q"],"apps":[],"folders":[]}}]}}"#
+        );
+        let cfg: WorkspacesConfig = serde_json::from_str(&text).unwrap();
+        assert!(cfg.validated().unwrap().workspaces[0].items.is_empty());
     }
 }

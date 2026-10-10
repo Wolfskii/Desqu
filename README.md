@@ -14,7 +14,7 @@ installs on its own.
 | [Desqu](apps/desqu/README.md) | One app that hosts all the utilities below, with one tray icon and central settings | Available |
 | [Screenbound](apps/screenbound/README.md) | Keeps fullscreen apps inside a zone you choose on your monitor | Available |
 | [Vials](apps/vials/README.md) | Desktop containers for shortcuts, apps and folders | Available |
-| [Workspaces](apps/workspaces/README.md) | A different desktop setup (icons, apps, folders) per virtual desktop | Available |
+| [Workspaces](apps/workspaces/README.md) | Desktop icons that belong to a virtual desktop | Available |
 
 ## Build
 

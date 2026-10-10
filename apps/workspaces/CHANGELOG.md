@@ -7,5 +7,6 @@ version being released as the release notes and as the in-app update description
 
 ## 0.1.0
 
-- First release: a workspace per virtual desktop with hideable desktop icons, saved apps and
-  folders, launch-on-demand, optional refresh when leaving a desktop, in-app updates.
+- First release: tie desktop shortcuts, files and folders to a virtual desktop so they show only
+  there, new files join the desktop you are on, icons always restored (also after a crash), in-app
+  updates.

@@ -1,7 +1,7 @@
 {
     "name": "workspaces-app",
     "version": "0.1.0",
-    "description": "Workspaces: a different desktop setup per virtual desktop",
+    "description": "Workspaces: desktop icons that belong to a virtual desktop",
     "type": "module",
     "private": true,
     "scripts": {

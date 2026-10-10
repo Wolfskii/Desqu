@@ -1,7 +1,7 @@
 [package]
 name = "workspaces"
 version = "0.1.0"
-description = "Workspaces: a different desktop setup per virtual desktop"
+description = "Workspaces: desktop icons that belong to a virtual desktop"
 authors = ["Desqu contributors"]
 edition = "2021"
 rust-version = "1.80"

@@ -76,18 +76,23 @@ if ($ids.Count -lt 2) { throw 'needs at least two virtual desktops to test the "
 
 $desktop = [Environment]::GetFolderPath('Desktop')
 $temp = Join-Path $desktop ("desqu-workspaces-smoke-{0}.txt" -f $PID)
+$temp2 = Join-Path $desktop ("desqu-workspaces-smoke2-{0}.txt" -f $PID)
 $configDir = Join-Path $env:APPDATA 'io.github.wolfskii.workspaces'
 $configPath = Join-Path $configDir 'config.json'
 $journal = Join-Path $configDir 'desktop-journal.json'
 $backup = "$configPath.smoke-backup"
 $proc = $null
 
-function WriteConfig([string]$desktopId, [bool]$hide) {
-    $ws = @{ desktopId = $desktopId; name = 'Smoke'; manageIcons = $true
-             hiddenItems = @(); apps = @(); folders = @() }
-    # A one-element array would be unrolled to a plain string by ConvertTo-Json without the cast.
-    if ($hide) { $ws.hiddenItems = [string[]]@($temp) }
-    @{ version = 1; workspaces = @($ws); autoSave = $false } | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
+# One workspace that owns the temp item (or nothing, when $owner is empty).
+function WriteConfig([string]$owner, [bool]$autoAssign) {
+    $workspaces = @()
+    if ($owner) {
+        $ws = @{ desktopId = $owner; name = 'Smoke'; items = @() }
+        # A one-element array would be unrolled to a plain string by ConvertTo-Json without the cast.
+        $ws.items = [string[]]@($temp)
+        $workspaces = @($ws)
+    }
+    @{ version = 1; workspaces = $workspaces; autoAssignNew = $autoAssign } | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
 }
 
 try {
@@ -100,11 +105,11 @@ try {
     if (-not $before) { throw 'item never appeared; cannot continue' }
 
     Write-Host ''
-    Write-Host 'Scenario 1: the workspace belongs to the CURRENT desktop'
-    WriteConfig $current $true
+    Write-Host 'Scenario 1: the item is tied to ANOTHER desktop'
+    WriteConfig $other $false
     $proc = Start-Process -FilePath $Exe -PassThru
     $parked = WaitFor { $p = Peek $temp; if ($p -and $p.X -le -2000) { $p } } 45
-    Check ($null -ne $parked) 'the item is hidden on the current desktop'
+    Check ($null -ne $parked) 'the item is hidden on this desktop'
     $q = Start-Process -FilePath $Exe -ArgumentList '--quit' -PassThru -WindowStyle Hidden
     Check ($q.WaitForExit(20000)) 'the --quit launch finishes'
     Check ($proc.WaitForExit(20000)) 'Workspaces exits'
@@ -115,19 +120,36 @@ try {
     Check (-not (Test-Path $journal)) 'the journal is cleared'
 
     Write-Host ''
-    Write-Host 'Scenario 2: the workspace belongs to ANOTHER desktop'
-    WriteConfig $other $true
+    Write-Host 'Scenario 2: the item is tied to the CURRENT desktop'
+    WriteConfig $current $false
     $proc = Start-Process -FilePath $Exe -PassThru
     Start-Sleep -Seconds 12
     $p = Peek $temp
-    Check ($null -ne $p -and $p.X -gt -2000) 'the item stays visible on this desktop'
+    Check ($null -ne $p -and $p.X -gt -2000) 'the item stays visible on its own desktop'
     Check (-not $proc.HasExited) 'the app is running'
-    Start-Process -FilePath $Exe -ArgumentList '--quit' -WindowStyle Hidden | Out-Null
-    Check ($proc.WaitForExit(20000)) 'and quits cleanly'
 
     Write-Host ''
-    Write-Host 'Scenario 3: the app is killed while the item is hidden'
-    WriteConfig $current $true
+    Write-Host 'Scenario 3: a new file joins the desktop you are on'
+    WriteConfig '' $true
+    Start-Process -FilePath $Exe -ArgumentList '--quit' -WindowStyle Hidden | Out-Null
+    Check ($proc.WaitForExit(20000)) 'the app quits'
+    $proc = Start-Process -FilePath $Exe -PassThru
+    Start-Sleep -Seconds 6
+    Set-Content -Path $temp2 -Value 'second temporary file; safe to delete'
+    $joined = WaitFor {
+        $c = Get-Content $configPath -Raw | ConvertFrom-Json
+        $w = $c.workspaces | Where-Object { $_.desktopId -eq $current } | Select-Object -First 1
+        if ($w -and ($w.items -contains $temp2)) { $w }
+    } 40
+    Check ($null -ne $joined) 'the new file is now tied to the current desktop in the config'
+    $p2 = Peek $temp2
+    Check ($null -ne $p2 -and $p2.X -gt -2000) 'and it is visible here'
+    Start-Process -FilePath $Exe -ArgumentList '--quit' -WindowStyle Hidden | Out-Null
+    Check ($proc.WaitForExit(20000)) 'the app quits again'
+
+    Write-Host ''
+    Write-Host 'Scenario 4: the app is killed while the item is hidden'
+    WriteConfig $other $false
     $proc = Start-Process -FilePath $Exe -PassThru
     $parked2 = WaitFor { $p = Peek $temp; if ($p -and $p.X -le -2000) { $p } } 45
     Check ($null -ne $parked2) 'the item is hidden again'
@@ -139,8 +161,8 @@ try {
     Check ($null -ne $still -and $still.X -le -2000) 'after the kill the item is still hidden (nobody put it back)'
     Check (Test-Path $journal) 'the journal survived the kill'
 
-    # Restart with a workspace that hides nothing: only crash recovery can bring the item back.
-    WriteConfig $current $false
+    # Restart with nothing tied to any desktop: only crash recovery can bring the item back.
+    WriteConfig '' $false
     $proc = Start-Process -FilePath $Exe -PassThru
     $back = WaitFor { $p = Peek $temp; if ($p -and $p.X -gt -2000) { $p } } 45
     Check ($null -ne $back) 'the next start restores the item'
@@ -151,7 +173,7 @@ try {
 }
 finally {
     if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
-    Remove-Item -Force -ErrorAction SilentlyContinue $temp
+    Remove-Item -Force -ErrorAction SilentlyContinue $temp, $temp2
     Remove-Item -Force -ErrorAction SilentlyContinue $configPath
     if (Test-Path $backup) { Move-Item -Force $backup $configPath }
     # Remove the folder again if this script created it and nothing else lives there.

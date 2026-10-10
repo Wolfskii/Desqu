@@ -66,7 +66,11 @@ function WaitFor([scriptblock]$cond, [int]$seconds) {
 }
 
 $vd = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops'
-$current = '{' + ([guid]::new([byte[]]$vd.CurrentVirtualDesktop[0..15])).ToString().ToUpper() + '}'
+function DesktopGuid([byte[]]$b) { return ('{' + ([guid]::new($b)).ToString().ToUpper() + '}') }
+$current = DesktopGuid ([byte[]]$vd.CurrentVirtualDesktop[0..15])
+$ids = @(); for ($i = 0; $i + 16 -le $vd.VirtualDesktopIDs.Length; $i += 16) { $ids += DesktopGuid ([byte[]]$vd.VirtualDesktopIDs[$i..($i + 15)]) }
+$other = $ids | Where-Object { $_ -ne $current } | Select-Object -First 1
+if (-not $other) { throw 'needs at least two virtual desktops' }
 
 $desktop = [Environment]::GetFolderPath('Desktop')
 $temp = Join-Path $desktop ("desqu-host-ws-smoke-{0}.txt" -f $PID)
@@ -89,13 +93,13 @@ try {
     if (-not $before) { throw 'item never appeared' }
 
     '{"modules":{"workspaces":{"enabled":true,"startWithSystem":false}}}' | Set-Content -Path $modulesCfg -Encoding UTF8
-    $ws = @{ desktopId = $current; name = 'Hosted'; manageIcons = $true; hiddenItems = @(); apps = @(); folders = @() }
-    $ws.hiddenItems = [string[]]@($temp)
-    @{ version = 1; workspaces = @($ws); autoSave = $false } | ConvertTo-Json -Depth 6 | Set-Content -Path $wsCfg -Encoding UTF8
+    $ws = @{ desktopId = $other; name = 'Hosted'; items = @() }
+    $ws.items = [string[]]@($temp)
+    @{ version = 1; workspaces = @($ws); autoAssignNew = $false } | ConvertTo-Json -Depth 6 | Set-Content -Path $wsCfg -Encoding UTF8
 
     $proc = Start-Process -FilePath $Exe -PassThru
     $parked = WaitFor { $p = Peek $temp; if ($p -and $p.X -le -2000) { $p } } 45
-    Check ($null -ne $parked) 'Desqu started Workspaces and the item is hidden on the current desktop'
+    Check ($null -ne $parked) 'Desqu started Workspaces and the item tied to another desktop is hidden here'
 
     $q = Start-Process -FilePath $Exe -ArgumentList '--quit' -PassThru -WindowStyle Hidden
     Check ($q.WaitForExit(20000)) 'the --quit launch finishes'
@@ -104,7 +108,7 @@ try {
     Check ($null -ne $restored) 'the item is back on the desktop'
     if ($restored) { Check (($restored.X -eq $before.X) -and ($restored.Y -eq $before.Y)) 'at its original place' }
 
-    # Both modules on: Vials holds item 1, Workspaces hides items 1 and 2. They share the layer.
+    # Both modules on: Vials holds item 1, Workspaces ties items 1 and 2 to another desktop. They share the layer.
     Write-Host ''
     Write-Host 'Both Vials and Workspaces on, sharing one item'
     Set-Content -Path $temp2 -Value 'second temporary file; safe to delete'
@@ -112,8 +116,8 @@ try {
     Check ($null -ne $before2) 'the second temp item shows up in the desktop view'
     New-Item -ItemType Directory -Force $vialsDir | Out-Null
     '{"modules":{"workspaces":{"enabled":true,"startWithSystem":false},"vials":{"enabled":true,"startWithSystem":false}}}' | Set-Content -Path $modulesCfg -Encoding UTF8
-    $ws.hiddenItems = [string[]]@($temp, $temp2)
-    @{ version = 1; workspaces = @($ws); autoSave = $false } | ConvertTo-Json -Depth 6 | Set-Content -Path $wsCfg -Encoding UTF8
+    $ws.items = [string[]]@($temp, $temp2)
+    @{ version = 1; workspaces = @($ws); autoAssignNew = $false } | ConvertTo-Json -Depth 6 | Set-Content -Path $wsCfg -Encoding UTF8
     @{ version = 1; vials = @(@{ id = 'host-vial'; name = 'Hosted vial'; monitor = $null
          rect = @{ x = 0.45; y = 0.55; width = 0.15; height = 0.2 }; items = [string[]]@($temp); collapsed = $false })
        rules = @(); autoSort = $false; hideOnDesktop = $true } | ConvertTo-Json -Depth 6 | Set-Content -Path $vialsCfg -Encoding UTF8

@@ -109,7 +109,7 @@ pub fn descriptors() -> Vec<Descriptor> {
         Descriptor {
             id: "workspaces",
             name: "Workspaces",
-            description: "A different desktop setup per virtual desktop: hide icons and relaunch your apps and folders.",
+            description: "Tie desktop shortcuts, files and folders to a virtual desktop so each desktop shows only its own.",
             version: workspaces_module::VERSION,
             supported: cfg!(windows),
             settings_files: &["config.json"],

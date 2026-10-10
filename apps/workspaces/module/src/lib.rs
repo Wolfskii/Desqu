@@ -1,7 +1,6 @@
-//! Workspaces: a different desktop setup per virtual desktop. Each workspace can hide a chosen set
-//! of desktop icons while its desktop is current (via the shared `desqu-desktop` layer, always
-//! restored) and remembers the apps and folders to launch again. Foreign windows are never moved:
-//! Windows does not allow it (see `docs/virtual-desktop-research.md`).
+//! Workspaces: tie desktop items (shortcuts, files, folders) to a virtual desktop. An owned item is
+//! shown on its desktop and hidden on the others via the shared `desqu-desktop` layer (always
+//! restored). Only the virtual desktop registry layout is used; no window is touched.
 
 mod commands;
 pub mod core;

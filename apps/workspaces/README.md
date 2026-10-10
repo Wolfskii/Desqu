@@ -1,38 +1,37 @@
 # Workspaces
 
-A different desktop setup for each Windows virtual desktop. Give a desktop its own set of visible
-desktop icons, and save the apps and folders you use there so you can open them again in one click.
+Give each Windows virtual desktop its own desktop icons. Tie shortcuts, files and folders to a
+virtual desktop and they show up only there; on your other desktops they are hidden.
 
 ## What it does
 
-- **Icons per desktop.** For each virtual desktop you choose which desktop icons to hide while it
-  is the current one. Switch desktops and the icons follow. Files are never moved or deleted; hidden
-  icons are parked off-screen and always put back (on exit, and after a crash on the next start).
-  Files you add later stay visible.
-- **Save what is open.** "Save open windows" remembers the apps and Explorer folders open on a
-  desktop. "Launch here" starts the ones that are not open yet.
+- **Icons per desktop.** On the Items tab pick a virtual desktop for any desktop item. It is shown
+  on that desktop and hidden on the others. Items you leave on "Every desktop" show everywhere.
+- **New files join the desktop you are on.** A file that appears on the desktop while Workspaces is
+  running is tied to the virtual desktop you are on (switch it off in Settings). Files that were
+  already there stay on every desktop until you choose.
+- **Nothing is moved or deleted.** Items stay in your Desktop folders. Hidden icons are parked
+  off-screen and always put back: when you turn Workspaces off, quit, or after a crash on the next
+  start. If a virtual desktop is removed, its items are shown everywhere again.
 - **Works alone or inside Desqu.** The standalone app and [Desqu](../desqu/README.md) share the same
-  settings; only one of them runs at a time. With [Vials](../vials/README.md) also on, a shared icon
-  stays hidden until both let go of it.
+  settings; only one of them runs at a time. With [Vials](../vials/README.md) also on, an icon both
+  want hidden stays hidden until both let go of it.
 
-## Limits (by design)
+## Limits
 
-- **Windows does not let an app move other apps' windows between virtual desktops**, so Workspaces
-  cannot gather windows for you. "Launch here" opens things on the desktop you are on: switch to the
-  desktop first. See [docs/virtual-desktop-research.md](docs/virtual-desktop-research.md).
-- Windows lists virtual desktops only once you have more than one (Win+Tab → New desktop).
-- Saved command lines come from running processes of your own user; elevated apps cannot be read.
-- Verified on Windows 11 build 26300 only. Other builds are untested.
-
-Windows only for now.
+- Windows lists virtual desktops only once you have more than one (Win+Tab, then New desktop).
+- Switching is detected through the virtual desktop registry key. That this fires on a real switch
+  has been observed only on one Windows build (see
+  [docs/virtual-desktop-research.md](docs/virtual-desktop-research.md)); other builds are untested.
+- Windows only for now.
 
 ## Develop
 
 ```powershell
-task workspaces:dev                                   # run locally
-task workspaces:ci                                    # checks, tests, clippy
-pwsh apps/workspaces/scripts/smoke-test.ps1           # real-desktop smoke test (one temp file)
-cargo test -p workspaces-module -- --ignored real_running   # real-window test
+task workspaces:dev                           # run locally
+task workspaces:ci                            # checks, tests, clippy
+pwsh apps/workspaces/scripts/smoke-test.ps1   # real-desktop smoke test (temp files only)
 ```
 
-Manual checks that need a human: [docs/manual-testing.md](docs/manual-testing.md).
+Quit any running Desqu or Workspaces first: only one process may run the module. Manual checks that
+need a human: [docs/manual-testing.md](docs/manual-testing.md).

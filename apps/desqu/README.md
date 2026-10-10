@@ -22,7 +22,7 @@ choose which ones start with Windows, and keep everything in one tray icon.
 | --- | --- | --- |
 | [Screenbound](../screenbound/README.md) | Keeps fullscreen windows inside a zone of your monitor | Included |
 | [Vials](../vials/README.md) | Desktop containers for shortcuts, apps and folders | Included |
-| [Workspaces](../workspaces/README.md) | A different desktop setup per virtual desktop | Included |
+| [Workspaces](../workspaces/README.md) | Desktop icons that belong to a virtual desktop | Included |
 
 Windows 10/11 with WebView2 (preinstalled on Windows 11). Windows only for now.
 

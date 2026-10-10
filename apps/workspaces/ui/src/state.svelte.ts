@@ -1,6 +1,6 @@
 import type { ModuleStatus } from "@desqu/ui";
 import { api, events, type UnlistenFn } from "./api";
-import type { DesktopEntry, DesktopStatus, ItemInfo, RestoreReport, Workspace, WorkspacesConfig } from "./types";
+import type { DesktopEntry, DesktopStatus, ItemInfo, WorkspacesConfig } from "./types";
 
 const SAVE_DELAY_MS = 350;
 const REFRESH_DELAY_MS = 250;
@@ -13,9 +13,6 @@ class WorkspacesState {
     desktop = $state<DesktopStatus | null>(null);
     error = $state<string | null>(null);
     saveState = $state<"idle" | "pending" | "saving" | "saved">("idle");
-    /** Result of the last restore, per desktop id. */
-    reports = $state<Record<string, RestoreReport>>({});
-    busy = $state<string | null>(null);
 
     #saveTimer: ReturnType<typeof setTimeout> | null = null;
     #refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -100,65 +97,40 @@ class WorkspacesState {
             this.config = await api.setConfig($state.snapshot(this.config));
             this.error = null;
             this.saveState = "saved";
-            this.desktops = await api.listDesktops();
+            await this.refresh();
         } catch (e) {
             this.error = String(e);
             this.saveState = "idle";
         }
     }
 
-    workspace(desktopId: string): Workspace | undefined {
+    /** Ties an item to a desktop, or (null) shows it on every desktop. */
+    async assign(itemId: string, desktopId: string | null) {
+        try {
+            this.config = await api.assignItem(itemId, desktopId);
+            await this.refresh();
+        } catch (e) {
+            this.error = String(e);
+        }
+    }
+
+    workspace(desktopId: string) {
         return this.config?.workspaces.find((w) => w.desktopId === desktopId);
     }
 
-    /** Creates the workspace of a desktop (empty) so it can be edited. */
-    ensureWorkspace(entry: DesktopEntry): Workspace | null {
-        if (!this.config) return null;
-        let ws = this.workspace(entry.id);
-        if (!ws) {
-            this.config.workspaces.push({
-                desktopId: entry.id,
-                name: entry.name,
-                manageIcons: false,
-                hiddenItems: [],
-                apps: [],
-                folders: [],
-            });
-            ws = this.workspace(entry.id)!;
-            this.scheduleSave(true);
-        }
-        return ws;
+    desktopName(id: string | null): string {
+        if (!id) return "Every desktop";
+        return this.desktops.find((d) => d.id === id)?.name ?? "Removed desktop";
+    }
+
+    itemsOf(desktopId: string): ItemInfo[] {
+        return this.items.filter((i) => i.owner === desktopId);
     }
 
     removeWorkspace(desktopId: string) {
         if (!this.config) return;
         this.config.workspaces = this.config.workspaces.filter((w) => w.desktopId !== desktopId);
         this.scheduleSave(true);
-    }
-
-    async capture(entry: DesktopEntry) {
-        this.busy = entry.id;
-        try {
-            this.config = await api.captureWorkspace(entry.id);
-            this.desktops = await api.listDesktops();
-            this.error = null;
-        } catch (e) {
-            this.error = String(e);
-        } finally {
-            this.busy = null;
-        }
-    }
-
-    async restore(entry: DesktopEntry) {
-        this.busy = entry.id;
-        try {
-            this.reports[entry.id] = await api.restoreWorkspace(entry.id);
-            this.error = null;
-        } catch (e) {
-            this.error = String(e);
-        } finally {
-            this.busy = null;
-        }
     }
 }
 

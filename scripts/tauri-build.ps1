@@ -21,7 +21,8 @@ if ($null -eq $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { $env:TAURI_SIGNING_PRIV
 
 Push-Location (Join-Path $root "apps/$App")
 try {
-    npm run tauri build
+    # Tauri treats an empty password variable as unset and prompts; closing stdin answers "empty".
+    if ($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -eq '') { '' | npm run tauri build } else { npm run tauri build }
     exit $LASTEXITCODE
 } finally {
     Pop-Location

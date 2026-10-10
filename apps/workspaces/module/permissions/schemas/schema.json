@@ -295,6 +295,18 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the assign_item command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-assign-item",
+          "markdownDescription": "Enables the assign_item command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the assign_item command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-assign-item",
+          "markdownDescription": "Denies the assign_item command without any pre-configured scope."
+        },
+        {
           "description": "Enables the capture_workspace command without any pre-configured scope.",
           "type": "string",
           "const": "allow-capture-workspace",
@@ -427,10 +439,10 @@
           "markdownDescription": "Denies the set_config command without any pre-configured scope."
         },
         {
-          "description": "Everything the Workspaces UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-desktops`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-capture-workspace`\n- `allow-restore-workspace`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Everything the Workspaces UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-desktops`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Workspaces UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-desktops`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-capture-workspace`\n- `allow-restore-workspace`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Workspaces UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-desktops`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
         }
       ]
     }
