@@ -352,7 +352,7 @@ Each step has: **Status**, **Depends on**, **Files**, **Do**, **Verify**, **Done
 Goal: Screenbound lives in `apps/screenbound/`, the root is a Cargo + npm workspace, everything still
 builds and produces the same artifacts. **No identifier, name, or behaviour changes in this phase.**
 
-#### P1.1 Move Screenbound files with git — Status: ⬜
+#### P1.1 Move Screenbound files with git — Status: 🟡
 - **Depends on:** P0.5, Q4
 - **Do:** From the repo root, with a clean working tree (`git status` shows nothing to commit). Stop
   any running `task dev` first.
@@ -382,7 +382,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
     unused. Ask the owner before deleting it (it is only a cache).
 - **Verify:** `git status` shows renames (R), not delete+add, for the moved files.
 - **Done when:**
-  - [ ] All moves done; history preserved (`git log --follow apps/screenbound/src-tauri/src/lib.rs` shows old commits).
+  - [x] All moves done; history preserved (`git log --follow apps/screenbound/src-tauri/src/lib.rs` shows old commits).
 
 #### P1.2 Create the Cargo workspace — Status: ⬜
 - **Depends on:** P1.1
@@ -1311,3 +1311,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — plan — created — Plan written from repo inspection. Next: P0.1 (answer Q1–Q11) and P0.2–P0.5 baseline on real Windows.
 - 2026-10-10 — P0.1 — 🟡 — Q4 answered: yes, monorepo. Phase 1 now only waits on P0.5 (artifact baseline). Remaining: Q1–Q3, Q5–Q11.
 - 2026-10-10 — P0.5 — ✅ — `task ci` passes: svelte-check clean, 37 Rust unit tests passed + 2 ignored (probes), clippy clean. `task release` → `dist/ScreenBound_0.1.0_x64-setup.exe` 2,506,038 B; `dist/ScreenBound_0.1.0_x64.msi` 3,813,376 B; `dist/ScreenBound_0.1.0_x64-portable.exe` 10,521,088 B. Next: P1.1.
+- 2026-10-10 — P1.1 — ✅ — Moved Screenbound with git mv (81 renames). Root Cargo.lock now; apps/screenbound/src-tauri/target (ignored cache) and gen/ moved along, not deleted (owner to decide). Needed to stop rust-analyzer/VS Code handles on src/. Next: P1.2.
