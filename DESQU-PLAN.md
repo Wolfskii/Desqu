@@ -52,7 +52,7 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | 3 | Shared shell crate + shared UI kit | ✅ | 1 (can run in parallel with 2) |
 | 4 | Screenbound rebrand + settings migration | 🧪 | 2, 3, Q1, Q2 |
 | 5 | Updater, CI and GitHub releases | 🧪 | 3, Q5, Q6 |
-| 6 | Desqu collection app | ⬜ | 2, 3, 5 |
+| 6 | Desqu collection app | 🟡 | 2, 3, 5 |
 | 7 | Screenbound borderless gaming | ⬜ | 2 |
 | 8 | Desktop layer spike + Vials | ⬜ | 3 |
 | 9 | Virtual desktop spike + Workspaces | ⬜ | 8 |
@@ -1067,7 +1067,7 @@ fighting over windows.
 
 ### Phase 6 — Desqu collection app
 
-#### P6.1 Scaffold `apps/desqu` — Status: ⬜
+#### P6.1 Scaffold `apps/desqu` — Status: ✅
 - **Depends on:** P3.11, P5.3, Q1, Q8
 - **Files:** `apps/desqu/**` (copy the structure of `apps/screenbound` shell: `package.json`
   name `desqu-app`, `svelte.config.js`, `vite.config.js` with **port 1430 / HMR 1431**, `tsconfig.json`,
@@ -1082,7 +1082,7 @@ fighting over windows.
 - **Done when:**
   - [ ] App builds and runs.
 
-#### P6.2 Desqu settings and module registry — Status: ⬜
+#### P6.2 Desqu settings and module registry — Status: ✅
 - **Depends on:** P6.1
 - **Files:** `apps/desqu/src-tauri/src/{settings.rs, registry.rs, commands.rs}`
 - **Do:**
@@ -1102,7 +1102,7 @@ fighting over windows.
 - **Done when:**
   - [ ] Unit tests for "should Desqu autostart" and "which modules start" (pure functions).
 
-#### P6.3 Take-over from standalone — Status: ⬜
+#### P6.3 Take-over from standalone — Status: 🧪
 - **Depends on:** P6.2, P3.4, P3.8
 - **Files:** `apps/desqu/src-tauri/src/takeover.rs`, `desqu-shell` platform helpers
 - **Do:** When starting a module whose status becomes `OwnedElsewhere`:
@@ -1121,7 +1121,7 @@ fighting over windows.
 - **Done when:**
   - [ ] Both directions verified.
 
-#### P6.4 Desqu UI — Status: ⬜
+#### P6.4 Desqu UI — Status: 🧪
 - **Depends on:** P6.2, P3.10
 - **Files:** `apps/desqu/src/routes/{+layout.svelte, +page.svelte, settings/+page.svelte, [module]/+page.svelte}`,
   `apps/desqu/src/lib/{api.ts, state.svelte.ts, types.ts, components/ModuleCard.svelte, components/Sidebar.svelte}`
@@ -1143,7 +1143,7 @@ fighting over windows.
 - **Done when:**
   - [ ] All screens work with keyboard and mouse.
 
-#### P6.5 Desqu tray — Status: ⬜
+#### P6.5 Desqu tray — Status: 🧪
 - **Depends on:** P6.2, P3.7
 - **Do:** Tray items: Show Desqu · ✓ Screenbound (check item toggles enabled) · Screenbound ▸ Pause /
   Release all windows (only when on) · Check for updates · Exit. Keep check states in sync when the
@@ -1306,6 +1306,7 @@ fighting over windows.
 | New identifier loses settings | Copy-not-move migration + marker + tests | P4.2 |
 | Old ScreenBound and new Screenbound fight over windows | Detect old process, keep engine off until gone | P4.3 |
 | Standalone uninstaller "Delete app data" deletes settings Desqu uses | Warn in Desqu UI and docs | P6.4 |
+| Plugin registered from inside another plugin's `setup` deadlocks Tauri's plugin store (app never starts) | Register on the Builder; always do a real launch + `--quit` after touching startup | P5.3 (found by smoke test) |
 | Windows updater exits without `RunEvent::Exit` → windows left constrained | Stop modules before `download_and_install`; journal recovers anyway | P5.3 |
 | `releases/latest` is repo-wide | Per-product feeds on gh-pages | P5.2 |
 | No Authenticode → SmartScreen warnings | Document; decide Q6 | P5.5 |
@@ -1376,3 +1377,9 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P5.5 — 🧪 — .github/workflows/ci.yml (windows-latest; checkout, node 20 + npm cache, rust stable + clippy, rust-cache, setup-task; npm ci; task ci; scripts/check-standalone-deps.ps1; builds every apps/*/src-tauri package separately via discovery so new apps are included automatically). scripts/check-standalone-deps.ps1 checks: standalone app never depends on `desqu`, module crates never depend on other module crates, no standalone package.json depends on desqu-app (passes today). YAML validated locally with PyYAML. No signing step (no Authenticode cert, Q6 assumption); noted for docs/releasing.md. NEEDS: a push/PR to see it green on GitHub.
 - 2026-10-10 — P5.6 — 🧪 — Release pipeline built and exercised locally: scripts/tauri-build.ps1 (uses CI's TAURI_SIGNING_PRIVATE_KEY or ~/.tauri/<app>.key; screenbound release task now calls it), publish-artifacts.ps1 (also copies *.sig, only picks installers of the current version, writes SHA256SUMS.txt via .NET because Windows PowerShell 5.1 started from pwsh can lose Get-FileHash), write-update-feed.ps1 (latest.json in Tauri updater format + RELEASE_NOTES.md from the CHANGELOG section), .github/workflows/release.yml (tags <app>-v<semver> or manual dispatch; check-versions; build+sign with the product's *_UPDATER_KEY secret, fails if missing; gh release create with all assets, --latest only for desqu, prerelease for versions with a suffix; feed to gh-pages updates/<app>/ via peaceiris/actions-gh-pages, prerelease feeds go to updates/<app>/prerelease/ so no installed app reads them), docs/releasing.md (one-time owner setup, how to release, prerelease flow, local build, SmartScreen note, undo). VERIFIED HERE: a real `task screenbound:release` with the real key produced signed installers (setup.exe.sig and msi.sig, 440 chars each, empty-password key works), dist/screenbound has 3 artifacts + 2 sigs + SHA256SUMS.txt, and write-update-feed produced a correct latest.json. Portable exe grew 10.0 -> 13.5 MiB (updater/TLS stack). Workflow YAML validated locally; not run on GitHub. NEEDS OWNER: secrets + Pages (docs/releasing.md), then push a tag; a pre-release tag (screenbound-v0.2.0-rc.1) is the intended first test.
 - 2026-10-10 — P5.7 — 🧪 — Hand-off: not something I can do (needs tags, GitHub Actions, two published versions and an install on a real machine). Steps are in docs/releasing.md. Screenbound's version stays 0.1.0 in the repo for now; bump with `pwsh scripts/bump-version.ps1 -App screenbound -Version 0.2.0` and rename the CHANGELOG 'Unreleased' section when releasing.
+- 2026-10-10 — BUG FOUND + FIXED (P5.3) — A real launch of the Screenbound debug AND release exe (Start-Process, then a second `--quit` launch) showed the app never started its event loop: responding=False, only the single-instance helper window, second launch hung. Cause: P5.3 registered the updater plugin from inside desqu-shell's own plugin setup; Tauri holds its plugin-store lock while a plugin initialises, so the nested app.plugin(..) deadlocks. Fix: desqu_shell::updates::plugin() is registered by each app on the Builder; the shell plugin only checks that plugins.updater is configured. After the fix both apps start (responding, titled window) and `--quit` forwarding works end to end (second launch exits 0, first exits 0). This also verifies the second-instance half of P3.4. Lesson recorded in §8: unit tests and CI cannot see this; every phase that touches startup needs a real launch.
+- 2026-10-10 — P6.1 — ✅ — apps/desqu scaffolded (package desqu-app; vite port 1430/1431; Tauri package desqu, lib desqu_lib; productName Desqu, identifier io.github.wolfskii.desqu, window visible:false 1100x760, same CSP, NSIS currentUser, updater with Desqu's real public key and updates/desqu/latest.json; icons generated from the existing mascot logo (Q8 assumption; Android/iOS icon folders removed); capability desqu-shell:default + screenbound-module:default; Taskfile + root include; workspace member). Verified: builds, task desqu:ci green, real launch (see above).
+- 2026-10-10 — P6.2 — ✅ — settings.rs (ModuleSettings, ModulesFile, pure should_autostart / modules_to_start / set_all_start_with_system, atomic load/save, 7 tests), registry.rs (descriptors() kept free of Wry so tests can run, entries() joins the running module + plugin builder, 3 tests), commands.rs (list_modules, set_module_enabled, set_module_start_with_system, set_all_start_with_system, takeover_module, reset_module_settings, remove_standalone; Desqu's Run entry registered iff any module is enabled+startWithSystem; a module turned on from its own page is picked up as enabled), lib.rs startup (from sign-in only enabled+startWithSystem modules start, manual launch starts all enabled). DEVIATIONS: (1) module settings live in modules.json, not settings.json, because the shell plugin rewrites shell.json wholesale and would drop the module map; (2) desqu-shell gained ShellOptions{manage_autostart} so Desqu's own Run entry follows its modules instead of shell.json's startWithSystem. Note: a test binary that links the Wry runtime cannot start on Windows (STATUS_ENTRYPOINT_NOT_FOUND, no app manifest), so tests only touch Wry-free code.
+- 2026-10-10 — P6.3 — 🧪 — takeover.rs: quit_targets (pure), disable_standalone_autostart (removes the standalone Run value + clears startWithSystem in its shell.json), take_over (runs `<exe> --quit` on the standalone process, retries module.start every 250 ms for up to 5 s, then disables the standalone autostart); UI banner 'Screenbound is running on its own. Let Desqu manage it?'. Standalone side: ScreenboundView(onOpenDesqu,onExit) shows 'Screenbound is managed by Desqu' with Open Desqu (finds desqu.exe via the Desqu uninstall entry, else hides the window) and Exit. 3 tests + real --quit forwarding verified. NEEDS HUMAN: both directions with a constrained window (standalone running -> enable in Desqu -> standalone exits and restores, Desqu re-constrains; standalone Run value gone; then start standalone while Desqu manages -> 'managed by Desqu' card).
+- 2026-10-10 — P6.4 — 🧪 — Desqu UI: Sidebar (Home, one entry per supported module with status dot, Settings), Home (cards: icon, name, description, status, enabled Switch, Start with system Switch, Open; TriStateSwitch 'Start all apps with system'; take-over banner), module page hosting ScreenboundView with a 'More' menu (Reset settings with a warning that the standalone app shares them; Remove standalone copy when its uninstall entry exists), Settings (ShellSettingsSection with the start-with-system row hidden + explanation, UpdateCard, About with versions). Uses @desqu/ui tokens and custom switches only. task desqu:check 207 files 0 errors; vite build OK. NEEDS HUMAN: click-through with keyboard and mouse.
+- 2026-10-10 — P6.5 — 🧪 — Desqu tray (desqu-shell Tray now remembers check items; set_checked/set_enabled; relabel_on_updates and updates::on_tray_click shared with Screenbound): Show Desqu, a check item per module, Pause Screenbound (check) and Release all windows (enabled only while running), Check for updates / Update to vX, Exit; tray::refresh runs after every settings change; module toggles run off the tray's event thread. Flat items instead of a submenu (TrayItem has no submenu). NEEDS HUMAN: tray reflects UI changes and vice versa.

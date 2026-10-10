@@ -761,6 +761,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "desqu"
+version = "0.1.0"
+dependencies = [
+ "desqu-shell",
+ "screenbound-module",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tracing",
+]
+
+[[package]]
 name = "desqu-shell"
 version = "0.1.0"
 dependencies = [

@@ -3,6 +3,9 @@ version: "3"
 # Repo-wide entry point. Each app keeps its own Taskfile.yml; run `task --list` for all tasks.
 
 includes:
+  desqu:
+    taskfile: ./apps/desqu/Taskfile.yml
+    dir: ./apps/desqu
   screenbound:
     taskfile: ./apps/screenbound/Taskfile.yml
     dir: ./apps/screenbound
@@ -23,3 +26,4 @@ tasks:
     desc: CI for every app
     cmds:
       - task: screenbound:ci
+      - task: desqu:ci

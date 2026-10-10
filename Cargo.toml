@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["apps/screenbound/module", "apps/screenbound/src-tauri", "crates/desqu-shell"]
+members = [
+    "apps/desqu/src-tauri",
+    "apps/screenbound/module",
+    "apps/screenbound/src-tauri",
+    "crates/desqu-shell",
+]
 
 # Profiles are only honoured at the workspace root.
 [profile.release]
