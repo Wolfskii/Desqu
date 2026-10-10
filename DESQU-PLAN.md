@@ -54,8 +54,8 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | 5 | Updater, CI and GitHub releases | 🧪 | 3, Q5, Q6 |
 | 6 | Desqu collection app | 🟡 | 2, 3, 5 |
 | 7 | Screenbound borderless gaming | 🧪 | 2 |
-| 8 | Desktop layer spike + Vials | ⬜ | 3 |
-| 9 | Virtual desktop spike + Workspaces | ⬜ | 8 |
+| 8 | Desktop layer spike + Vials | 🧪 | 3 |
+| 9 | Virtual desktop spike + Workspaces | 🧪 | 8 |
 
 ---
 
