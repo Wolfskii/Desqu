@@ -42,11 +42,3 @@ features = [
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
-
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-# Unwinding (not abort) so shutdown/restore paths still run if a panic escapes a thread.
-panic = "unwind"
-strip = true
