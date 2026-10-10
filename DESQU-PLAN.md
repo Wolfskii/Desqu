@@ -740,7 +740,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Tests pass.
 
-#### P3.4 Single instance + `--quit` forwarding — Status: ⬜
+#### P3.4 Single instance + `--quit` forwarding — Status: 🟡
 - **Depends on:** P3.3
 - **Files:** `crates/desqu-shell/src/instance.rs`
 - **Do:** `pub fn plugin<R: Runtime>() -> TauriPlugin<R>` wrapping `tauri_plugin_single_instance::init`.
