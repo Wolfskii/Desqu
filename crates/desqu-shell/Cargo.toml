@@ -5,9 +5,14 @@ description = "Shared Tauri shell for Desqu apps: tray, settings, startup, autos
 authors = ["ScreenBound contributors"]
 edition = "2021"
 rust-version = "1.80"
+# Required by tauri-plugin: must equal the package name, which is also the plugin name.
+links = "desqu-shell"
 
 [lib]
 name = "desqu_shell"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }

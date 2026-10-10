@@ -9,6 +9,9 @@ pub mod logging;
 pub mod module;
 pub mod mutex;
 pub mod platform;
+pub mod plugin;
 pub mod settings;
 pub mod tray;
 pub mod window;
+
+pub use plugin::{current as current_settings, init};
