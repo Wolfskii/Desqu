@@ -46,7 +46,7 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | --- | --- | --- | --- |
 | 0 | Baseline measurements and decisions | ⬜ | — |
 | 1 | Monorepo move (behaviour identical) | 🟡 | 0 |
-| 2 | Screenbound module crate + UI package | ⬜ | 1 |
+| 2 | Screenbound module crate + UI package | 🟡 | 1 |
 | 3 | Shared shell crate + shared UI kit | ⬜ | 1 (can run in parallel with 2) |
 | 4 | Screenbound rebrand + settings migration | ⬜ | 2, 3, Q1, Q2 |
 | 5 | Updater, CI and GitHub releases | ⬜ | 3, Q5, Q6 |
@@ -549,7 +549,7 @@ Goal: Screenbound's logic becomes a reusable Tauri plugin crate and a Svelte UI 
 standalone app becomes a thin shell. Behaviour stays identical except: the module can now be
 started/stopped at runtime.
 
-#### P2.1 Create `screenbound-module` crate and move code — Status: ⬜
+#### P2.1 Create `screenbound-module` crate and move code — Status: 🟡
 - **Depends on:** P1.8
 - **Files:** new `apps/screenbound/module/Cargo.toml`, `apps/screenbound/module/src/lib.rs`;
   move `apps/screenbound/src-tauri/src/{core,engine,platform}` → `apps/screenbound/module/src/`
@@ -1319,3 +1319,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P1.6 — ✅ — stop-screenbound.ps1 → scripts/stop-app.ps1 (-Names). publish-artifacts.ps1 -App <name> (reads apps/<name>, root target/, writes dist/<name>/ and clears only that folder). task screenbound:release OK: dist/screenbound/ names identical to P0.5, sizes within 0.1% (setup 2,506,870 B; msi 3,813,376 B; portable 10,522,624 B). Old root dist/ files from baseline left in place (ignored build output; delete when owner agrees).
 - 2026-10-10 — P1.7 — ✅ — Root README = Desqu intro + products + build; apps/screenbound/README.md = old README (image paths fixed, task screenbound:* commands). Root AGENTS.md = repo-wide rules (dependency rules, layering, conventions); apps/screenbound/AGENTS.md = Screenbound rules + screenbound:* commands. Root PLAN.md = index. All relative links checked. Next: P1.8 (regression, partly needs a human on Windows).
 - 2026-10-10 — P1.8 — 🧪 — Automated: root task ci exit 0 (189 files 0 errors; 37 Rust tests pass, clippy clean). Release via new task verified (P1.6). NOT yet done (needs human on Windows): (2) task screenbound:dev — app starts, tabs load, settings from %APPDATA%\com.screenbound.app shown; (3) manual-testing.md Core flow + Lifecycle; (4) confirm installed exe size ~ P0.5 (P1.6 build: 10.5 MB portable, same as baseline).
+- 2026-10-10 — P1.8 — ✅ — Owner ran the app after the move and reported it works (not a full manual-testing.md run). Phase 1 done. Starting P2.1.
