@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use desqu_desktop::{DesktopError, DesktopLayer, Subscription};
 use desqu_shell::mutex::{self, ModuleLock};
+use tauri::window::{Color, Effect, EffectsBuilder};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewUrl, WebviewWindowBuilder,
     WindowEvent,
@@ -486,7 +487,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
             .skip_taskbar(true)
             .always_on_bottom(true)
             .focusable(false)
-            .shadow(false)
+            .shadow(true)
             .transparent(true)
             .visible(false)
             .build();
@@ -503,6 +504,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                 let _ = window.show();
                 // Keep it out of Alt+Tab too (skip_taskbar alone does not). After show(): Tauri
                 // rewrites the extended style while showing.
+                apply_glass(&window);
                 if let Ok(hwnd) = window.hwnd() {
                     if let Err(e) = platform::mark_as_tool_window(hwnd.0 as isize) {
                         tracing::warn!("could not make the vial window a tool window: {e}");
@@ -614,9 +616,12 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
         .skip_taskbar(true)
         .always_on_top(true)
         .focused(false)
+        .shadow(true)
+        .transparent(true)
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
+    apply_glass(&window);
     let _ = window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
     let _ = window.set_position(PhysicalPosition::new(x, y));
     if let Some(state) = app.try_state::<ModuleState>() {
@@ -630,6 +635,18 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
         menu_ready(&handle);
     });
     Ok(())
+}
+
+/// Frosted glass: the desktop behind the window is blurred (acrylic) with a dark tint so labels
+/// stay readable on any wallpaper, and the corners are rounded. Both are best effort.
+fn apply_glass<R: Runtime>(window: &tauri::WebviewWindow<R>) {
+    let effects = EffectsBuilder::new().effect(Effect::Acrylic).color(Color(18, 22, 30, 96)).build();
+    if let Err(e) = window.set_effects(effects) {
+        tracing::debug!("no glass effect on this system: {e}");
+    }
+    if let Ok(hwnd) = window.hwnd() {
+        platform::round_corners(hwnd.0 as isize);
+    }
 }
 
 /// The popup's page has loaded: show it and give it the keyboard (for Esc). Dismissal by clicking

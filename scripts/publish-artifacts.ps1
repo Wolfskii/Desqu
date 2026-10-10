@@ -91,7 +91,7 @@ Write-Host ("  Portable exe   : {0} ({1:N2} MiB)" -f $portableOut, ((Get-Item $p
 if ($sigs.Count -gt 0) {
     Write-Host ("  Signatures     : {0}" -f (($sigs | ForEach-Object { Split-Path $_ -Leaf }) -join ', '))
 } else {
-    Write-Warning 'No updater signatures found: the build had no signing key, so updates cannot be published.'
+    Write-Host '  Signatures     : none (local unsigned build; releases are built by the release workflow)'
 }
 Write-Host '  Checksums      : SHA256SUMS.txt'
 Write-Host ''

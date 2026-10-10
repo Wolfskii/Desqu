@@ -62,10 +62,17 @@ tasks:
 
   release:
     aliases: [build]
-    desc: Production build — NSIS + MSI installers and a portable exe in dist/desqu/
+    desc: Local production build — NSIS + MSI installers and a portable exe in dist/desqu/ (unsigned, no password prompt)
     deps: [install]
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/stop-app.ps1 -Names desqu,Desqu
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/tauri-build.ps1 -App desqu -NoSign
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App desqu
+
+  release:signed:
+    desc: Like release, but signs the updater artifacts with ~/.tauri/desqu.key (asks for the key password; empty = press Enter)
+    deps: [install]
+    cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/tauri-build.ps1 -App desqu
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App desqu
 

@@ -74,10 +74,17 @@ tasks:
 
   release:
     aliases: [build]
-    desc: Production build — NSIS + MSI installers and a portable exe in dist/screenbound/
+    desc: Local production build — NSIS + MSI installers and a portable exe in dist/screenbound/ (unsigned, no password prompt)
     deps: [install]
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/stop-app.ps1 -Names screenbound,ScreenBound,Screenbound
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/tauri-build.ps1 -App screenbound -NoSign
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App screenbound
+
+  release:signed:
+    desc: Like release, but signs the updater artifacts with ~/.tauri/screenbound.key (asks for the key password; empty = press Enter)
+    deps: [install]
+    cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/tauri-build.ps1 -App screenbound
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App screenbound
 

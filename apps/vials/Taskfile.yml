@@ -62,10 +62,17 @@ tasks:
 
   release:
     aliases: [build]
-    desc: Production build — NSIS + MSI installers and a portable exe in dist/vials/
+    desc: Local production build — NSIS + MSI installers and a portable exe in dist/vials/ (unsigned, no password prompt)
     deps: [install]
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/stop-app.ps1 -Names vials,Vials
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/tauri-build.ps1 -App vials -NoSign
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App vials
+
+  release:signed:
+    desc: Like release, but signs the updater artifacts with ~/.tauri/vials.key (asks for the key password; empty = press Enter)
+    deps: [install]
+    cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/tauri-build.ps1 -App vials
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App vials
 
