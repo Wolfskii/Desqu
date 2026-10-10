@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Type check, unit tests and clippy (every app)
+        run: task ci
+
+      - name: Dependency rules
+        shell: pwsh
+        run: ./scripts/check-standalone-deps.ps1
+
+      # Each app must build on its own, not only as part of the whole workspace.
+      - name: Build every app separately
+        shell: pwsh
+        run: |
+          foreach ($toml in Get-ChildItem apps/*/src-tauri/Cargo.toml) {
+            $name = (Select-String -Path $toml -Pattern '^name\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+            Write-Host "::group::cargo build -p $name"
+            cargo build -p $name
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Host '::endgroup::'
+          }
+
+      # No Authenticode certificate is available (see docs/releasing.md): CI never signs anything.
