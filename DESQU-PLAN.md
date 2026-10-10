@@ -784,7 +784,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 - **Done when:**
   - [ ] Functions implemented and used by Screenbound in P3.8.
 
-#### P3.7 Tray builder — Status: ⬜
+#### P3.7 Tray builder — Status: 🟡
 - **Depends on:** P3.6
 - **Files:** `crates/desqu-shell/src/tray.rs`
 - **Do:** `TrayConfig { tooltip, show_label, extra_items: Vec<TrayItem>, on_item: Fn(&AppHandle, &str) }`
@@ -1357,3 +1357,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — workflow — rule 9 changed — Owner now makes all commits; after each step Claude suggests a short commit message and waits. History-rewrite to drop Claude Co-Authored-By trailers was blocked by the permission system; backup branch backup/pre-attribution-cleanup exists; owner to run the filter-branch themselves or allow it.
 - 2026-10-10 — P3.5 — 🧪 — autostart::plugin() (args --autostart), sync(), sync_at_startup() (disable+enable so old entries are rewritten). platform::remove_run_value(name) deletes the HKCU Run value + StartupApproved value (unsupported stub returns Ok(false)); tested against the real registry with a throwaway value. 13 tests pass, clippy clean. Still to verify by a human after P3.11: enabling writes exe path + --autostart in the Run key.
 - 2026-10-10 — P3.6 — 🧪 — window.rs: should_show_on_startup / close_action (pure, 5 tests), on_startup, install_close_handler (reads close_to_tray at event time, tray_ok captured), show_main. Q7 unanswered: used the plan default (hide, not destroy the WebView). 18 desqu-shell tests pass, clippy clean. Used by Screenbound in P3.11; behaviour verified then.
+- 2026-10-10 — P3.7 — 🧪 — tray.rs: layout() (pure, 4 tests: show/sep/extras/sep/[updates]/exit) + build() (TrayConfig with tooltip, show_label, extra_items, updates_item flag off by default, on_item handler; show/exit handled by shell, left click shows window; same icon handling as old install_tray). 22 desqu-shell tests pass, clippy clean. Look-and-behaviour check happens when Screenbound adopts it in P3.11.
