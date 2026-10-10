@@ -410,7 +410,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
 - **Done when:**
   - [x] Workspace builds; only one `Cargo.lock` (root); release profile only in root `Cargo.toml`.
 
-#### P1.3 Create the npm workspace — Status: ⬜
+#### P1.3 Create the npm workspace — Status: 🟡
 - **Depends on:** P1.1
 - **Files:** new root `package.json`, `apps/screenbound/package.json`, `package-lock.json`
 - **Do:**
@@ -429,7 +429,7 @@ builds and produces the same artifacts. **No identifier, name, or behaviour chan
 - **Done when:**
   - [ ] `npm install` at root works; `node_modules/` only at root (plus any nested ones npm decides).
 
-#### P1.4 Fix ignore files — Status: ⬜
+#### P1.4 Fix ignore files — Status: ✅
 - **Depends on:** P1.1
 - **Files:** [.gitignore](.gitignore)
 - **Do:** Root-anchored patterns no longer match the moved app. Replace the content with:
@@ -1313,3 +1313,5 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P0.5 — ✅ — `task ci` passes: svelte-check clean, 37 Rust unit tests passed + 2 ignored (probes), clippy clean. `task release` → `dist/ScreenBound_0.1.0_x64-setup.exe` 2,506,038 B; `dist/ScreenBound_0.1.0_x64.msi` 3,813,376 B; `dist/ScreenBound_0.1.0_x64-portable.exe` 10,521,088 B. Next: P1.1.
 - 2026-10-10 — P1.1 — ✅ — Moved Screenbound with git mv (81 renames). Root Cargo.lock now; apps/screenbound/src-tauri/target (ignored cache) and gen/ moved along, not deleted (owner to decide). Needed to stop rust-analyzer/VS Code handles on src/. Next: P1.2.
 - 2026-10-10 — P1.2 — ✅ — Root Cargo.toml workspace (member apps/screenbound/src-tauri) + [profile.release] moved to root. cargo build -p screenbound OK, output target/debug/screenbound.exe at root. Next: P1.3.
+- 2026-10-10 — P1.3 — ✅ — Root package.json (desqu-repo, workspaces). App renamed to screenbound-app. npm install OK; npm run check -w screenbound-app: 189 files, 0 errors. node_modules only at root.
+- 2026-10-10 — P1.4 — ✅ — .gitignore replaced with P1.4 content (adds /target; **/build and **/.svelte-kit now match in apps). Found while doing P1.2: git add -A had staged 3278 files from root target/ into a commit; undone (soft reset, unpushed) before commit f64f9d0.
