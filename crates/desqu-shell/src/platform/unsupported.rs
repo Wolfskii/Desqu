@@ -28,3 +28,7 @@ pub fn read_uninstall_entry(_key_name: &str) -> Option<UninstallEntry> {
 pub fn launch_uninstaller(_uninstall_string: &str) -> Result<(), String> {
     Err("not supported on this platform".into())
 }
+
+pub fn open_url(_url: &str) -> Result<(), String> {
+    Err("not supported on this platform".into())
+}

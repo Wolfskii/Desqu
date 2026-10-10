@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from "../state.svelte";
-  import { ShellSettingsSection } from "@desqu/ui";
+  import { ShellSettingsSection, UpdateCard } from "@desqu/ui";
   import LegacySection from "./LegacySection.svelte";
   import type { TransitionSpeed } from "../types";
 
@@ -22,6 +22,8 @@
 
 <div class="settings">
   <ShellSettingsSection appName="Screenbound" />
+
+  <UpdateCard />
 
   <LegacySection />
 

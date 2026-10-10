@@ -1,3 +1,11 @@
 [default]
 description = "Shell settings and app info for the UI"
-permissions = ["allow-get-shell-settings", "allow-set-shell-settings", "allow-app-info"]
+permissions = [
+    "allow-get-shell-settings",
+    "allow-set-shell-settings",
+    "allow-app-info",
+    "allow-update-status",
+    "allow-check-update",
+    "allow-install-update",
+    "allow-open-releases-page",
+]

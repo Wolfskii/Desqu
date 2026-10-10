@@ -13,6 +13,8 @@ use ::windows::Win32::System::Threading::{
     CreateMutexW, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
+use ::windows::Win32::UI::Shell::ShellExecuteW;
+use ::windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use ::windows::Win32::System::Registry::{
     RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
     KEY_SET_VALUE, REG_SZ,
@@ -92,6 +94,20 @@ pub fn acquire_named_lock(name: &str) -> Result<Option<LockHandle>, String> {
         return Ok(None);
     }
     Ok(Some(LockHandle(handle)))
+}
+
+/// Opens a URL (or file) with the user's default handler.
+pub fn open_url(url: &str) -> Result<(), String> {
+    let url = HSTRING::from(url);
+    // SAFETY: both strings outlive the call; a result above 32 means success.
+    let rc = unsafe {
+        ShellExecuteW(None, ::windows::core::w!("open"), PCWSTR(url.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL)
+    };
+    if rc.0 as usize > 32 {
+        Ok(())
+    } else {
+        Err(format!("could not open {url}: code {}", rc.0 as usize))
+    }
 }
 
 const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall";

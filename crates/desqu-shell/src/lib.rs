@@ -12,6 +12,7 @@ pub mod platform;
 pub mod plugin;
 pub mod settings;
 pub mod tray;
+pub mod updates;
 pub mod window;
 
 pub use plugin::{current as current_settings, init};

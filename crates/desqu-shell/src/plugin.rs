@@ -8,7 +8,9 @@ use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{AppHandle, Manager, Runtime, State};
 
 use crate::autostart;
+use crate::module::ModuleRegistry;
 use crate::settings::{self, ShellSettings};
+use crate::updates::{self, UpdateInfo, UpdateState, UpdateStatus};
 
 /// Must equal the Cargo package name: tauri-plugin derives the permission namespace from it.
 pub const PLUGIN_NAME: &str = "desqu-shell";
@@ -33,6 +35,11 @@ pub struct AppInfo {
     pub identifier: String,
     /// No installer footprint next to the exe, so the UI must not offer to install updates.
     pub portable: bool,
+}
+
+/// Whether the running exe has no installer footprint next to it.
+pub fn is_portable_build() -> bool {
+    std::env::current_exe().map_or(true, |exe| is_portable(&exe))
 }
 
 pub fn is_portable(exe: &Path) -> bool {
@@ -92,17 +99,59 @@ pub async fn app_info<R: Runtime>(app: AppHandle<R>) -> Result<AppInfo, String> 
     })
 }
 
+#[tauri::command]
+pub async fn update_status<R: Runtime>(app: AppHandle<R>) -> Result<UpdateStatus, String> {
+    Ok(updates::status(&app))
+}
+
+#[tauri::command]
+pub async fn check_update<R: Runtime>(app: AppHandle<R>) -> Result<Option<UpdateInfo>, String> {
+    updates::check(&app).await
+}
+
+#[tauri::command]
+pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    updates::install(&app).await
+}
+
+/// Opens the fixed releases page; the UI cannot pass an arbitrary URL.
+#[tauri::command]
+pub async fn open_releases_page() -> Result<(), String> {
+    crate::platform::open_url(updates::RELEASES_URL)
+}
+
 pub fn init<R: Runtime>(config_dir: PathBuf) -> TauriPlugin<R> {
     Builder::new(PLUGIN_NAME)
         .invoke_handler(tauri::generate_handler![
             get_shell_settings,
             set_shell_settings,
-            app_info
+            app_info,
+            update_status,
+            check_update,
+            install_update,
+            open_releases_page
         ])
         .setup(move |app, _api| {
             let path = config_dir.join(SETTINGS_FILE);
             let settings = load_or_default(&path);
             app.manage(ShellState { path, settings: Mutex::new(settings) });
+            app.manage(ModuleRegistry::<R>::default());
+
+            // The updater plugin refuses to start without its config, so a build without
+            // `plugins.updater` simply has updates switched off.
+            let configured = app.config().plugins.0.contains_key("updater");
+            let enabled = configured
+                && match app.plugin(tauri_plugin_updater::Builder::new().build()) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::warn!("updater unavailable: {e}");
+                        false
+                    }
+                };
+            app.manage(UpdateState::new(enabled));
+            if enabled {
+                updates::spawn_auto_check(app.clone());
+            }
             Ok(())
         })
         .build()

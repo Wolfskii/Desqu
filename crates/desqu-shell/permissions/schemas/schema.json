@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the app_info command without any pre-configured scope."
         },
         {
+          "description": "Enables the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-update",
+          "markdownDescription": "Enables the check_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-update",
+          "markdownDescription": "Denies the check_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_shell_settings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-shell-settings",
@@ -317,6 +329,30 @@
           "type": "string",
           "const": "deny-get-shell-settings",
           "markdownDescription": "Denies the get_shell_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-install-update",
+          "markdownDescription": "Enables the install_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-install-update",
+          "markdownDescription": "Denies the install_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_releases_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-releases-page",
+          "markdownDescription": "Enables the open_releases_page command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_releases_page command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-releases-page",
+          "markdownDescription": "Denies the open_releases_page command without any pre-configured scope."
         },
         {
           "description": "Enables the set_shell_settings command without any pre-configured scope.",
@@ -331,10 +367,22 @@
           "markdownDescription": "Denies the set_shell_settings command without any pre-configured scope."
         },
         {
-          "description": "Shell settings and app info for the UI\n#### This default permission set includes:\n\n- `allow-get-shell-settings`\n- `allow-set-shell-settings`\n- `allow-app-info`",
+          "description": "Enables the update_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-status",
+          "markdownDescription": "Enables the update_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-status",
+          "markdownDescription": "Denies the update_status command without any pre-configured scope."
+        },
+        {
+          "description": "Shell settings and app info for the UI\n#### This default permission set includes:\n\n- `allow-get-shell-settings`\n- `allow-set-shell-settings`\n- `allow-app-info`\n- `allow-update-status`\n- `allow-check-update`\n- `allow-install-update`\n- `allow-open-releases-page`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Shell settings and app info for the UI\n#### This default permission set includes:\n\n- `allow-get-shell-settings`\n- `allow-set-shell-settings`\n- `allow-app-info`"
+          "markdownDescription": "Shell settings and app info for the UI\n#### This default permission set includes:\n\n- `allow-get-shell-settings`\n- `allow-set-shell-settings`\n- `allow-app-info`\n- `allow-update-status`\n- `allow-check-update`\n- `allow-install-update`\n- `allow-open-releases-page`"
         }
       ]
     }

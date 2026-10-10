@@ -1,7 +1,7 @@
 //! Tray builder shared by every app: "Show <app>", app-specific items, optional "Check for
 //! updates", "Exit". Left click shows the main window.
 
-use tauri::menu::{CheckMenuItemBuilder, Menu, MenuItemBuilder, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItemBuilder, Menu, MenuItem, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Runtime};
 
@@ -52,12 +52,39 @@ pub fn layout(
     items
 }
 
-pub fn build<R: Runtime>(app: &AppHandle<R>, config: TrayConfig<R>) -> tauri::Result<TrayIcon<R>> {
+/// The tray icon plus the one item that changes at runtime.
+pub struct Tray<R: Runtime> {
+    pub icon: TrayIcon<R>,
+    updates: Option<MenuItem<R>>,
+}
+
+impl<R: Runtime> Tray<R> {
+    /// `Some("1.2.0")` relabels the item "Update to v1.2.0"; `None` restores "Check for updates".
+    pub fn set_update_available(&self, version: Option<&str>) {
+        if let Some(item) = &self.updates {
+            let _ = item.set_text(update_label(version));
+        }
+    }
+}
+
+pub fn update_label(version: Option<&str>) -> String {
+    match version {
+        Some(v) => format!("Update to v{v}"),
+        None => "Check for updates".into(),
+    }
+}
+
+pub fn build<R: Runtime>(app: &AppHandle<R>, config: TrayConfig<R>) -> tauri::Result<Tray<R>> {
     let menu = Menu::new(app)?;
+    let mut updates = None;
     for item in layout(&config.show_label, &config.extra_items, config.updates_item) {
         match item {
             TrayItem::Normal { id, label } => {
-                menu.append(&MenuItemBuilder::with_id(id, label).build(app)?)?
+                let item = MenuItemBuilder::with_id(id.clone(), label).build(app)?;
+                menu.append(&item)?;
+                if id == ID_UPDATES {
+                    updates = Some(item);
+                }
             }
             TrayItem::Check { id, label, checked } => {
                 menu.append(&CheckMenuItemBuilder::with_id(id, label).checked(checked).build(app)?)?
@@ -90,7 +117,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, config: TrayConfig<R>) -> tauri::Re
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
-    tray.build(app)
+    Ok(Tray { icon: tray.build(app)?, updates })
 }
 
 #[cfg(test)]
@@ -124,6 +151,12 @@ mod tests {
     #[test]
     fn updates_item_comes_right_before_exit() {
         assert_eq!(ids(&layout("Show App", &[], true)), ["show", "-", "updates", "exit"]);
+    }
+
+    #[test]
+    fn update_label_switches_between_check_and_update() {
+        assert_eq!(update_label(None), "Check for updates");
+        assert_eq!(update_label(Some("1.2.0")), "Update to v1.2.0");
     }
 
     #[test]
