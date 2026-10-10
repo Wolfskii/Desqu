@@ -6,9 +6,22 @@ use tauri::{AppHandle, Runtime};
 use tauri_plugin_autostart::ManagerExt;
 
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
-    tauri_plugin_autostart::Builder::new()
-        .args(["--autostart"])
-        .build()
+    let mut builder = tauri_plugin_autostart::Builder::new().args(["--autostart"]);
+    let stem = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "app".into());
+    if let Some(name) = debug_run_value_name(&stem, cfg!(debug_assertions)) {
+        builder = builder.app_name(name);
+    }
+    builder.build()
+}
+
+/// Debug builds get their own Run value (`screenbound-debug`). The release value is named after
+/// the product and Windows compares value names case-insensitively, so a dev build would otherwise
+/// overwrite or delete the start-up entry of an installed release. `None` = keep the default.
+pub fn debug_run_value_name(exe_stem: &str, debug: bool) -> Option<String> {
+    debug.then(|| format!("{exe_stem}-debug"))
 }
 
 /// Brings the OS entry in line with `enabled`; does nothing when it already is.
@@ -36,5 +49,21 @@ pub fn sync_at_startup<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<
         mgr.enable().map_err(|e| e.to_string())
     } else {
         sync(app, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_builds_never_share_the_release_value_name() {
+        assert_eq!(debug_run_value_name("screenbound", true).as_deref(), Some("screenbound-debug"));
+        assert_ne!(debug_run_value_name("screenbound", true).unwrap().to_lowercase(), "screenbound");
+    }
+
+    #[test]
+    fn release_builds_keep_the_default_name() {
+        assert_eq!(debug_run_value_name("screenbound", false), None);
     }
 }
