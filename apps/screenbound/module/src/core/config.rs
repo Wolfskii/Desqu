@@ -29,7 +29,7 @@ pub struct AppConfig {
     /// Named groups apps can be placed in. A rule can target one or more of these.
     #[serde(default)]
     pub groups: Vec<AppGroup>,
-    /// Apps ScreenBound has seen. Stored with the rest of the config so the list survives
+    /// Apps Screenbound has seen. Stored with the rest of the config so the list survives
     /// reinstalls; the uninstaller deletes it only when "Delete app data" is checked.
     #[serde(default)]
     pub known_apps: Vec<KnownApp>,

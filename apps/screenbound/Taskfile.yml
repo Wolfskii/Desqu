@@ -77,7 +77,7 @@ tasks:
     desc: Production build — NSIS + MSI installers and a portable exe in dist/screenbound/
     deps: [install]
     cmds:
-      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/stop-app.ps1 -Names screenbound,ScreenBound
+      - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/stop-app.ps1 -Names screenbound,ScreenBound,Screenbound
       - npm run tauri build
       - powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/publish-artifacts.ps1 -App screenbound
 

@@ -3,7 +3,7 @@
 Read this and [PLAN.md](PLAN.md) before changing code. PLAN.md is the source of truth for status.
 Repo-wide rules are in [../../AGENTS.md](../../AGENTS.md).
 
-## What ScreenBound is
+## What Screenbound is
 
 A native window-behavior manager. MVP: when a window enters fullscreen, constrain the *real native
 window* to a user-defined zone of the monitor. Not browser PiP, not an overlay, not fake fullscreen.
@@ -68,6 +68,6 @@ prints how its bounds evolve — useful for checking whether an app vetoes exter
 ## Conventions
 
 - Keep comments short; explain *why*, not *what*.
-- Config lives in `%APPDATA%\com.screenbound.app\config.json` (zones, rules, seen apps); journal in
+- Config lives in `%APPDATA%\io.github.wolfskii.screenbound\config.json` (zones, rules, seen apps); journal in
   `managed-windows.json`. The NSIS uninstaller leaves that folder in place unless **Delete app data**
   is checked.

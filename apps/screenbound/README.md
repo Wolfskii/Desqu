@@ -1,7 +1,7 @@
-# ScreenBound
+# Screenbound
 
 <p align="center">
-  <img src="assets/logo.webp" alt="ScreenBound" width="160" />
+  <img src="assets/logo.webp" alt="Screenbound" width="160" />
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@ Fullscreen on an ultrawide is mostly wasted space. A 16:9 video stretched across
 ends up as a small picture between two huge black bars, and your chat, notes and music are hidden
 behind it.
 
-ScreenBound fixes that. When an app goes fullscreen, it stays in the area you picked. Everything
+Screenbound fixes that. When an app goes fullscreen, it stays in the area you picked. Everything
 else stays visible next to it.
 
 ## Why you'll like it
@@ -26,14 +26,14 @@ else stays visible next to it.
 - **Keep your side apps visible.** Discord, Spotify, a stream chat or a guide stays on screen while
   the video, game or slideshow plays.
 - **Just press fullscreen.** Double-click the video, press F11 or hit the fullscreen button like you
-  always do. ScreenBound handles the rest.
+  always do. Screenbound handles the rest.
 - **Real fullscreen, not an overlay.** It moves the app's actual window: no picture-in-picture, no
   capture, no lag.
 - **Works with PowerToys FancyZones.** Already snap windows with Microsoft PowerToys FancyZones?
   Snap an app into a zone, go fullscreen, and it fills that same FancyZones zone. No extra setup.
 - **You choose which apps.** Turn it on for browsers and media players and leave games or anything
   else alone.
-- **Undoes itself.** Exit fullscreen or quit ScreenBound and every window goes back to where it was.
+- **Undoes itself.** Exit fullscreen or quit Screenbound and every window goes back to where it was.
 
 ## Who it's for
 
@@ -52,18 +52,18 @@ else stays visible next to it.
 3. **Go fullscreen as usual.** The app fills your zone instead of the whole monitor. Leave
    fullscreen and it goes back to normal.
 
-ScreenBound runs quietly in the system tray, reacts only when windows change (it doesn't poll in
+Screenbound runs quietly in the system tray, reacts only when windows change (it doesn't poll in
 the background), and keeps your settings across updates. Turn on **Start with system** in Settings if
 you want it ready from sign-in without opening the window.
 
 ## What to expect
 
 **You may see a brief fullscreen flash.** When you hit fullscreen, the app still asks Windows for
-real fullscreen first. ScreenBound only finds out *after* that and then moves the window into your
+real fullscreen first. Screenbound only finds out *after* that and then moves the window into your
 zone. That tiny gap can look like a quick flicker of the monitor filling up before it snaps into
 place.
 
-**Why we can't remove it (yet).** ScreenBound works from the outside: it watches window changes
+**Why we can't remove it (yet).** Screenbound works from the outside: it watches window changes
 and resizes the real window. It does not run inside the app or block Windows from honouring a
 fullscreen request. To shrink the window, the app has to enter fullscreen first so we know it
 happened. We apply the zone as fast as we can; on most setups the flash is very short.
@@ -74,12 +74,12 @@ Download one of these from a release:
 
 | File | Use it when |
 | --- | --- |
-| `ScreenBound_*_x64-setup.exe` | You want a normal install (recommended) |
-| `ScreenBound_*_x64.msi` | You deploy with MSI tooling |
-| `ScreenBound_*_x64-portable.exe` | You want to run it without installing |
+| `Screenbound_*_x64-setup.exe` | You want a normal install (recommended) |
+| `Screenbound_*_x64.msi` | You deploy with MSI tooling |
+| `Screenbound_*_x64-portable.exe` | You want to run it without installing |
 
 Windows 10/11 with WebView2 (preinstalled on Windows 11). Settings live in
-`%APPDATA%\com.screenbound.app` and survive reinstalls unless you check **Delete app data** when
+`%APPDATA%\io.github.wolfskii.screenbound` and survive reinstalls unless you check **Delete app data** when
 uninstalling.
 
 ## Build from source

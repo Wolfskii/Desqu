@@ -12,6 +12,7 @@ use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 
 use crate::core::config::AppConfig;
+use crate::migrate;
 use crate::engine::{Engine, EngineHandle, EngineMessage, EnginePaths, Notification, Notifier};
 use crate::platform::{self, EventSubscription};
 
@@ -33,12 +34,15 @@ pub mod events {
 pub struct ModuleOptions {
     pub config_dir: PathBuf,
     pub data_dir: PathBuf,
+    /// Settings folder of the pre-rebrand install (`migrate::legacy_dir`), if any.
+    pub legacy_dir: Option<PathBuf>,
     pub start_immediately: bool,
 }
 
 pub struct ModuleState {
     config_path: PathBuf,
     journal_path: PathBuf,
+    legacy_dir: Option<PathBuf>,
     handle: Mutex<Option<EngineHandle>>,
     subscription: Mutex<Option<EventSubscription>>,
     module_lock: Mutex<Option<ModuleLock>>,
@@ -54,6 +58,7 @@ impl ModuleState {
         Self {
             config_path: options.config_dir.join("config.json"),
             journal_path: options.data_dir.join("managed-windows.json"),
+            legacy_dir: options.legacy_dir.clone(),
             handle: Mutex::new(None),
             subscription: Mutex::new(None),
             module_lock: Mutex::new(None),
@@ -106,7 +111,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     tracing::info!(
         config = %state.config_path.display(),
         journal = %state.journal_path.display(),
-        "starting ScreenBound"
+        "starting Screenbound"
     );
 
     let emitter = app.clone();
@@ -122,6 +127,10 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let paths = EnginePaths {
         config: state.config_path.clone(),
         journal: state.journal_path.clone(),
+        legacy_journal: state
+            .legacy_dir
+            .as_ref()
+            .map(|d| d.join(migrate::LEGACY_JOURNAL_FILE)),
     };
     let platform = platform::create();
     let handle = EngineHandle::spawn(Engine::new(platform.clone(), paths, notify))
@@ -179,6 +188,15 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             crate::commands::module_status,
         ])
         .setup(move |app, _api| {
+            // Before the engine reads its config, so the first run after the rebrand sees the old settings.
+            if let Some(legacy) = &options.legacy_dir {
+                let new_config = options.config_dir.join("config.json");
+                match migrate::migrate_config(legacy, &new_config) {
+                    Ok(true) => tracing::info!("copied settings from {}", legacy.display()),
+                    Ok(false) => {}
+                    Err(e) => tracing::warn!("settings migration failed: {e}"),
+                }
+            }
             app.manage(ModuleState::new(&options));
             if options.start_immediately {
                 // Not fatal: another process may own the module, and the UI shows that state.

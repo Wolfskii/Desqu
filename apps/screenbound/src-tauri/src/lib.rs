@@ -5,7 +5,7 @@ use desqu_shell::settings;
 use desqu_shell::tray::{self, TrayConfig};
 use desqu_shell::{autostart, instance, logging, window};
 use screenbound_module::core::config::AppConfig;
-use screenbound_module::{platform, ModuleOptions};
+use screenbound_module::{migrate, platform, ModuleOptions};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +24,11 @@ pub fn run() {
 
             let config_dir = app.path().app_config_dir()?;
             let data_dir = app.path().app_data_dir()?;
+            let legacy_dir = migrate::legacy_dir(&app.path().config_dir()?);
+            // Copy the old settings first so the startAtBoot hand-over below can see them.
+            if let Err(e) = migrate::migrate_config(&legacy_dir, &config_dir.join("config.json")) {
+                tracing::warn!("settings migration failed: {e}");
+            }
             migrate_legacy_start_at_boot(&config_dir);
 
             // Plugins are registered here (not on the Builder) because the folders come from
@@ -32,6 +37,7 @@ pub fn run() {
             app.handle().plugin(screenbound_module::init(ModuleOptions {
                 config_dir,
                 data_dir,
+                legacy_dir: Some(legacy_dir),
                 start_immediately: true,
             }))?;
 
@@ -59,7 +65,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building ScreenBound");
+        .expect("error while building Screenbound");
 
     // The module restores managed windows itself on RunEvent::Exit.
     app.run(|_, _| {});
@@ -85,8 +91,8 @@ fn install_tray(app: &AppHandle) -> tauri::Result<tauri::tray::TrayIcon> {
     tray::build(
         app,
         TrayConfig {
-            tooltip: "ScreenBound".into(),
-            show_label: "Show ScreenBound".into(),
+            tooltip: "Screenbound".into(),
+            show_label: "Show Screenbound".into(),
             extra_items: Vec::new(),
             updates_item: false,
             on_item: Box::new(|_, _| {}),

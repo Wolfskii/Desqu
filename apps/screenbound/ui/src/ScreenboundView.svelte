@@ -37,7 +37,7 @@
 {:else}
 <div class="shell">
   <header>
-    <div class="brand">ScreenBound</div>
+    <div class="brand">Screenbound</div>
     <nav>
       {#each [["zones", "Zones"], ["apps", "Apps"], ["groups", "Groups"], ["rules", "Rules"], ["settings", "Settings"], ["diagnostics", "Diagnostics"]] as [id, label] (id)}
         <button class:active={tab === id} onclick={() => (tab = id as Tab)}>{label}</button>

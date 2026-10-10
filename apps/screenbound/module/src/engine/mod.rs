@@ -66,6 +66,8 @@ pub type Notifier = Arc<dyn Fn(Notification) + Send + Sync>;
 pub struct EnginePaths {
     pub config: PathBuf,
     pub journal: PathBuf,
+    /// Journal left by a pre-rebrand install: recovered first, then deleted.
+    pub legacy_journal: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -281,7 +283,17 @@ impl Engine {
     }
 
     fn recover_journal(&mut self) {
-        for entry in journal::load(&self.paths.journal) {
+        // A legacy journal means the old app left windows constrained; restore them before ours.
+        if let Some(legacy) = self.paths.legacy_journal.clone() {
+            self.recover_entries(journal::load(&legacy));
+            journal::save(&legacy, &[]);
+        }
+        self.recover_entries(journal::load(&self.paths.journal));
+        journal::save(&self.paths.journal, &[]);
+    }
+
+    fn recover_entries(&mut self, entries: Vec<JournalEntry>) {
+        for entry in entries {
             let still_ours = self
                 .platform
                 .identity(entry.window)
@@ -312,7 +324,6 @@ impl Engine {
                 ),
             }
         }
-        journal::save(&self.paths.journal, &[]);
     }
 
     fn scan_all(&mut self) {

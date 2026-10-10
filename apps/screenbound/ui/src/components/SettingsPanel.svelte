@@ -20,7 +20,7 @@
 </script>
 
 <div class="settings">
-  <ShellSettingsSection appName="ScreenBound" />
+  <ShellSettingsSection appName="Screenbound" />
 
   <section class="card">
     <h3>Fullscreen animation</h3>

@@ -890,7 +890,7 @@ implemented once in `crates/desqu-shell` and reused by every app. Standalone Scr
 Goal: new identifier and product name (Q1) without losing any user settings or leaving the old app
 fighting over windows.
 
-#### P4.1 Change identity — Status: ⬜
+#### P4.1 Change identity — Status: ✅
 - **Depends on:** P3.11, Q1
 - **Files:** `apps/screenbound/src-tauri/tauri.conf.json` (`identifier`, `productName`, window
   `title`), tray tooltip/labels in `apps/screenbound/src-tauri/src/lib.rs`, `apps/screenbound/src/app.html`
@@ -901,7 +901,7 @@ fighting over windows.
 - **Done when:**
   - [ ] Build shows new name; `app.path().app_config_dir()` resolves to `%APPDATA%\<new id>`.
 
-#### P4.2 Legacy config + journal migration — Status: ⬜
+#### P4.2 Legacy config + journal migration — Status: 🧪
 - **Depends on:** P4.1
 - **Files:** `apps/screenbound/module/src/migrate.rs` (+ tests), called from the module plugin setup
   **before** the engine starts (so it also runs when Desqu hosts the module first).
