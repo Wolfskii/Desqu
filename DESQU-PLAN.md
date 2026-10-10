@@ -51,7 +51,7 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | 2 | Screenbound module crate + UI package | ✅ | 1 |
 | 3 | Shared shell crate + shared UI kit | ✅ | 1 (can run in parallel with 2) |
 | 4 | Screenbound rebrand + settings migration | 🧪 | 2, 3, Q1, Q2 |
-| 5 | Updater, CI and GitHub releases | ⬜ | 3, Q5, Q6 |
+| 5 | Updater, CI and GitHub releases | 🧪 | 3, Q5, Q6 |
 | 6 | Desqu collection app | ⬜ | 2, 3, 5 |
 | 7 | Screenbound borderless gaming | ⬜ | 2 |
 | 8 | Desktop layer spike + Vials | ⬜ | 3 |
@@ -1029,7 +1029,7 @@ fighting over windows.
 - **Done when:**
   - [ ] CI green on a PR.
 
-#### P5.6 Release workflow — Status: ⬜
+#### P5.6 Release workflow — Status: 🧪
 - **Depends on:** P5.3, P5.4, P5.5
 - **Files:** `.github/workflows/release.yml`, `scripts/write-update-feed.ps1`, `docs/releasing.md`
 - **Do:** Trigger: `push` tags matching `desqu-v*`, `screenbound-v*`, `vials-v*`, `workspaces-v*`, plus
@@ -1056,7 +1056,7 @@ fighting over windows.
 - **Done when:**
   - [ ] A test pre-release (e.g. `screenbound-v0.2.0-rc.1`, marked prerelease) publishes assets and feed.
 
-#### P5.7 First update-enabled Screenbound release — Status: ⬜
+#### P5.7 First update-enabled Screenbound release — Status: 🧪
 - **Depends on:** P4.4, P5.6
 - **Do:** Bump to the agreed version (e.g. 0.2.0), update CHANGELOG, tag, let CI release. Install it
   manually over/next to 0.1.0 (migration path), then publish a 0.2.1 and confirm in-app update.
@@ -1374,3 +1374,5 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-10 — P5.3 — 🧪 — desqu-shell updater: updates.rs (check/install/status, UpdateInfo/UpdateStatus, pure auto_action: found+install_automatically+not portable => install, else notify; background check 30 s after start then every 24 h if checkAutomatically; install = download -> stop every running module -> install -> restart, modules started again if install fails; portable builds never install), module::ModuleRegistry (register/stop_running/start_ids), updater plugin registered by the shell only when plugins.updater exists in tauri.conf.json (otherwise updates are off), commands update_status/check_update/install_update/open_releases_page (fixed URL via ShellExecuteW), tray::Tray handle with relabel 'Update to vX' / 'Check for updates'. Screenbound: createUpdaterArtifacts + updater config (real public key, passive Windows install), module registered, tray updates item + handler, Settings shows UpdateCard (@desqu/ui: version, last check, Check now, Install/Download, the two toggles). Used the shell commands for everything so no updater:default / process permissions are needed. 44 shell tests, ci green (198 files 0 errors, 52 module tests). NEEDS HUMAN (also P5.7): local update test with a hand-written latest.json + higher-version signed setup exe; tampered .sig must be rejected.
 - 2026-10-10 — P5.4 — ✅ — scripts/versions-lib.ps1 + bump-version.ps1 (-App -Version, semver check, edits only the first version in each file, then `cargo update --workspace`, then runs the check) + check-versions.ps1 (all files vs src-tauri/Cargo.toml, optional -Tag <app>-v<version>, exit 1 on mismatch). Tested: pass, wrong tag fails with exit 1, bump 0.1.1 and back to 0.1.0 leaves the tree identical, bad version rejected. Covers module/ and ui/ files when present.
 - 2026-10-10 — P5.5 — 🧪 — .github/workflows/ci.yml (windows-latest; checkout, node 20 + npm cache, rust stable + clippy, rust-cache, setup-task; npm ci; task ci; scripts/check-standalone-deps.ps1; builds every apps/*/src-tauri package separately via discovery so new apps are included automatically). scripts/check-standalone-deps.ps1 checks: standalone app never depends on `desqu`, module crates never depend on other module crates, no standalone package.json depends on desqu-app (passes today). YAML validated locally with PyYAML. No signing step (no Authenticode cert, Q6 assumption); noted for docs/releasing.md. NEEDS: a push/PR to see it green on GitHub.
+- 2026-10-10 — P5.6 — 🧪 — Release pipeline built and exercised locally: scripts/tauri-build.ps1 (uses CI's TAURI_SIGNING_PRIVATE_KEY or ~/.tauri/<app>.key; screenbound release task now calls it), publish-artifacts.ps1 (also copies *.sig, only picks installers of the current version, writes SHA256SUMS.txt via .NET because Windows PowerShell 5.1 started from pwsh can lose Get-FileHash), write-update-feed.ps1 (latest.json in Tauri updater format + RELEASE_NOTES.md from the CHANGELOG section), .github/workflows/release.yml (tags <app>-v<semver> or manual dispatch; check-versions; build+sign with the product's *_UPDATER_KEY secret, fails if missing; gh release create with all assets, --latest only for desqu, prerelease for versions with a suffix; feed to gh-pages updates/<app>/ via peaceiris/actions-gh-pages, prerelease feeds go to updates/<app>/prerelease/ so no installed app reads them), docs/releasing.md (one-time owner setup, how to release, prerelease flow, local build, SmartScreen note, undo). VERIFIED HERE: a real `task screenbound:release` with the real key produced signed installers (setup.exe.sig and msi.sig, 440 chars each, empty-password key works), dist/screenbound has 3 artifacts + 2 sigs + SHA256SUMS.txt, and write-update-feed produced a correct latest.json. Portable exe grew 10.0 -> 13.5 MiB (updater/TLS stack). Workflow YAML validated locally; not run on GitHub. NEEDS OWNER: secrets + Pages (docs/releasing.md), then push a tag; a pre-release tag (screenbound-v0.2.0-rc.1) is the intended first test.
+- 2026-10-10 — P5.7 — 🧪 — Hand-off: not something I can do (needs tags, GitHub Actions, two published versions and an install on a real machine). Steps are in docs/releasing.md. Screenbound's version stays 0.1.0 in the repo for now; bump with `pwsh scripts/bump-version.ps1 -App screenbound -Version 0.2.0` and rename the CHANGELOG 'Unreleased' section when releasing.

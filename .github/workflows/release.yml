@@ -1,0 +1,129 @@
+name: Release
+
+# Tag `<app>-v<version>` (e.g. screenbound-v0.2.0) to release one product.
+# Pre-release versions (screenbound-v0.2.0-rc.1) publish a GitHub pre-release and a feed that no
+# installed app reads, so testers can try the build without moving everyone's updater.
+on:
+  push:
+    tags:
+      - 'desqu-v*'
+      - 'screenbound-v*'
+      - 'vials-v*'
+      - 'workspaces-v*'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Product to release
+        required: true
+        type: choice
+        options: [desqu, screenbound, vials, workspaces]
+      version:
+        description: Version without the leading v (must match the version in the repo)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve app, version and tag
+        id: meta
+        shell: pwsh
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_APP: ${{ inputs.app }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:EVENT -eq 'workflow_dispatch') {
+            $tag = "$($env:INPUT_APP)-v$($env:INPUT_VERSION)"
+          } else {
+            $tag = $env:REF_NAME
+          }
+          if ($tag -notmatch '^(desqu|screenbound|vials|workspaces)-v(\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$') {
+            throw "Tag '$tag' is not <app>-v<semver>"
+          }
+          $app = $Matches[1]
+          $version = $Matches[2]
+          $conf = Get-Content -Raw "apps/$app/src-tauri/tauri.conf.json" | ConvertFrom-Json
+          $prerelease = $version.Contains('-')
+          $feedDir = if ($prerelease) { "$app/prerelease" } else { $app }
+          @(
+            "app=$app"
+            "version=$version"
+            "tag=$tag"
+            "product=$($conf.productName)"
+            "prefix=$($app.ToUpper())"
+            "prerelease=$($prerelease.ToString().ToLower())"
+            "feed_dir=$feedDir"
+          ) | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Check versions match the tag
+        shell: pwsh
+        run: ./scripts/check-versions.ps1 -App '${{ steps.meta.outputs.app }}' -Tag '${{ steps.meta.outputs.tag }}'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: npm ci
+
+      # The product's updater key is a repository secret (DESQU_/SCREENBOUND_/VIALS_/WORKSPACES_
+      # UPDATER_KEY, optional *_UPDATER_KEY_PASSWORD). Without it the build fails on purpose.
+      - name: Build, sign and collect artifacts
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets[format('{0}_UPDATER_KEY', steps.meta.outputs.prefix)] }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets[format('{0}_UPDATER_KEY_PASSWORD', steps.meta.outputs.prefix)] }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw "Secret ${{ steps.meta.outputs.prefix }}_UPDATER_KEY is not set" }
+          task ${{ steps.meta.outputs.app }}:release
+
+      - name: Write update feed and release notes
+        shell: pwsh
+        run: ./scripts/write-update-feed.ps1 -App '${{ steps.meta.outputs.app }}'
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP: ${{ steps.meta.outputs.app }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          TITLE: ${{ steps.meta.outputs.product }} ${{ steps.meta.outputs.version }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          $files = Get-ChildItem "dist/$($env:APP)" -File |
+            Where-Object { $_.Name -ne 'RELEASE_NOTES.md' } |
+            ForEach-Object { $_.FullName }
+          $flags = @('--title', $env:TITLE, '--notes-file', "dist/$($env:APP)/RELEASE_NOTES.md", '--target', $env:GITHUB_SHA)
+          if ($env:PRERELEASE -eq 'true') { $flags += '--prerelease' }
+          # GitHub's "latest release" is repo-wide, so only the collection app may claim it.
+          elseif ($env:APP -eq 'desqu') { $flags += '--latest' }
+          else { $flags += '--latest=false' }
+          gh release create $env:TAG @files @flags
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Each product has its own feed folder, so one product's release never touches another's.
+      - name: Publish update feed
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: dist/${{ steps.meta.outputs.app }}/feed
+          destination_dir: updates/${{ steps.meta.outputs.feed_dir }}
+          keep_files: true
