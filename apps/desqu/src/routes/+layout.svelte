@@ -1,15 +1,23 @@
 <script lang="ts">
   import "../app.css";
   import { onDestroy, onMount } from "svelte";
+  import { page } from "$app/state";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import { desqu } from "$lib/state.svelte";
 
   let { children } = $props();
+  // A vial's window on the desktop is bare content, without the app chrome.
+  const bare = $derived(page.url.pathname.startsWith("/vial/"));
 
-  onMount(() => void desqu.init());
+  onMount(() => {
+    if (!bare) void desqu.init();
+  });
   onDestroy(() => desqu.dispose());
 </script>
 
+{#if bare}
+  {@render children()}
+{:else}
 <div class="app">
   <Sidebar />
   <main>
@@ -22,6 +30,7 @@
     {@render children()}
   </main>
 </div>
+{/if}
 
 <style>
   .app {

@@ -5,6 +5,8 @@ being released as the release notes and as the in-app update description.
 
 ## Unreleased
 
+- Hosts Vials alongside Screenbound.
+
 ## 0.1.0
 
 - First release: hosts Screenbound in one app with a Home page, per-app on/off and *Start with

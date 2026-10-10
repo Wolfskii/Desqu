@@ -14,7 +14,7 @@ use commands::DesquState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    logging::init("desqu_lib=info,screenbound_module=info,desqu_shell=info,warn");
+    logging::init("desqu_lib=info,screenbound_module=info,vials_module=info,desqu_shell=info,warn");
     platform::init_process();
     let launch = args::parse(std::env::args());
 
@@ -42,7 +42,9 @@ pub fn run() {
             // Desqu's own startup entry follows its modules, so the shell must not manage it.
             app.handle().plugin(desqu_shell::init_with(
                 config_dir.clone(),
-                desqu_shell::ShellOptions { manage_autostart: false },
+                desqu_shell::ShellOptions {
+                    manage_autostart: false,
+                },
             ))?;
 
             let modules_path = config_dir.join(settings::MODULES_FILE);
@@ -60,14 +62,18 @@ pub fn run() {
 
             let state = app.state::<DesquState>();
             let shell = desqu_shell::current_settings(app.handle());
-            if let Err(e) = autostart::sync_at_startup(app.handle(), settings::should_autostart(&state.file())) {
+            if let Err(e) =
+                autostart::sync_at_startup(app.handle(), settings::should_autostart(&state.file()))
+            {
                 tracing::warn!("autostart sync on startup failed: {e}");
             }
 
             // From sign-in only "start with system" modules start; a manual launch starts all that are on.
             let to_start = settings::modules_to_start(&state.file(), launch.autostart);
             for id in to_start {
-                let Some(entry) = registry::find(&id) else { continue };
+                let Some(entry) = registry::find(&id) else {
+                    continue;
+                };
                 if let Err(e) = entry.module.start(app.handle()) {
                     // e.g. the standalone app owns it: the UI offers to take over.
                     tracing::warn!("{id} did not start: {e}");

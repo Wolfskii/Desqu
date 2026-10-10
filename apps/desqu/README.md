@@ -21,7 +21,7 @@ choose which ones start with Windows, and keep everything in one tray icon.
 | App | What it does | Status |
 | --- | --- | --- |
 | [Screenbound](../screenbound/README.md) | Keeps fullscreen windows inside a zone of your monitor | Included |
-| Vials | Desktop containers for shortcuts, apps and folders | Planned |
+| [Vials](../vials/README.md) | Desktop containers for shortcuts, apps and folders | Included |
 | Workspaces | Saves and restores a desktop layout per virtual desktop | Planned |
 
 Windows 10/11 with WebView2 (preinstalled on Windows 11). Windows only for now.

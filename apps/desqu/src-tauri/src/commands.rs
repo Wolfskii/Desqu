@@ -36,7 +36,8 @@ impl DesquState {
     }
 
     pub fn standalone_dir(&self, entry: &Entry) -> PathBuf {
-        self.roaming_dir.join(entry.descriptor.standalone.identifier)
+        self.roaming_dir
+            .join(entry.descriptor.standalone.identifier)
     }
 }
 
@@ -95,10 +96,18 @@ fn changed(app: &AppHandle<Wry>) {
 }
 
 /// Turns a module on or off the same way for the UI and the tray.
-pub fn apply_enabled(app: &AppHandle<Wry>, state: &DesquState, id: &str, enabled: bool) -> CmdResult<()> {
+pub fn apply_enabled(
+    app: &AppHandle<Wry>,
+    state: &DesquState,
+    id: &str,
+    enabled: bool,
+) -> CmdResult<()> {
     let entry = registry::find(id).ok_or_else(|| format!("unknown module '{id}'"))?;
     if !entry.descriptor.supported {
-        return Err(format!("{} is not available on this operating system", entry.descriptor.name));
+        return Err(format!(
+            "{} is not available on this operating system",
+            entry.descriptor.name
+        ));
     }
     {
         let mut file = state.file();
@@ -136,13 +145,17 @@ pub fn apply_enabled(app: &AppHandle<Wry>, state: &DesquState, id: &str, enabled
 }
 
 #[tauri::command]
-pub async fn list_modules(app: AppHandle<Wry>, state: State<'_, DesquState>) -> CmdResult<Vec<ModuleEntry>> {
+pub async fn list_modules(
+    app: AppHandle<Wry>,
+    state: State<'_, DesquState>,
+) -> CmdResult<Vec<ModuleEntry>> {
     let mut out = Vec::new();
     let mut dirty = false;
     for entry in registry::entries() {
         let described = describe(&app, &state, &entry);
         // A module turned on from its own page (not via Desqu's switch) is "on" for next launch too.
-        if matches!(described.status, ModuleStatus::On | ModuleStatus::Paused) && !described.enabled {
+        if matches!(described.status, ModuleStatus::On | ModuleStatus::Paused) && !described.enabled
+        {
             let mut file = state.file();
             let mut saved = file.get(entry.descriptor.id);
             saved.enabled = true;
@@ -206,11 +219,18 @@ pub async fn set_all_start_with_system(
     state.save();
     sync_autostart(&app, &state);
     changed(&app);
-    Ok(registry::entries().iter().map(|e| describe(&app, &state, e)).collect())
+    Ok(registry::entries()
+        .iter()
+        .map(|e| describe(&app, &state, e))
+        .collect())
 }
 
 #[tauri::command]
-pub async fn takeover_module(app: AppHandle<Wry>, state: State<'_, DesquState>, id: String) -> CmdResult<ModuleEntry> {
+pub async fn takeover_module(
+    app: AppHandle<Wry>,
+    state: State<'_, DesquState>,
+    id: String,
+) -> CmdResult<ModuleEntry> {
     let entry = registry::find(&id).ok_or("unknown module")?;
     let dir = state.standalone_dir(&entry);
     let (app2, entry2) = (app.clone(), entry.clone());
@@ -231,9 +251,16 @@ pub async fn takeover_module(app: AppHandle<Wry>, state: State<'_, DesquState>, 
 
 /// Deletes the module's settings files (shared with its standalone app) and restarts it fresh.
 #[tauri::command]
-pub async fn reset_module_settings(app: AppHandle<Wry>, state: State<'_, DesquState>, id: String) -> CmdResult<ModuleEntry> {
+pub async fn reset_module_settings(
+    app: AppHandle<Wry>,
+    state: State<'_, DesquState>,
+    id: String,
+) -> CmdResult<ModuleEntry> {
     let entry = registry::find(&id).ok_or("unknown module")?;
-    let was_running = matches!(entry.module.status(&app), ModuleStatus::On | ModuleStatus::Paused);
+    let was_running = matches!(
+        entry.module.status(&app),
+        ModuleStatus::On | ModuleStatus::Paused
+    );
     entry.module.stop(&app, STOP_TIMEOUT);
     let dir = state.standalone_dir(&entry);
     for file in entry.descriptor.settings_files {

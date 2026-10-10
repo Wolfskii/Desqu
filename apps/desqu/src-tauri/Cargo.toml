@@ -18,6 +18,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 desqu-shell = { path = "../../../crates/desqu-shell" }
 screenbound-module = { path = "../../screenbound/module" }
+vials-module = { path = "../../vials/module" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

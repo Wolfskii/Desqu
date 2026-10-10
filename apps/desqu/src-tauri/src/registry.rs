@@ -56,10 +56,20 @@ fn init_screenbound(roaming: &Path) -> TauriPlugin<Wry> {
     })
 }
 
+fn init_vials(roaming: &Path) -> TauriPlugin<Wry> {
+    let dir = roaming.join("io.github.wolfskii.vials");
+    vials_module::init(vials_module::ModuleOptions {
+        config_dir: dir.clone(),
+        data_dir: dir,
+        start_immediately: false,
+    })
+}
+
 /// Static facts about every hosted module. Kept free of the window runtime so unit tests can use it
 /// (a test binary that links Wry cannot start on Windows without the app manifest).
 pub fn descriptors() -> Vec<Descriptor> {
-    vec![Descriptor {
+    vec![
+        Descriptor {
         id: "screenbound",
         name: "Screenbound",
         description: "Keep fullscreen windows inside a zone of your monitor instead of covering all of it.",
@@ -72,7 +82,22 @@ pub fn descriptors() -> Vec<Descriptor> {
             uninstall_key: "Screenbound",
             run_value: "Screenbound",
         },
-    }]
+    },
+    Descriptor {
+        id: "vials",
+        name: "Vials",
+        description: "Containers on your desktop that hold shortcuts, apps and folders, with optional auto-sort rules.",
+        version: vials_module::VERSION,
+        supported: cfg!(windows),
+        settings_files: &["config.json"],
+        standalone: Standalone {
+            exe_name: "vials.exe",
+            identifier: "io.github.wolfskii.vials",
+            uninstall_key: "Vials",
+            run_value: "Vials",
+        },
+    },
+    ]
 }
 
 /// Descriptors joined with the running module and its plugin builder.
@@ -81,10 +106,18 @@ pub fn entries() -> Vec<Entry> {
         .into_iter()
         .filter_map(|descriptor| {
             let (module, init): (Arc<dyn Module<Wry>>, PluginInit) = match descriptor.id {
-                "screenbound" => (Arc::new(screenbound_module::ScreenboundModule), init_screenbound),
+                "screenbound" => (
+                    Arc::new(screenbound_module::ScreenboundModule),
+                    init_screenbound,
+                ),
+                "vials" => (Arc::new(vials_module::VialsModule), init_vials),
                 _ => return None,
             };
-            Some(Entry { descriptor, module, init })
+            Some(Entry {
+                descriptor,
+                module,
+                init,
+            })
         })
         .collect()
 }
@@ -108,8 +141,17 @@ mod tests {
 
     #[test]
     fn descriptor_ids_match_the_module_crates() {
-        let sb = descriptors().into_iter().find(|d| d.id == "screenbound").unwrap();
+        let sb = descriptors()
+            .into_iter()
+            .find(|d| d.id == "screenbound")
+            .unwrap();
         assert_eq!(sb.id, screenbound_module::plugin::MODULE_ID);
+    }
+
+    #[test]
+    fn vials_descriptor_matches_its_crate() {
+        let v = descriptors().into_iter().find(|d| d.id == "vials").unwrap();
+        assert_eq!(v.id, vials_module::engine::MODULE_ID);
     }
 
     #[test]

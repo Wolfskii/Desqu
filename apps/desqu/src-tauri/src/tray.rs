@@ -15,7 +15,10 @@ const RELEASE_SCREENBOUND: &str = "release:screenbound";
 
 pub fn install(app: &AppHandle<Wry>) -> tauri::Result<Tray<Wry>> {
     let mut extra = Vec::new();
-    for entry in registry::entries().into_iter().filter(|e| e.descriptor.supported) {
+    for entry in registry::entries()
+        .into_iter()
+        .filter(|e| e.descriptor.supported)
+    {
         extra.push(TrayItem::Check {
             id: format!("{MODULE_PREFIX}{}", entry.descriptor.id),
             label: entry.descriptor.name.into(),
@@ -27,7 +30,10 @@ pub fn install(app: &AppHandle<Wry>) -> tauri::Result<Tray<Wry>> {
                 label: "Pause Screenbound".into(),
                 checked: false,
             });
-            extra.push(TrayItem::Normal { id: RELEASE_SCREENBOUND.into(), label: "Release all windows".into() });
+            extra.push(TrayItem::Normal {
+                id: RELEASE_SCREENBOUND.into(),
+                label: "Release all windows".into(),
+            });
         }
     }
     let tray = tray::build(
@@ -50,9 +56,15 @@ pub fn refresh(app: &AppHandle<Wry>) {
         return;
     };
     let state = app.state::<DesquState>();
-    for entry in registry::entries().into_iter().filter(|e| e.descriptor.supported) {
+    for entry in registry::entries()
+        .into_iter()
+        .filter(|e| e.descriptor.supported)
+    {
         let id = entry.descriptor.id;
-        tray.set_checked(&format!("{MODULE_PREFIX}{id}"), state.file().get(id).enabled);
+        tray.set_checked(
+            &format!("{MODULE_PREFIX}{id}"),
+            state.file().get(id).enabled,
+        );
         if id == "screenbound" {
             let status = entry.module.status(app);
             let running = matches!(status, ModuleStatus::On | ModuleStatus::Paused);

@@ -55,7 +55,9 @@ pub fn save(path: &Path, file: &ModulesFile) -> Result<(), JsonError> {
 
 /// Desqu itself needs a Run entry only when at least one module wants to start at sign-in.
 pub fn should_autostart(file: &ModulesFile) -> bool {
-    file.modules.values().any(|m| m.enabled && m.start_with_system)
+    file.modules
+        .values()
+        .any(|m| m.enabled && m.start_with_system)
 }
 
 /// Which modules start when Desqu launches: from sign-in only those marked "start with system";
@@ -84,7 +86,13 @@ mod tests {
     fn file(entries: &[(&str, bool, bool)]) -> ModulesFile {
         let mut f = ModulesFile::default();
         for (id, enabled, sws) in entries {
-            f.set(id, ModuleSettings { enabled: *enabled, start_with_system: *sws });
+            f.set(
+                id,
+                ModuleSettings {
+                    enabled: *enabled,
+                    start_with_system: *sws,
+                },
+            );
         }
         f
     }
@@ -101,7 +109,10 @@ mod tests {
     fn autostart_needs_a_module_that_is_both_on_and_marked() {
         assert!(!should_autostart(&file(&[("a", true, false)])));
         assert!(!should_autostart(&file(&[("a", false, true)])));
-        assert!(should_autostart(&file(&[("a", true, true), ("b", false, false)])));
+        assert!(should_autostart(&file(&[
+            ("a", true, true),
+            ("b", false, false)
+        ])));
     }
 
     #[test]
@@ -130,7 +141,8 @@ mod tests {
         let json = serde_json::to_value(file(&[("a", true, true)])).unwrap();
         assert_eq!(json["modules"]["a"]["startWithSystem"], true);
         let parsed: ModulesFile =
-            serde_json::from_str(r#"{"modules":{"a":{"enabled":true,"extra":1}},"other":2}"#).unwrap();
+            serde_json::from_str(r#"{"modules":{"a":{"enabled":true,"extra":1}},"other":2}"#)
+                .unwrap();
         assert!(parsed.get("a").enabled);
     }
 

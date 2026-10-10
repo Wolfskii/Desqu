@@ -17,6 +17,7 @@
     "dependencies": {
         "@desqu/screenbound-ui": "*",
         "@desqu/ui": "*",
+        "@desqu/vials-ui": "*",
         "@tauri-apps/api": "^2"
     },
     "devDependencies": {

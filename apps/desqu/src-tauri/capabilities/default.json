@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "desqu-shell:default",
-    "screenbound-module:default"
+    "screenbound-module:default",
+    "vials-module:default"
   ]
 }

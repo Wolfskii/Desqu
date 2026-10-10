@@ -4,6 +4,7 @@ Read [DESQU-PLAN.md](DESQU-PLAN.md) first: it is the source of truth for the tra
 progress log. Then read the AGENTS.md of the app you are changing:
 
 - [apps/screenbound/AGENTS.md](apps/screenbound/AGENTS.md) — Screenbound
+- [apps/vials/AGENTS.md](apps/vials/AGENTS.md) — Vials
 - [apps/desqu/README.md](apps/desqu/README.md) — Desqu (the collection app; architecture in [docs/architecture.md](docs/architecture.md))
 
 ## Dependency rules

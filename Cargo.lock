@@ -771,6 +771,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tracing",
+ "vials-module",
 ]
 
 [[package]]

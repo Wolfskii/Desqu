@@ -62,9 +62,10 @@ pub fn take_over(app: &AppHandle<Wry>, entry: &Entry, standalone_dir: &Path) -> 
     for _ in 0..QUIT_WAIT_STEPS {
         match entry.module.start(app) {
             Ok(()) => {
-                if let Err(e) =
-                    disable_standalone_autostart(standalone_dir, entry.descriptor.standalone.run_value)
-                {
+                if let Err(e) = disable_standalone_autostart(
+                    standalone_dir,
+                    entry.descriptor.standalone.run_value,
+                ) {
                     tracing::warn!("could not disable the standalone autostart: {e}");
                 }
                 return Ok(());
@@ -84,19 +85,29 @@ mod tests {
     use super::*;
 
     fn proc(pid: u32, exe: Option<&str>) -> ProcessInfo {
-        ProcessInfo { pid, exe: exe.map(PathBuf::from) }
+        ProcessInfo {
+            pid,
+            exe: exe.map(PathBuf::from),
+        }
     }
 
     #[test]
     fn quit_targets_skip_ourselves_and_unknown_paths() {
-        let procs = [proc(1, Some(r"C:\a\screenbound.exe")), proc(2, None), proc(3, Some(r"C:\b\screenbound.exe"))];
+        let procs = [
+            proc(1, Some(r"C:\a\screenbound.exe")),
+            proc(2, None),
+            proc(3, Some(r"C:\b\screenbound.exe")),
+        ];
         let targets = quit_targets(3, &procs);
         assert_eq!(targets, vec![PathBuf::from(r"C:\a\screenbound.exe")]);
     }
 
     #[test]
     fn quit_targets_dedup_the_same_exe() {
-        let procs = [proc(1, Some(r"C:\a\screenbound.exe")), proc(2, Some(r"C:\a\screenbound.exe"))];
+        let procs = [
+            proc(1, Some(r"C:\a\screenbound.exe")),
+            proc(2, Some(r"C:\a\screenbound.exe")),
+        ];
         assert_eq!(quit_targets(99, &procs).len(), 1);
     }
 
@@ -106,7 +117,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(desqu_shell::plugin::SETTINGS_FILE);
-        let on = settings::ShellSettings { start_with_system: true, ..Default::default() };
+        let on = settings::ShellSettings {
+            start_with_system: true,
+            ..Default::default()
+        };
         settings::save(&path, &on).unwrap();
 
         // A run value name nobody has: removing it is not an error.
