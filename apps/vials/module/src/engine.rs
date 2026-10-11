@@ -83,7 +83,7 @@ pub struct ModuleState {
     context_point: Mutex<Option<(i32, i32)>>,
     /// Where the popup is on screen while it is open.
     menu_rect: Mutex<Option<PixelRect>>,
-    /// The theme the open vial windows were built with; a change rebuilds them.
+    /// The look the open vial windows currently have; a change restyles them in place.
     applied_theme: Mutex<Option<(VialTheme, GlassBlur, u8)>>,
     /// `false` while the desktop's "Show desktop icons" is off: the vials hide with them.
     icons_visible: AtomicBool,
@@ -476,15 +476,15 @@ fn close_vial_windows<R: Runtime>(app: &AppHandle<R>, keep: &HashSet<String>) {
 fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender<Job>) {
     let monitors = monitor_refs(app);
     let wanted: HashSet<String> = cfg.vials.iter().map(|v| label_for(&v.id)).collect();
-    // Window effects are fixed when a window is built, so a new theme means new windows.
-    if let Some(state) = app.try_state::<ModuleState>() {
+    // A new look is applied to the open windows in place. (Rebuilding them under the same label
+    // fails: the old window is still being destroyed, so the vials would vanish.)
+    let theme_changed = app.try_state::<ModuleState>().is_some_and(|state| {
         let mut applied = lock(&state.applied_theme);
         let now = (cfg.theme, cfg.glass_blur, cfg.glass_tint);
-        if applied.is_some_and(|t| t != now) {
-            close_vial_windows(app, &HashSet::new());
-        }
+        let changed = applied.is_some_and(|t| t != now);
         *applied = Some(now);
-    }
+        changed
+    });
     close_vial_windows(app, &wanted);
 
     for vial in &cfg.vials {
@@ -504,6 +504,9 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
             }
             if window.outer_size().ok() != Some(size) {
                 let _ = window.set_size(size);
+            }
+            if theme_changed {
+                style_window(&window, cfg);
             }
             continue;
         }
@@ -714,7 +717,24 @@ fn apply_glass<R: Runtime>(window: &tauri::WebviewWindow<R>, blur: GlassBlur, ti
         tracing::debug!("no glass effect on this system: {e}");
     }
     if let Ok(hwnd) = window.hwnd() {
-        platform::round_corners(hwnd.0 as isize);
+        platform::round_corners(hwnd.0 as isize, true);
+    }
+}
+
+/// Gives an existing vial window the configured look (the same properties it is built with).
+fn style_window<R: Runtime>(window: &tauri::WebviewWindow<R>, cfg: &VialsConfig) {
+    match cfg.theme {
+        VialTheme::Glass => {
+            apply_glass(window, cfg.glass_blur, cfg.glass_tint);
+            let _ = window.set_shadow(true);
+        }
+        VialTheme::Classic => {
+            let _ = window.set_effects(None::<tauri::utils::config::WindowEffectsConfig>);
+            let _ = window.set_shadow(false);
+            if let Ok(hwnd) = window.hwnd() {
+                platform::round_corners(hwnd.0 as isize, false);
+            }
+        }
     }
 }
 

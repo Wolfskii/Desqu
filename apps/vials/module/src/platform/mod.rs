@@ -53,7 +53,7 @@ pub(crate) fn drag_item(_path: &str) -> Result<DragEnd, String> {
 
 
 #[cfg(not(windows))]
-pub(crate) fn round_corners(_hwnd: isize) {}
+pub(crate) fn round_corners(_hwnd: isize, _round: bool) {}
 
 #[cfg(not(windows))]
 pub(crate) struct IconsWatcher;

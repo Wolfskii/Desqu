@@ -53,7 +53,7 @@
           <option value="clear">Clear</option>
         </select>
       </SettingsRow>
-      <SettingsRow label="Glass tint" description="Lower is clearer. The vials are rebuilt when you let go of the slider.">
+      <SettingsRow label="Glass tint" description="Lower is clearer. Applied when you let go of the slider.">
         <input
           type="range"
           min="0"

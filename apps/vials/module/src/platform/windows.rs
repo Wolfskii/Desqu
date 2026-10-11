@@ -391,13 +391,13 @@ pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
 
 // ------------------------------------------------------------------------------- glass look
 
-use ::windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND};
+use ::windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND};
 
 /// Rounded corners for a borderless window (Windows 11 only rounds decorated windows on its own).
 /// The blur behind the window is clipped to them. Failure (Windows 10) just leaves square corners.
-pub(crate) fn round_corners(hwnd: isize) {
+pub(crate) fn round_corners(hwnd: isize, round: bool) {
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
-    let preference = DWMWCP_ROUND;
+    let preference = if round { DWMWCP_ROUND } else { DWMWCP_DONOTROUND };
     // SAFETY: `hwnd` is a window of this process; the attribute value is a plain i32 enum.
     unsafe {
         let _ = DwmSetWindowAttribute(

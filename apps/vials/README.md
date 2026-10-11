@@ -35,7 +35,7 @@ Windows 10/11 with WebView2. Windows only for now.
 Settings has a *Look of vials* choice: **Glass** (default; blurred desktop behind the vial, rounded
 corners, light edges) or **Classic** (a plain dark panel). Glass has two knobs: *Glass blur* (Frosted =
 Windows acrylic, Clear = plain blur without grain) and *Glass tint* (0 clearest to 100 nearly solid,
-default 20). Changing any of them rebuilds the vial windows.
+default 20). Changing any of them restyles the open vials in place.
 
 ## Known limits
 
