@@ -25,3 +25,7 @@ pub(crate) fn selection_count() -> DesktopResult<usize> {
 pub(crate) fn icons_visible() -> DesktopResult<bool> {
     Err(DesktopError::Unsupported)
 }
+
+pub(crate) fn nudge_timing(_item_id: &str, _rounds: usize) -> DesktopResult<std::time::Duration> {
+    Err(DesktopError::Unsupported)
+}

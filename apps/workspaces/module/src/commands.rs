@@ -45,6 +45,8 @@ pub struct DesktopStatus {
     pub can_hide: Option<bool>,
     pub problem: Option<String>,
     pub hidden_count: usize,
+    /// What the last pass over the desktop did.
+    pub last: Option<crate::engine::ReconcileInfo>,
 }
 
 #[tauri::command]
@@ -215,6 +217,7 @@ pub async fn desktop_status(state: State<'_, ModuleState>) -> CmdResult<DesktopS
             .as_ref()
             .and_then(|l| l.hidden().ok())
             .map_or(0, |h| h.len()),
+        last: state.last_reconcile(),
     })
 }
 

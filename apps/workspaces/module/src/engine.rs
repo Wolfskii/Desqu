@@ -47,6 +47,20 @@ struct Running {
     _lock: ModuleLock,
 }
 
+/// What the last pass over the desktop did; shown in Settings so a problem is visible.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconcileInfo {
+    /// Seconds since the Unix epoch.
+    pub at: u64,
+    pub current_desktop: Option<String>,
+    pub items: usize,
+    pub wanted_hidden: usize,
+    pub hidden_now: usize,
+    pub failed: usize,
+    pub error: Option<String>,
+}
+
 pub struct ModuleState {
     pub(crate) config_path: PathBuf,
     pub(crate) journal_path: PathBuf,
@@ -54,6 +68,7 @@ pub struct ModuleState {
     running: Mutex<Option<Running>>,
     owned_elsewhere: AtomicBool,
     problem: Mutex<Option<String>>,
+    last: Mutex<Option<ReconcileInfo>>,
     icons: Mutex<std::collections::HashMap<String, String>>,
 }
 
@@ -83,6 +98,7 @@ impl ModuleState {
             running: Mutex::new(None),
             owned_elsewhere: AtomicBool::new(false),
             problem: Mutex::new(None),
+            last: Mutex::new(None),
             icons: Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -106,6 +122,10 @@ impl ModuleState {
 
     pub fn owned_elsewhere(&self) -> bool {
         self.owned_elsewhere.load(Ordering::Relaxed)
+    }
+
+    pub fn last_reconcile(&self) -> Option<ReconcileInfo> {
+        lock(&self.last).clone()
     }
 
     pub fn problem(&self) -> Option<String> {
@@ -252,7 +272,12 @@ fn worker<R: Runtime>(
             }
             Err(RecvTimeoutError::Timeout) => later = None,
         }
-        if reconcile(&app, &layer, &mut known) && retries < MAX_RETRIES && later.is_none() {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| reconcile(&app, &layer, &mut known)));
+        let lagging = outcome.unwrap_or_else(|_| {
+            tracing::error!("the desktop pass panicked; trying again later");
+            true
+        });
+        if lagging && retries < MAX_RETRIES && later.is_none() {
             retries += 1;
             later = Some(now + RETRY_DELAY);
         }
@@ -324,6 +349,14 @@ fn reconcile<R: Runtime>(
     let hidden = layer.hidden().unwrap_or_default();
     let cfg = state.config();
     let plan = visibility::plan(&ids, &hidden, &cfg, current.as_deref(), &live);
+    tracing::info!(
+        "desktop pass: current={:?} items={} claimed_hidden={} plan: hide {} show {}",
+        current,
+        ids.len(),
+        hidden.len(),
+        plan.hide.len(),
+        plan.show.len()
+    );
 
     let mut problem = None;
     if !plan.show.is_empty() {
@@ -332,6 +365,7 @@ fn reconcile<R: Runtime>(
         }
     }
     let mut lagging = false;
+    let mut failed = 0usize;
     // Claimed as hidden but found on screen (a park that failed or was undone): park it again.
     let mut to_hide = plan.hide.clone();
     to_hide.extend(
@@ -342,10 +376,28 @@ fn reconcile<R: Runtime>(
     );
     if !to_hide.is_empty() {
         match layer.hide(&to_hide) {
-            Ok(report) => lagging = !report.missing.is_empty() || !report.failed.is_empty(),
-            Err(e) => problem = Some(e.to_string()),
+            Ok(report) => {
+                lagging = !report.missing.is_empty() || !report.failed.is_empty();
+                failed = report.failed.len();
+            }
+            Err(e) => {
+                tracing::warn!("could not hide desktop items: {e}");
+                problem = Some(e.to_string());
+            }
         }
     }
+    let hidden_now = layer.hidden().map_or(0, |h| h.len());
+    *lock(&state.last) = Some(ReconcileInfo {
+        at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+        current_desktop: current.clone(),
+        items: ids.len(),
+        wanted_hidden: to_hide.len() + hidden.len().saturating_sub(plan.show.len()),
+        hidden_now,
+        failed,
+        error: problem.clone(),
+    });
     *lock(&state.problem) = problem;
     let _ = app.emit(EVENT_CHANGED, ());
     lagging

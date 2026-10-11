@@ -37,7 +37,7 @@ fn exit_app(app: AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    logging::init("screenbound_lib=info,screenbound_module=info,desqu_shell=info,warn");
+    logging::init_with_file("io.github.wolfskii.screenbound", "screenbound_lib=info,screenbound_module=info,desqu_shell=info,warn");
     platform::init_process();
     let launch = args::parse(std::env::args());
 

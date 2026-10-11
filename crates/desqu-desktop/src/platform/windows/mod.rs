@@ -114,6 +114,35 @@ pub(crate) fn icons_visible() -> DesktopResult<bool> {
     }
 }
 
+/// Diagnostics: asks Explorer to put one item where it already is, `rounds` times, and returns how
+/// long that took. Used by the `layer_timing` example to learn what one position write costs.
+pub(crate) fn nudge_timing(item_id: &str, rounds: usize) -> DesktopResult<std::time::Duration> {
+    let id = item_id.to_string();
+    std::thread::Builder::new()
+        .name("desqu-desktop-timing".into())
+        .spawn(move || {
+            with_com(|| {
+                // SAFETY: on a COM thread of its own.
+                unsafe {
+                    let view = shell::desktop_view()?;
+                    let lv = shell::listview()?;
+                    let raw = shell::list(&view)?;
+                    let item = raw.iter().find(|r| r.id == id).ok_or(DesktopError::Native {
+                        op: "timing",
+                        message: "the item is not in the desktop view yet".into(),
+                    })?;
+                    let started = std::time::Instant::now();
+                    for _ in 0..rounds {
+                        shell::set_position(lv, item.index, item.pos)?;
+                    }
+                    Ok(started.elapsed())
+                }
+            })
+        })?
+        .join()
+        .map_err(|_| DesktopError::Native { op: "timing", message: "thread panicked".into() })?
+}
+
 /// How many desktop items are selected right now. Read-only, takes no lock.
 pub(crate) fn selection_count() -> DesktopResult<usize> {
     std::thread::Builder::new()
@@ -249,6 +278,7 @@ fn can_hide() -> DesktopResult<bool> {
 }
 
 fn hide(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<HideReport> {
+    let started = std::time::Instant::now();
     // SAFETY: on the COM thread.
     unsafe {
         let view = shell::desktop_view()?;
@@ -259,46 +289,77 @@ fn hide(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<HideRep
         let raw = shell::list(&view)?;
 
         let mut report = HideReport::default();
-        let mut to_park = Vec::new();
         for id in ids {
             match raw.iter().find(|r| &r.id == id) {
                 None => report.missing.push(id.clone()),
                 Some(item) => {
-                    let newly = state.journal.park(owner, id, item.pos);
-                    // Already claimed but sitting on screen (a failed or undone park): park it again.
-                    if newly || !is_parked(item.pos) {
-                        to_park.push(item.index);
-                    }
+                    state.journal.park(owner, id, item.pos);
                     report.hidden.push(id.clone());
                 }
             }
         }
         // Write-ahead: the original positions are on disk before anything moves.
         state.save()?;
+
+        // Park, read the positions back, and try again for whatever Explorer left on screen (it can
+        // be slow or refuse a few items of a big batch). Items that are already parked are skipped,
+        // so this also repairs a claim whose item was found back on screen.
         let base = state.journal.items.len();
-        for (n, index) in to_park.iter().enumerate() {
-            // One refused item must not leave the rest of a big batch on screen.
-            if let Err(e) = shell::set_position(lv, *index, park_slot(base + n)) {
-                tracing::warn!("could not park desktop item {index}: {e}");
+        let mut pending = report.hidden.clone();
+        let mut passes = 0;
+        while !pending.is_empty() && passes < PARK_PASSES {
+            if passes > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(150));
             }
+            passes += 1;
+            pending = park_pass(&view, lv, &pending, base)?;
         }
-        // Trust the desktop, not the call results: read the positions back.
-        if !report.hidden.is_empty() {
-            let after = shell::list(&view)?;
-            let still_visible: Vec<String> = report
-                .hidden
-                .iter()
-                .filter(|id| after.iter().find(|r| &r.id == *id).is_some_and(|r| !is_parked(r.pos)))
-                .cloned()
-                .collect();
-            if !still_visible.is_empty() {
-                tracing::warn!("{} desktop items are still on screen after parking", still_visible.len());
-                report.hidden.retain(|id| !still_visible.contains(id));
-                report.failed = still_visible;
-            }
+        if !pending.is_empty() {
+            tracing::warn!("{} of {} desktop items are still on screen after {passes} passes", pending.len(), report.hidden.len());
+            report.hidden.retain(|id| !pending.contains(id));
+            report.failed = pending;
         }
+        tracing::info!(
+            "parked {} desktop items in {} ms ({passes} passes, {} missing, {} failed)",
+            report.hidden.len(),
+            started.elapsed().as_millis(),
+            report.missing.len(),
+            report.failed.len()
+        );
         Ok(report)
     }
+}
+
+/// How often `hide` re-parks items that did not stay parked.
+const PARK_PASSES: usize = 3;
+
+/// One pass: parks every listed item that is not parked yet and returns the ones that still are
+/// not parked when the positions are read back.
+unsafe fn park_pass(
+    view: &windows::Win32::UI::Shell::IFolderView2,
+    lv: windows::Win32::Foundation::HWND,
+    ids: &[String],
+    base: usize,
+) -> DesktopResult<Vec<String>> {
+    let before = shell::list(view)?;
+    let mut n = 0;
+    for id in ids {
+        let Some(item) = before.iter().find(|r| &r.id == id) else { continue };
+        if is_parked(item.pos) {
+            continue;
+        }
+        // One refused item must not leave the rest of a big batch on screen.
+        if let Err(e) = shell::set_position(lv, item.index, park_slot(base + n)) {
+            tracing::warn!("could not park desktop item {}: {e}", item.index);
+        }
+        n += 1;
+    }
+    let after = shell::list(view)?;
+    Ok(ids
+        .iter()
+        .filter(|id| after.iter().find(|r| &r.id == *id).is_some_and(|r| !is_parked(r.pos)))
+        .cloned()
+        .collect())
 }
 
 /// Moves items back, then (only after that succeeded) commits the journal change. A crash in the

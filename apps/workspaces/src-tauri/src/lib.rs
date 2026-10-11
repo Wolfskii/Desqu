@@ -7,7 +7,10 @@ use workspaces_module::{ModuleOptions, WorkspacesModule};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    logging::init("workspaces_lib=info,workspaces_module=info,desqu_shell=info,warn");
+    logging::init_with_file(
+        "io.github.wolfskii.workspaces",
+        "workspaces_lib=info,workspaces_module=info,desqu_desktop=info,desqu_shell=info,warn",
+    );
     let launch = args::parse(std::env::args());
 
     let app = tauri::Builder::default()

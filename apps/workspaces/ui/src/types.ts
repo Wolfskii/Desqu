@@ -41,6 +41,17 @@ export interface ItemInfo {
     hidden: boolean;
 }
 
+export interface ReconcileInfo {
+    /** Seconds since the Unix epoch. */
+    at: number;
+    currentDesktop: string | null;
+    items: number;
+    wantedHidden: number;
+    hiddenNow: number;
+    failed: number;
+    error: string | null;
+}
+
 export interface DesktopStatus {
     running: boolean;
     currentDesktop: string | null;
@@ -48,6 +59,7 @@ export interface DesktopStatus {
     canHide: boolean | null;
     problem: string | null;
     hiddenCount: number;
+    last: ReconcileInfo | null;
 }
 
 export const KIND_LABELS: Record<ItemKind, string> = {

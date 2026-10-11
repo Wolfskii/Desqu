@@ -7,7 +7,7 @@ use vials_module::{ModuleOptions, VialsModule};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    logging::init("vials_lib=info,vials_module=info,desqu_shell=info,warn");
+    logging::init_with_file("io.github.wolfskii.vials", "vials_lib=info,vials_module=info,desqu_desktop=info,desqu_shell=info,warn");
     let launch = args::parse(std::env::args());
 
     let app = tauri::Builder::default()

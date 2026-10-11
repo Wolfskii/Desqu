@@ -39,6 +39,15 @@
         {(workspaces.desktop?.hiddenCount ?? 0) === 1 ? "item is" : "items are"} hidden on this desktop right now.
       </p>
     {/if}
+    {#if workspaces.desktop?.last}
+      {@const last = workspaces.desktop.last}
+      <p class="dim">
+        Last check {new Date(last.at * 1000).toLocaleTimeString()}: on “{workspaces.desktopName(last.currentDesktop)}”,
+        {last.hiddenNow} of {last.items} desktop items hidden{last.failed ? `, ${last.failed} could not be hidden` : ""}{last.error
+          ? `. Problem: ${last.error}`
+          : ""}.
+      </p>
+    {/if}
   </section>
 
   {#if showShellSettings}

@@ -36,6 +36,12 @@ pub fn recover_from(journal_path: &Path) -> DesktopResult<usize> {
     platform::recover_from(journal_path)
 }
 
+/// Diagnostics only: time `rounds` position writes of one item to where it already is.
+#[doc(hidden)]
+pub fn nudge_timing(item_id: &str, rounds: usize) -> DesktopResult<std::time::Duration> {
+    platform::nudge_timing(item_id, rounds)
+}
+
 /// Whether the desktop shows its icons right now ("Show desktop icons" in the desktop's View menu).
 pub fn icons_visible() -> DesktopResult<bool> {
     platform::icons_visible()
