@@ -50,7 +50,7 @@ Vials never moves or deletes files, but items are hidden while a vial holds them
 ## Basics
 
 1. Start Vials, **Vials** tab → add a vial. Expect a window on the desktop, below other windows.
-2. Drag an item from the **Items** tab into the vial. Expect it gone from the loose desktop and
+2. Drag an icon from the desktop into the vial. Expect it gone from the loose desktop and
    shown in the vial with its icon.
 3. Double click it in the vial. Expect it to open.
 4. Press × on it. Expect it back on the desktop where it was.
