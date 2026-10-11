@@ -34,6 +34,9 @@ pub struct HideReport {
     /// Items the desktop view does not show (yet): it lags the file system by several seconds, so
     /// callers retry these after the next change notification.
     pub missing: Vec<String>,
+    /// Items Explorer did not leave parked (it refused, timed out or moved them back). They are
+    /// still claimed in the journal, so asking again parks them again.
+    pub failed: Vec<String>,
 }
 
 /// The desktop folders changed (an item was added, removed or renamed). Coarse on purpose: the

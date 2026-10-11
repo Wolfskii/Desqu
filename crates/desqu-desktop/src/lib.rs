@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub use layer::{DesktopError, DesktopEvent, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
 pub use model::{
     classify, is_parked, plan_recovery, DesktopItem, ItemKind, Journal, ParkedItem, Point, RecoveryPlan,
-    FALLBACK_ORIGIN, PARK_POINT,
+    park_slot, FALLBACK_ORIGIN, PARK_POINT,
 };
 
 /// Connects `owner` (for example `"vials"`) to the process-wide layer, creating it if needed.
@@ -34,6 +34,11 @@ pub fn open(owner: &str, journal_path: &Path) -> DesktopResult<Arc<dyn DesktopLa
 /// Desqu hosts the module now) and deletes it. Returns how many items were moved back.
 pub fn recover_from(journal_path: &Path) -> DesktopResult<usize> {
     platform::recover_from(journal_path)
+}
+
+/// Whether the desktop shows its icons right now ("Show desktop icons" in the desktop's View menu).
+pub fn icons_visible() -> DesktopResult<bool> {
+    platform::icons_visible()
 }
 
 /// How many desktop items are selected right now (0 after a marquee over empty space). Read-only.

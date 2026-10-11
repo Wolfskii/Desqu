@@ -21,3 +21,7 @@ pub(crate) fn item_position(_item_id: &str) -> DesktopResult<Option<Point>> {
 pub(crate) fn selection_count() -> DesktopResult<usize> {
     Err(DesktopError::Unsupported)
 }
+
+pub(crate) fn icons_visible() -> DesktopResult<bool> {
+    Err(DesktopError::Unsupported)
+}

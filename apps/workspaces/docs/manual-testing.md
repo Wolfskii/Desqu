@@ -28,4 +28,6 @@ Prepare two or more virtual desktops (Win+Tab, New desktop). Use spare files on 
 11. With only one desktop: expect the "No virtual desktops yet" hint and nothing hidden.
 12. In Desqu with Vials on and the same file in a vial and tied to another desktop: take it out of
     the vial; expect it to stay hidden on the other desktops only.
-13. Windows 10 22H2 / 11 23H2 / 24H2: run cases 1-4 and note which fail.
+13. Tie a large number of items (hundreds) to desktop 2, then switch to desktop 1. Expect all of them
+    hidden within a few seconds, none left on screen. Check the Settings tab for a problem message.
+14. Windows 10 22H2 / 11 23H2 / 24H2: run cases 1-4 and note which fail.

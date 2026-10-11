@@ -13,6 +13,12 @@ use serde::{Deserialize, Serialize};
 /// Where hidden items are parked. Negative and far outside any realistic virtual screen.
 pub const PARK_POINT: Point = Point { x: -6000, y: -6000 };
 
+/// A parking spot of its own for the n-th hidden item. Hundreds of icons stacked on one point can be
+/// nudged apart by Explorer (and end up on screen again), so each gets a distinct off-screen cell.
+pub fn park_slot(n: usize) -> Point {
+    Point { x: PARK_POINT.x - (n % 250) as i32 * 100, y: PARK_POINT.y - (n / 250) as i32 * 100 }
+}
+
 /// Fallback original position for an item found parked with no journal entry (e.g. a lost
 /// journal): the top-left cell, where the shell then snaps it to a free grid slot.
 pub const FALLBACK_ORIGIN: Point = Point { x: 16, y: 2 };
@@ -201,6 +207,15 @@ mod tests {
 
     fn p(x: i32, y: i32) -> Point {
         Point { x, y }
+    }
+
+    #[test]
+    fn park_slots_are_distinct_parked_and_inside_the_coordinate_range() {
+        let slots: Vec<Point> = (0..2000).map(park_slot).collect();
+        let unique: std::collections::HashSet<(i32, i32)> = slots.iter().map(|p| (p.x, p.y)).collect();
+        assert_eq!(unique.len(), 2000);
+        assert!(slots.iter().all(|p| is_parked(*p) && p.x > i32::from(i16::MIN) && p.y > i32::from(i16::MIN)));
+        assert_eq!(park_slot(0), PARK_POINT);
     }
 
     #[test]

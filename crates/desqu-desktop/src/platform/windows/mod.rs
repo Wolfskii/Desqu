@@ -16,7 +16,7 @@ use std::time::Duration;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
 use crate::layer::{DesktopError, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
-use crate::model::{classify, is_parked, plan_recovery, DesktopItem, Journal, ParkedItem, Point, PARK_POINT};
+use crate::model::{classify, is_parked, park_slot, plan_recovery, DesktopItem, Journal, ParkedItem, Point};
 
 /// How long a handle waits for the worker before giving up (Explorer can be slow or hung).
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -102,6 +102,16 @@ pub(crate) fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
         })?
         .join()
         .map_err(|_| DesktopError::Native { op: "peek", message: "thread panicked".into() })?
+}
+
+/// Whether the desktop currently shows its icons (right-click the desktop, View, "Show desktop
+/// icons"). Read-only, takes no lock.
+pub(crate) fn icons_visible() -> DesktopResult<bool> {
+    // SAFETY: plain window lookup and visibility query.
+    unsafe {
+        let lv = shell::listview()?;
+        Ok(windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(lv).as_bool())
+    }
 }
 
 /// How many desktop items are selected right now. Read-only, takes no lock.
@@ -254,7 +264,9 @@ fn hide(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<HideRep
             match raw.iter().find(|r| &r.id == id) {
                 None => report.missing.push(id.clone()),
                 Some(item) => {
-                    if state.journal.park(owner, id, item.pos) {
+                    let newly = state.journal.park(owner, id, item.pos);
+                    // Already claimed but sitting on screen (a failed or undone park): park it again.
+                    if newly || !is_parked(item.pos) {
                         to_park.push(item.index);
                     }
                     report.hidden.push(id.clone());
@@ -263,8 +275,27 @@ fn hide(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<HideRep
         }
         // Write-ahead: the original positions are on disk before anything moves.
         state.save()?;
-        for index in to_park {
-            shell::set_position(lv, index, PARK_POINT)?;
+        let base = state.journal.items.len();
+        for (n, index) in to_park.iter().enumerate() {
+            // One refused item must not leave the rest of a big batch on screen.
+            if let Err(e) = shell::set_position(lv, *index, park_slot(base + n)) {
+                tracing::warn!("could not park desktop item {index}: {e}");
+            }
+        }
+        // Trust the desktop, not the call results: read the positions back.
+        if !report.hidden.is_empty() {
+            let after = shell::list(&view)?;
+            let still_visible: Vec<String> = report
+                .hidden
+                .iter()
+                .filter(|id| after.iter().find(|r| &r.id == *id).is_some_and(|r| !is_parked(r.pos)))
+                .cloned()
+                .collect();
+            if !still_visible.is_empty() {
+                tracing::warn!("{} desktop items are still on screen after parking", still_visible.len());
+                report.hidden.retain(|id| !still_visible.contains(id));
+                report.failed = still_visible;
+            }
         }
         Ok(report)
     }

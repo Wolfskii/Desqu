@@ -408,3 +408,83 @@ pub(crate) fn round_corners(hwnd: isize) {
         );
     }
 }
+
+// ------------------------------------------------------------ "Show desktop icons" on or off
+
+use ::windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
+use ::windows::Win32::UI::WindowsAndMessaging::{EVENT_OBJECT_HIDE, EVENT_OBJECT_SHOW, WINEVENT_OUTOFCONTEXT};
+
+thread_local! {
+    // The WinEvent callback runs on the thread that installed the hook.
+    static ICONS: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+}
+
+unsafe extern "system" fn icons_proc(_: HWINEVENTHOOK, _: u32, hwnd: HWND, id_object: i32, _: i32, _: u32, _: u32) {
+    // Only the window itself (OBJID_WINDOW = 0), and only the desktop's icon view.
+    if id_object != 0 || hwnd.0.is_null() || class_of(hwnd) != "SysListView32" {
+        return;
+    }
+    // SAFETY: plain window query.
+    let on_desktop = unsafe { GetParent(hwnd) }.is_ok_and(|p| class_of(p) == "SHELLDLL_DefView");
+    if on_desktop {
+        ICONS.with(|i| {
+            if let Some(f) = i.borrow().as_ref() {
+                f();
+            }
+        });
+    }
+}
+
+/// Calls the callback when the desktop's icon view is shown or hidden, which is what the desktop's
+/// "Show desktop icons" switch does. Event-driven (a WinEvent hook).
+pub(crate) struct IconsWatcher {
+    thread_id: u32,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl IconsWatcher {
+    pub(crate) fn start(on_change: Box<dyn Fn() + Send>) -> Result<Self, String> {
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
+        let thread = std::thread::Builder::new()
+            .name("vials-icons-watch".into())
+            .spawn(move || {
+                ICONS.with(|i| *i.borrow_mut() = Some(on_change));
+                // SAFETY: the hook is removed below on this same thread, before it ends.
+                unsafe {
+                    let hook = SetWinEventHook(
+                        EVENT_OBJECT_SHOW,
+                        EVENT_OBJECT_HIDE,
+                        None,
+                        Some(icons_proc),
+                        0,
+                        0,
+                        WINEVENT_OUTOFCONTEXT,
+                    );
+                    if hook.0.is_null() {
+                        let _ = ready_tx.send(Err("could not watch the desktop icon view".into()));
+                        return;
+                    }
+                    let _ = ready_tx.send(Ok(GetCurrentThreadId()));
+                    let mut msg = MSG::default();
+                    while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+                    let _ = UnhookWinEvent(hook);
+                }
+                ICONS.with(|i| *i.borrow_mut() = None);
+            })
+            .map_err(|e| e.to_string())?;
+        let thread_id = ready_rx.recv().map_err(|e| e.to_string())??;
+        Ok(Self { thread_id, thread: Some(thread) })
+    }
+}
+
+impl Drop for IconsWatcher {
+    fn drop(&mut self) {
+        // SAFETY: posts WM_QUIT to the watcher thread so its message loop ends.
+        unsafe {
+            let _ = PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}

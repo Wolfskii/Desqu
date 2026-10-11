@@ -332,9 +332,17 @@ fn reconcile<R: Runtime>(
         }
     }
     let mut lagging = false;
-    if !plan.hide.is_empty() {
-        match layer.hide(&plan.hide) {
-            Ok(report) => lagging = !report.missing.is_empty(),
+    // Claimed as hidden but found on screen (a park that failed or was undone): park it again.
+    let mut to_hide = plan.hide.clone();
+    to_hide.extend(
+        items
+            .iter()
+            .filter(|i| !i.parked && hidden.contains(&i.id) && !plan.show.contains(&i.id))
+            .map(|i| i.id.clone()),
+    );
+    if !to_hide.is_empty() {
+        match layer.hide(&to_hide) {
+            Ok(report) => lagging = !report.missing.is_empty() || !report.failed.is_empty(),
             Err(e) => problem = Some(e.to_string()),
         }
     }

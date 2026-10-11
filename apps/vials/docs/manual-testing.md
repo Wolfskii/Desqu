@@ -41,6 +41,9 @@ Vials never moves or deletes files, but items are hidden while a vial holds them
 0m. Glass: try Frosted and Clear at tint 0, 20, 50 over a bright and a dark wallpaper. Pick the
     combination that looks closest to Apple's glass and tell the maintainers (the defaults are a guess:
     Frosted, 20). Check that acrylic does not make dragging a vial laggy.
+0n. Right-click the desktop, View, turn off "Show desktop icons". Expect every vial to disappear
+    with the icons and to come back (same place, same items) when you turn it on again. Also start
+    Vials while the icons are off: no vial may show until you turn them on.
 0k. Check the vial looks right (translucent, rounded, readable over your wallpaper, also with a
     live wallpaper).
 

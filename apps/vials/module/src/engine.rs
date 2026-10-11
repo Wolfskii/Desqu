@@ -25,7 +25,7 @@ use crate::core::gesture;
 use crate::core::layout::{self, MonitorRef};
 use crate::core::model::{GlassBlur, PixelRect, Vial, VialTheme, VialsConfig};
 use crate::core::rules;
-use crate::platform::{self, MouseEvent, MouseWatcher};
+use crate::platform::{self, IconsWatcher, MouseEvent, MouseWatcher};
 
 /// Id of the cross-process module lock.
 pub const MODULE_ID: &str = "vials";
@@ -56,6 +56,8 @@ pub(crate) enum Job {
     ContextDown((i32, i32)),
     /// A mouse button went down at this screen point (closes the popup when it is outside it).
     ButtonDown((i32, i32)),
+    /// The desktop's icon view was shown or hidden ("Show desktop icons").
+    IconsChanged,
     Stop,
 }
 
@@ -64,6 +66,7 @@ struct Running {
     jobs: Sender<Job>,
     _subscription: Subscription,
     _mouse: Option<MouseWatcher>,
+    _icons: Option<IconsWatcher>,
     worker: Option<JoinHandle<()>>,
     _lock: ModuleLock,
 }
@@ -82,6 +85,8 @@ pub struct ModuleState {
     menu_rect: Mutex<Option<PixelRect>>,
     /// The theme the open vial windows were built with; a change rebuilds them.
     applied_theme: Mutex<Option<(VialTheme, GlassBlur, u8)>>,
+    /// `false` while the desktop's "Show desktop icons" is off: the vials hide with them.
+    icons_visible: AtomicBool,
     problem: Mutex<Option<String>>,
     icons: Mutex<HashMap<String, String>>,
 }
@@ -112,6 +117,7 @@ impl ModuleState {
             context_point: Mutex::new(None),
             menu_rect: Mutex::new(None),
             applied_theme: Mutex::new(None),
+            icons_visible: AtomicBool::new(true),
             problem: Mutex::new(None),
             icons: Mutex::new(HashMap::new()),
         }
@@ -236,6 +242,16 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .ok()
     };
 
+    state.icons_visible.store(desqu_desktop::icons_visible().unwrap_or(true), Ordering::Relaxed);
+    let icons = {
+        let sink = jobs.clone();
+        IconsWatcher::start(Box::new(move || {
+            let _ = sink.send(Job::IconsChanged);
+        }))
+        .map_err(|e| tracing::warn!("could not watch \"Show desktop icons\": {e}"))
+        .ok()
+    };
+
     let worker = {
         let app = app.clone();
         let layer = layer.clone();
@@ -253,6 +269,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         jobs,
         _subscription: subscription,
         _mouse: mouse,
+        _icons: icons,
         worker: Some(worker),
         _lock: module_lock,
     });
@@ -314,6 +331,7 @@ fn worker<R: Runtime>(app: AppHandle<R>, rx: Receiver<Job>, jobs: Sender<Job>, l
             }
             Ok(Job::WindowChanged) => moved = Some(now + MOVE_DEBOUNCE),
             Ok(Job::Marquee(down, up)) => offer_new_vial(&app, down, up),
+            Ok(Job::IconsChanged) => apply_icons_visibility(&app),
             Ok(Job::ButtonDown(at)) => {
                 let outside = app.try_state::<ModuleState>().is_some_and(|state| {
                     lock(&state.menu_rect).is_some_and(|r| at.0 < r.left || at.0 >= r.right || at.1 < r.top || at.1 >= r.bottom)
@@ -402,7 +420,7 @@ fn reconcile<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>, jobs
     }
     if !to_hide.is_empty() {
         match layer.hide(&to_hide) {
-            Ok(report) => missing |= !report.missing.is_empty(),
+            Ok(report) => missing |= !report.missing.is_empty() || !report.failed.is_empty(),
             Err(DesktopError::AutoArrange) => problem = Some(DesktopError::AutoArrange.to_string()),
             Err(e) => problem = Some(e.to_string()),
         }
@@ -513,19 +531,47 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                         let _ = jobs.send(Job::WindowChanged);
                     }
                 });
-                let _ = window.show();
-                // Keep it out of Alt+Tab too (skip_taskbar alone does not). After show(): Tauri
-                // rewrites the extended style while showing.
                 if cfg.theme == VialTheme::Glass {
                     apply_glass(&window, cfg.glass_blur, cfg.glass_tint);
                 }
-                if let Ok(hwnd) = window.hwnd() {
-                    if let Err(e) = platform::mark_as_tool_window(hwnd.0 as isize) {
-                        tracing::warn!("could not make the vial window a tool window: {e}");
-                    }
+                // With "Show desktop icons" off the vial stays hidden until the icons come back.
+                let icons_on = app.try_state::<ModuleState>().map(|s| s.icons_visible.load(Ordering::Relaxed));
+                if icons_on.unwrap_or(true) {
+                    show_vial_window(&window);
                 }
             }
             Err(e) => tracing::warn!("could not create the window for vial '{}': {e}", vial.name),
+        }
+    }
+}
+
+/// Shows a vial window without taking focus and keeps it out of Alt+Tab (skip_taskbar alone does
+/// not). After show(): Tauri rewrites the extended style while showing.
+fn show_vial_window<R: Runtime>(window: &tauri::WebviewWindow<R>) {
+    let _ = window.show();
+    if let Ok(hwnd) = window.hwnd() {
+        if let Err(e) = platform::mark_as_tool_window(hwnd.0 as isize) {
+            tracing::warn!("could not make the vial window a tool window: {e}");
+        }
+    }
+}
+
+/// The desktop's "Show desktop icons" was switched: the vials follow, since they are desktop icons
+/// grouped in a box.
+fn apply_icons_visibility<R: Runtime>(app: &AppHandle<R>) {
+    let Some(state) = app.try_state::<ModuleState>() else { return };
+    let visible = desqu_desktop::icons_visible().unwrap_or(true);
+    if state.icons_visible.swap(visible, Ordering::Relaxed) == visible {
+        return;
+    }
+    for (label, window) in app.webview_windows() {
+        if !label.starts_with(LABEL_PREFIX) {
+            continue;
+        }
+        if visible {
+            show_vial_window(&window);
+        } else {
+            let _ = window.hide();
         }
     }
 }
