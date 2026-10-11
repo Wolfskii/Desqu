@@ -7,6 +7,8 @@ choose which ones start with Windows, and keep everything in one tray icon.
 
 - **One window, many apps.** The Home page has a card per utility with an on/off switch, a
   *Start with system* switch and an *Open* button. A master switch starts all of them with Windows.
+- **Start with system needs the app to be on.** The switch is disabled while an app is off, and
+  turning an app off clears it.
 - **Truly off means off.** Turning an app off stops it completely: no background threads, no hooks,
   and anything it changed (for example constrained windows) is put back.
 - **Shares settings with the standalone apps.** If you also have an app installed on its own

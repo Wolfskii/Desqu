@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import ItemsPanel from "./components/ItemsPanel.svelte";
   import RulesPanel from "./components/RulesPanel.svelte";
   import SettingsPanel from "./components/SettingsPanel.svelte";
   import VialsPanel from "./components/VialsPanel.svelte";
@@ -9,7 +8,7 @@
   // Desqu shows its own start-up and update settings, so it hides these.
   let { showShellSettings = true }: { showShellSettings?: boolean } = $props();
 
-  type Tab = "vials" | "items" | "rules" | "settings";
+  type Tab = "vials" | "rules" | "settings";
   let tab = $state<Tab>("vials");
 
   onMount(() => void vials.init());
@@ -37,7 +36,7 @@
     <header>
       <div class="brand">Vials</div>
       <nav>
-        {#each [["vials", "Vials"], ["items", "Items"], ["rules", "Rules"], ["settings", "Settings"]] as [id, label] (id)}
+        {#each [["vials", "Vials"], ["rules", "Rules"], ["settings", "Settings"]] as [id, label] (id)}
           <button class:active={tab === id} onclick={() => (tab = id as Tab)}>{label}</button>
         {/each}
       </nav>
@@ -59,8 +58,6 @@
         <p class="dim">Loading…</p>
       {:else if tab === "vials"}
         <VialsPanel />
-      {:else if tab === "items"}
-        <ItemsPanel />
       {:else if tab === "rules"}
         <RulesPanel />
       {:else}

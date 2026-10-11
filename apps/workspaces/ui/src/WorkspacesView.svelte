@@ -1,14 +1,13 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import DesktopCard from "./components/DesktopCard.svelte";
-  import ItemsPanel from "./components/ItemsPanel.svelte";
   import SettingsPanel from "./components/SettingsPanel.svelte";
   import { workspaces } from "./state.svelte";
 
   // Desqu shows its own start-up and update settings, so it hides these.
   let { showShellSettings = true }: { showShellSettings?: boolean } = $props();
 
-  type Tab = "desktops" | "items" | "settings";
+  type Tab = "desktops" | "settings";
   let tab = $state<Tab>("desktops");
 
   onMount(() => void workspaces.init());
@@ -36,7 +35,7 @@
     <header>
       <div class="brand">Workspaces</div>
       <nav>
-        {#each [["desktops", "Desktops"], ["items", "Items"], ["settings", "Settings"]] as [id, label] (id)}
+        {#each [["desktops", "Desktops"], ["settings", "Settings"]] as [id, label] (id)}
           <button class:active={tab === id} onclick={() => (tab = id as Tab)}>{label}</button>
         {/each}
       </nav>
@@ -63,7 +62,8 @@
             <p class="dim">
               You have {workspaces.items.filter((i) => !i.owner).length} shortcuts, files and folders on your desktop.
               Put all of them on one virtual desktop to start with; they will then show only there. After that, new
-              files you add belong to the desktop you are on, and you can move any item on the Items tab.
+              files you add belong to the desktop you are on. To move icons to another desktop, select them on the
+              desktop and press Ctrl+X, switch to the other desktop and press Ctrl+V there.
             </p>
             <div class="choices">
               {#each workspaces.desktops.filter((d) => !d.removed) as d (d.id)}
@@ -88,8 +88,6 @@
             </section>
           {/each}
         </div>
-      {:else if tab === "items"}
-        <ItemsPanel />
       {:else}
         <SettingsPanel {showShellSettings} />
       {/if}

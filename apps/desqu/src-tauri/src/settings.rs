@@ -40,13 +40,41 @@ impl ModulesFile {
 }
 
 pub fn load(path: &Path) -> ModulesFile {
-    match std::fs::read_to_string(path) {
+    let mut file = match std::fs::read_to_string(path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
             tracing::warn!("ignoring unreadable {}: {e}", path.display());
             ModulesFile::default()
         }),
         Err(_) => ModulesFile::default(),
+    };
+    normalize(&mut file);
+    file
+}
+
+/// "Start with system" only makes sense for an app that is turned on: clear it everywhere else.
+pub fn normalize(file: &mut ModulesFile) {
+    for settings in file.modules.values_mut() {
+        settings.start_with_system &= settings.enabled;
     }
+}
+
+/// Turns a module on or off. Turning it off also clears its "start with system".
+pub fn set_enabled(file: &mut ModulesFile, id: &str, enabled: bool) {
+    let mut settings = file.get(id);
+    settings.enabled = enabled;
+    settings.start_with_system &= enabled;
+    file.set(id, settings);
+}
+
+/// Sets "start with system" for one module. Refused (false) when asking for it on a module that is off.
+pub fn set_start_with_system(file: &mut ModulesFile, id: &str, value: bool) -> bool {
+    let mut settings = file.get(id);
+    if value && !settings.enabled {
+        return false;
+    }
+    settings.start_with_system = value;
+    file.set(id, settings);
+    true
 }
 
 pub fn save(path: &Path, file: &ModulesFile) -> Result<(), JsonError> {
@@ -70,11 +98,11 @@ pub fn modules_to_start(file: &ModulesFile, autostart_launch: bool) -> Vec<Strin
         .collect()
 }
 
-/// Sets "start with system" for every listed module (ids that were never configured get an entry).
+/// Sets "start with system" for every listed module that is on; turning it off applies to all.
 pub fn set_all_start_with_system(file: &mut ModulesFile, ids: &[&str], value: bool) {
     for id in ids {
         let mut settings = file.get(id);
-        settings.start_with_system = value;
+        settings.start_with_system = value && settings.enabled;
         file.set(id, settings);
     }
 }
@@ -128,12 +156,31 @@ mod tests {
     }
 
     #[test]
-    fn set_all_start_with_system_touches_only_the_listed_modules() {
+    fn set_all_start_with_system_touches_only_the_listed_modules_that_are_on() {
         let mut f = file(&[("a", true, false), ("x", true, false)]);
         set_all_start_with_system(&mut f, &["a", "b"], true);
         assert!(f.get("a").start_with_system && f.get("a").enabled);
-        assert!(f.get("b").start_with_system && !f.get("b").enabled);
+        assert!(!f.get("b").start_with_system, "an app that is off never starts with the system");
         assert!(!f.get("x").start_with_system);
+    }
+
+    #[test]
+    fn start_with_system_is_refused_for_an_app_that_is_off_and_cleared_when_it_is_turned_off() {
+        let mut f = file(&[("a", false, false), ("b", true, true)]);
+        assert!(!set_start_with_system(&mut f, "a", true));
+        assert!(!f.get("a").start_with_system);
+        assert!(set_start_with_system(&mut f, "b", false));
+        set_enabled(&mut f, "b", true);
+        assert!(set_start_with_system(&mut f, "b", true));
+        set_enabled(&mut f, "b", false);
+        assert!(!f.get("b").start_with_system && !f.get("b").enabled);
+    }
+
+    #[test]
+    fn old_files_with_start_with_system_on_an_app_that_is_off_are_normalized() {
+        let mut f = file(&[("a", false, true), ("b", true, true)]);
+        normalize(&mut f);
+        assert!(!f.get("a").start_with_system && f.get("b").start_with_system);
     }
 
     #[test]

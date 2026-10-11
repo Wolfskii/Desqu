@@ -34,12 +34,12 @@
   <footer>
     <span class="start">
       <Switch
-        checked={module.startWithSystem}
+        checked={module.enabled && module.startWithSystem}
         label="Start {module.name} with system"
-        disabled={!usable}
+        disabled={!usable || !module.enabled}
         onchange={(next) => desqu.setStartWithSystem(module.id, next)}
       />
-      <span class="dim">Start with system</span>
+      <span class="dim" title={module.enabled ? "" : "Turn the app on first"}>Start with system</span>
     </span>
     <a class="open" class:disabled={!module.supported} href="/{module.id}" aria-disabled={!module.supported}>Open</a>
   </footer>

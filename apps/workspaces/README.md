@@ -5,8 +5,12 @@ virtual desktop and they show up only there; on your other desktops they are hid
 
 ## What it does
 
-- **Icons per desktop.** On the Items tab pick a virtual desktop for any desktop item. It is shown
-  on that desktop and hidden on the others. Items you leave on "Every desktop" show everywhere.
+- **Icons per desktop.** An icon tied to a virtual desktop is shown on that desktop and hidden on the
+  others. Icons nobody owns show everywhere. The Desktops tab shows how many items each desktop has.
+- **Move icons with Ctrl+X and Ctrl+V.** Select icons on the desktop, press Ctrl+X, switch to another
+  virtual desktop and press Ctrl+V on its desktop: the icons now belong to that desktop. (Explorer
+  itself does nothing for a cut-and-paste into the folder the files are already in.) "Show on every
+  desktop" on a card releases its items.
 - **First run asks once.** The first time Workspaces opens it asks which virtual desktop all the
   items already on your desktop belong to (or to leave them on every desktop). Nothing to set up
   item by item.

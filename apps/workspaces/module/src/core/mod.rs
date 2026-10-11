@@ -2,4 +2,5 @@
 
 pub mod b64;
 pub mod model;
+pub mod paste;
 pub mod visibility;

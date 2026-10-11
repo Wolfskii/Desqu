@@ -14,6 +14,16 @@ impl ForegroundWatcher {
     }
 }
 
+pub(super) type PasteHandler = Box<dyn Fn(Vec<String>) + Send>;
+
+pub(super) struct PasteWatcher;
+
+impl PasteWatcher {
+    pub(super) fn start(_on_paste: PasteHandler) -> Result<Self, String> {
+        Err(MSG.into())
+    }
+}
+
 pub(super) fn desktops() -> Result<Desktops, String> {
     Err(MSG.into())
 }

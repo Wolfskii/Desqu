@@ -18,8 +18,9 @@ use desqu_shell::mutex::{self, ModuleLock};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::core::model::WorkspacesConfig;
+use crate::core::paste;
 use crate::core::visibility;
-use crate::platform::{self, SwitchWatcher};
+use crate::platform::{self, CutPasteWatcher, SwitchWatcher};
 
 /// Id of the cross-process module lock.
 pub const MODULE_ID: &str = "workspaces";
@@ -36,6 +37,8 @@ pub(crate) enum Job {
     Switched,
     /// The desktop folders changed: reconcile now and again after the view has caught up.
     DesktopChanged,
+    /// Ctrl+V on the desktop with files cut: they now belong to the desktop you are on.
+    Pasted(Vec<String>),
     Stop,
 }
 
@@ -43,6 +46,7 @@ struct Running {
     layer: Arc<dyn DesktopLayer>,
     jobs: Sender<Job>,
     _subscription: Subscription,
+    _paste: Option<CutPasteWatcher>,
     worker: Option<JoinHandle<()>>,
     _lock: ModuleLock,
 }
@@ -192,6 +196,16 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         }))
         .map_err(|e| e.to_string())?;
 
+    // Not fatal: without the hook everything works except moving icons with Ctrl+X / Ctrl+V.
+    let paste = {
+        let sink = jobs.clone();
+        platform::watch_cut_paste(Box::new(move |paths| {
+            let _ = sink.send(Job::Pasted(paths));
+        }))
+        .map_err(|e| tracing::warn!("could not watch Ctrl+V on the desktop: {e}"))
+        .ok()
+    };
+
     let worker = {
         let app = app.clone();
         let layer = layer.clone();
@@ -207,6 +221,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         layer,
         jobs,
         _subscription: subscription,
+        _paste: paste,
         worker: Some(worker),
         _lock: module_lock,
     });
@@ -266,6 +281,7 @@ fn worker<R: Runtime>(
         match received {
             Ok(Job::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Ok(Job::Reconcile) | Ok(Job::Switched) => {}
+            Ok(Job::Pasted(paths)) => adopt_pasted(&app, &layer, &paths),
             Ok(Job::DesktopChanged) => {
                 retries = 0;
                 later = Some(now + LAG_RECHECK);
@@ -401,4 +417,45 @@ fn reconcile<R: Runtime>(
     *lock(&state.problem) = problem;
     let _ = app.emit(EVENT_CHANGED, ());
     lagging
+}
+
+/// Files were cut on the desktop and Ctrl+V was pressed on a desktop: they are now tied to the virtual
+/// desktop you are on (and hidden on the others). Explorer itself does nothing for a cut-and-paste
+/// into the folder the files are already in.
+fn adopt_pasted<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>, paths: &[String]) {
+    let Some(state) = app.try_state::<ModuleState>() else { return };
+    let desktops = platform::desktops().unwrap_or_default();
+    let Some(current) = desktops.current.clone() else {
+        tracing::info!("Ctrl+V on the desktop ignored: the current virtual desktop is unknown");
+        return;
+    };
+    let ids: Vec<String> = match layer.items() {
+        Ok(items) => items.into_iter().map(|i| i.id).collect(),
+        Err(e) => {
+            tracing::warn!("could not read the desktop for Ctrl+V: {e}");
+            return;
+        }
+    };
+    let picked = paste::desktop_items_in(paths, &ids);
+    if picked.is_empty() {
+        return;
+    }
+    let index = desktops.list.iter().position(|d| d.id == current).unwrap_or(0);
+    let name = match desktops.list.get(index).map(|d| d.name.as_str()) {
+        Some(n) if !n.is_empty() => n.to_string(),
+        _ => format!("Desktop {}", index + 1),
+    };
+    let mut cfg = state.config();
+    let mut changed = 0;
+    for id in &picked {
+        if cfg.assign(id, Some((&current, &name))) {
+            changed += 1;
+        }
+    }
+    tracing::info!("Ctrl+V on the desktop: {} of {} cut items now belong to '{name}'", changed, picked.len());
+    if changed > 0 {
+        if let Err(e) = state.set_config(cfg) {
+            tracing::warn!("could not save the moved items: {e}");
+        }
+    }
 }

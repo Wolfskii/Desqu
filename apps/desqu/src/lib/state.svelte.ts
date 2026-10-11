@@ -12,9 +12,12 @@ class DesquApp {
 
     supported = $derived(this.modules.filter((m) => m.supported));
 
-    /** State of the "start all apps with system" master switch. */
+    /** Apps that are on: only they can start with the system. */
+    enabledSupported = $derived(this.modules.filter((m) => m.supported && m.enabled));
+
+    /** State of the "start all apps with system" master switch (over the apps that are on). */
     allStart = $derived.by<TriState>(() => {
-        const list = this.supported;
+        const list = this.enabledSupported;
         const on = list.filter((m) => m.startWithSystem).length;
         if (list.length === 0 || on === 0) return "off";
         return on === list.length ? "on" : "mixed";

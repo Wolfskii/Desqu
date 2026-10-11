@@ -14,7 +14,7 @@
       <TriStateSwitch
         state={desqu.allStart}
         label="Start all apps with system"
-        disabled={desqu.supported.length === 0}
+        disabled={desqu.enabledSupported.length === 0}
         onchange={(next) => desqu.setAllStartWithSystem(next)}
       />
       <span class="dim">Start all apps with system</span>

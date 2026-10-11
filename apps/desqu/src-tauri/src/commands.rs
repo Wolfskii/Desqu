@@ -109,12 +109,7 @@ pub fn apply_enabled(
             entry.descriptor.name
         ));
     }
-    {
-        let mut file = state.file();
-        let mut saved = file.get(id);
-        saved.enabled = enabled;
-        file.set(id, saved);
-    }
+    settings::set_enabled(&mut state.file(), id, enabled);
     state.save();
 
     let result = if enabled {
@@ -126,11 +121,7 @@ pub fn apply_enabled(
                 Ok(())
             }
             Err(msg) => {
-                let mut file = state.file();
-                let mut saved = file.get(id);
-                saved.enabled = false;
-                file.set(id, saved);
-                drop(file);
+                settings::set_enabled(&mut state.file(), id, false);
                 state.save();
                 Err(msg)
             }
@@ -192,11 +183,8 @@ pub async fn set_module_start_with_system(
     value: bool,
 ) -> CmdResult<ModuleEntry> {
     let entry = registry::find(&id).ok_or("unknown module")?;
-    {
-        let mut file = state.file();
-        let mut saved = file.get(&id);
-        saved.start_with_system = value;
-        file.set(&id, saved);
+    if !settings::set_start_with_system(&mut state.file(), &id, value) {
+        return Err(format!("Turn {} on first", entry.descriptor.name));
     }
     state.save();
     sync_autostart(&app, &state);

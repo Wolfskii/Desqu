@@ -8,6 +8,12 @@
 <div class="settings">
   <section class="card">
     <SettingsRow
+      label="Move icons with Ctrl+X and Ctrl+V"
+      description="Select icons on the desktop and press Ctrl+X, switch to another virtual desktop and press Ctrl+V on its desktop: the icons then belong to that desktop and are hidden on the others. Always on."
+    >
+      <span class="dim">On</span>
+    </SettingsRow>
+    <SettingsRow
       label="New files join the desktop I am on"
       description="A file that appears on your desktop while Workspaces is running is tied to the virtual desktop you are on, so it does not show up on the others. Files that were already there stay on every desktop until you choose."
     >

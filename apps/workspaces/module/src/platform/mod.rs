@@ -35,6 +35,16 @@ pub struct SwitchWatcher {
     _foreground: Option<imp::ForegroundWatcher>,
 }
 
+/// Keeps the Ctrl+V hook alive; dropping it removes the hook.
+pub struct CutPasteWatcher {
+    _inner: imp::PasteWatcher,
+}
+
+/// Calls `on_paste` with the paths that were cut when Ctrl+V is pressed on the desktop.
+pub fn watch_cut_paste(on_paste: Box<dyn Fn(Vec<String>) + Send + 'static>) -> Result<CutPasteWatcher, String> {
+    imp::PasteWatcher::start(on_paste).map(|w| CutPasteWatcher { _inner: w })
+}
+
 pub fn desktops() -> Result<Desktops, String> {
     imp::desktops()
 }

@@ -30,6 +30,11 @@ and they come back exactly where they were.
 
 Windows 10/11 with WebView2. Windows only for now.
 
+## The Vials window
+
+It only lists your vials (name and delete), the sort rules and the settings. There is no list of
+all desktop items: icons go into a vial by dragging them there.
+
 ## Looks
 
 Settings has a *Look of vials* choice: **Glass** (default; blurred desktop behind the vial, rounded
