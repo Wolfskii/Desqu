@@ -42,8 +42,10 @@ pub struct MonitorInfo {
 #[serde(rename_all = "camelCase")]
 pub struct DesktopStatus {
     pub running: bool,
-    /// `false` when auto-arrange is on, so items cannot be hidden.
+    /// `false` when auto-arrange is on, so items cannot be hidden by parking them.
     pub can_hide: Option<bool>,
+    /// Vials has switched the desktop's own icons off and draws the desktop itself.
+    pub surface: bool,
     pub problem: Option<String>,
     pub hidden_count: usize,
 }
@@ -63,9 +65,10 @@ fn collect_items(state: &ModuleState) -> CmdResult<Vec<ItemInfo>> {
     let layer = state.layer()?;
     let cfg = state.config();
     let mut seen = HashSet::new();
-    let mut out: Vec<ItemInfo> = layer
-        .items()
-        .map_err(|e| e.to_string())?
+    let mut on_desktop = layer.items().map_err(|e| e.to_string())?;
+    // Columns of icons, top to bottom, left to right: the order the desktop itself shows them in.
+    on_desktop.sort_by_key(|i| (i.position.x, i.position.y));
+    let mut out: Vec<ItemInfo> = on_desktop
         .into_iter()
         .map(|item| {
             seen.insert(item.id.clone());
@@ -125,10 +128,10 @@ pub async fn assign_item(state: State<'_, ModuleState>, item_id: String, vial_id
 /// cannot be used to launch arbitrary paths.
 #[tauri::command]
 pub async fn open_item(state: State<'_, ModuleState>, id: String) -> CmdResult<()> {
-    let known = state.config().assigned_ids().contains(&id)
-        || state.layer()?.items().map_err(|e| e.to_string())?.iter().any(|i| i.id == id);
-    if !known {
-        return Err(format!("{id} is not an item on the desktop"));
+    engine::ensure_known_item(&state, &id)?;
+    // A system item (This PC, Recycle Bin) has no file: its `::{CLSID}` name needs the `shell:` scheme.
+    if id.starts_with("::") {
+        return desqu_shell::platform::open_url(&format!("shell:{id}"));
     }
     desqu_shell::platform::open_url(&id)
 }
@@ -190,6 +193,12 @@ pub async fn drag_item_out<R: Runtime>(app: AppHandle<R>, item_id: String) -> Cm
     engine::drag_item_out(&app, &item_id).await
 }
 
+/// Right click on an item in a vial: Explorer's own context menu for that file, folder or shortcut.
+#[tauri::command]
+pub async fn show_item_menu<R: Runtime>(app: AppHandle<R>, item_id: String) -> CmdResult<()> {
+    engine::show_item_menu(&app, &item_id).await
+}
+
 #[tauri::command]
 pub async fn get_monitors<R: Runtime>(app: AppHandle<R>) -> CmdResult<Vec<MonitorInfo>> {
     Ok(engine::monitors(&app)
@@ -211,6 +220,7 @@ pub async fn desktop_status(state: State<'_, ModuleState>) -> CmdResult<DesktopS
     Ok(DesktopStatus {
         running: layer.is_some(),
         can_hide: layer.as_ref().and_then(|l| l.can_hide().ok()),
+        surface: layer.as_ref().is_some_and(|l| l.surface_active()),
         problem: state.problem(),
         hidden_count: layer.as_ref().and_then(|l| l.hidden().ok()).map_or(0, |h| h.len()),
     })

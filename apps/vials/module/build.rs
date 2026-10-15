@@ -12,6 +12,7 @@ const COMMANDS: &[&str] = &[
     "end_rename",
     "drop_items",
     "drag_item_out",
+    "show_item_menu",
     "get_monitors",
     "desktop_status",
     "module_start",

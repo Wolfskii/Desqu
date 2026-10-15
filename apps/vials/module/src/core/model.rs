@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 
 pub const CONFIG_VERSION: u32 = 1;
 
+/// Id of the built-in "Desktop" vial that shows every loose item while Vials draws the desktop.
+pub const INBOX_ID: &str = "desktop";
+
 /// A rectangle as fractions (0..1) of a monitor, so a vial keeps its place across resolutions.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct NormalizedRect {
@@ -66,6 +69,10 @@ pub struct Vial {
     pub items: Vec<String>,
     #[serde(default)]
     pub collapsed: bool,
+    /// The built-in "Desktop" vial: it lists whatever sits in no other vial, so `items` stays empty.
+    /// It exists while Vials draws the desktop (`draw_desktop`) and cannot be deleted.
+    #[serde(default)]
+    pub inbox: bool,
 }
 
 /// A predicate over a desktop item.
@@ -139,9 +146,16 @@ pub struct VialsConfig {
     /// New desktop items are put into a vial by the first matching rule.
     #[serde(default = "yes")]
     pub auto_sort: bool,
-    /// Items in a vial are hidden on the desktop (parked off-screen, always restored).
+    /// Items in a vial are hidden on the desktop (marked hidden, always restored). Only used when
+    /// `draw_desktop` is off: with it on, a vial's items show in the vial only.
     #[serde(default = "yes")]
     pub hide_on_desktop: bool,
+    /// Vials draws the whole desktop instead of sharing it with Explorer: Windows' own desktop icons
+    /// are switched off (and back on when Vials stops) and every item that is in no vial shows in
+    /// the built-in "Desktop" vial. Off by default: the desktop stays Explorer's, with all of its
+    /// own behaviour, and only the items in vials are hidden from it.
+    #[serde(default)]
+    pub draw_desktop: bool,
     /// Dragging a box on the empty desktop offers to create a vial there.
     #[serde(default = "yes")]
     pub create_on_drag: bool,
@@ -168,6 +182,7 @@ impl Default for VialsConfig {
             rules: Vec::new(),
             auto_sort: true,
             hide_on_desktop: true,
+            draw_desktop: false,
             create_on_drag: true,
             context_menu: true,
             theme: VialTheme::default(),
@@ -198,6 +213,33 @@ impl VialsConfig {
         self.vials.iter().find(|v| v.items.iter().any(|i| i == item_id))
     }
 
+    /// The built-in "Desktop" vial, if there is one.
+    pub fn inbox(&self) -> Option<&Vial> {
+        self.vials.iter().find(|v| v.inbox)
+    }
+
+    /// Makes sure the "Desktop" vial exists while Vials draws the desktop. Returns whether it was
+    /// added.
+    pub fn ensure_inbox(&mut self) -> bool {
+        if !self.draw_desktop || self.inbox().is_some() {
+            return false;
+        }
+        let id = if self.vial(INBOX_ID).is_none() { INBOX_ID.to_string() } else { format!("{INBOX_ID}-1") };
+        self.vials.insert(
+            0,
+            Vial {
+                id,
+                name: "Desktop".into(),
+                monitor: None,
+                rect: NormalizedRect { x: 0.01, y: 0.03, width: 0.38, height: 0.8 },
+                items: Vec::new(),
+                collapsed: false,
+                inbox: true,
+            },
+        );
+        true
+    }
+
     /// Every item id held by any vial.
     pub fn assigned_ids(&self) -> Vec<String> {
         self.vials.iter().flat_map(|v| v.items.iter().cloned()).collect()
@@ -207,6 +249,8 @@ impl VialsConfig {
     /// changed. Taking an item out records it as declined so rules do not re-add it; putting it
     /// into a vial clears that.
     pub fn assign(&mut self, item_id: &str, vial_id: Option<&str>) -> bool {
+        // The "Desktop" vial holds whatever is in no other vial: putting an item there takes it out.
+        let vial_id = vial_id.filter(|target| !self.vial(target).is_some_and(|v| v.inbox));
         if let Some(target) = vial_id {
             if self.vial(target).is_none() {
                 return false;
@@ -254,6 +298,10 @@ impl VialsConfig {
             if !vial_ids.insert(vial.id.clone()) {
                 return Err(ConfigError::Invalid(format!("duplicate vial id '{}'", vial.id)));
             }
+            // It lists loose items by itself: nothing may be assigned to it.
+            if vial.inbox {
+                vial.items.clear();
+            }
             vial.name = vial.name.trim().to_string();
             if vial.name.is_empty() {
                 vial.name = "Vial".into();
@@ -274,6 +322,10 @@ impl VialsConfig {
                 )));
             }
         }
+        // One "Desktop" vial at most, and only while Vials draws the desktop.
+        let mut seen_inbox = false;
+        let draw = self.draw_desktop;
+        self.vials.retain(|v| !v.inbox || (draw && !std::mem::replace(&mut seen_inbox, true)));
         self.glass_tint = self.glass_tint.min(100);
         self.version = CONFIG_VERSION;
         Ok(self)
@@ -329,6 +381,7 @@ mod tests {
             rect: NormalizedRect { x: 0.0, y: 0.0, width: 0.2, height: 0.3 },
             items: items.iter().map(|s| s.to_string()).collect(),
             collapsed: false,
+            inbox: false,
         }
     }
 
@@ -421,6 +474,73 @@ mod tests {
         let cfg: VialsConfig = serde_json::from_str(r#"{"glassBlur":"clear","glassTint":250}"#).unwrap();
         assert_eq!(cfg.glass_blur, GlassBlur::Clear);
         assert_eq!(cfg.validated().unwrap().glass_tint, 100);
+    }
+
+    #[test]
+    fn the_desktop_vial_is_added_once_while_drawing_the_desktop_and_never_holds_items() {
+        let mut cfg = VialsConfig::default();
+        assert!(!cfg.draw_desktop, "the desktop stays Explorer's by default");
+        assert!(!cfg.ensure_inbox(), "no Desktop vial then");
+        cfg.draw_desktop = true;
+        assert!(cfg.ensure_inbox());
+        assert!(!cfg.ensure_inbox(), "only one");
+        let inbox = cfg.inbox().unwrap().clone();
+        assert_eq!((inbox.name.as_str(), inbox.id.as_str()), ("Desktop", INBOX_ID));
+
+        // Putting an item "into" the Desktop vial takes it out of the real vials.
+        let mut cfg = config(vec![vial("a", &["x"])]);
+        cfg.draw_desktop = true;
+        cfg.ensure_inbox();
+        let inbox_id = cfg.inbox().unwrap().id.clone();
+        assert!(cfg.assign("x", Some(&inbox_id)));
+        assert!(cfg.vial_of("x").is_none());
+        assert!(cfg.inbox().unwrap().items.is_empty());
+        assert_eq!(cfg.declined, ["x"]);
+    }
+
+    #[test]
+    fn a_config_with_two_desktop_vials_keeps_the_first_and_empties_it() {
+        let mut a = vial("desktop", &["x"]);
+        a.inbox = true;
+        let mut b = vial("desktop-2", &[]);
+        b.inbox = true;
+        let mut cfg = config(vec![a, b]);
+        cfg.draw_desktop = true;
+        let cfg = cfg.validated().unwrap();
+        assert_eq!(cfg.vials.len(), 1);
+        assert!(cfg.vials[0].items.is_empty());
+    }
+
+    #[test]
+    fn the_desktop_vial_of_an_earlier_build_goes_away_when_vials_leaves_the_desktop_alone() {
+        let mut a = vial("desktop", &[]);
+        a.inbox = true;
+        let cfg = config(vec![a, vial("keep", &["y"])]).validated().unwrap();
+        assert_eq!(cfg.vials.len(), 1);
+        assert_eq!(cfg.vials[0].id, "keep");
+    }
+
+    #[test]
+    fn rules_never_target_the_desktop_vial() {
+        let mut cfg = config(vec![vial("a", &[])]);
+        cfg.draw_desktop = true;
+        cfg.ensure_inbox();
+        let inbox_id = cfg.inbox().unwrap().id.clone();
+        let item = desqu_desktop::DesktopItem {
+            id: r"C:\d.pdf".into(),
+            name: "a".into(),
+            kind: ItemKind::File,
+            position: desqu_desktop::Point { x: 0, y: 0 },
+            parked: false,
+        };
+        cfg.rules.push(SortRule {
+            id: "r".into(),
+            name: "r".into(),
+            enabled: true,
+            matcher: ItemMatcher::Extension("pdf".into()),
+            target_vial: inbox_id,
+        });
+        assert!(super::super::rules::first_match(&cfg, &item).is_none());
     }
 
     #[test]

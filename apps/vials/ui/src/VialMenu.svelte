@@ -37,7 +37,7 @@
 
 <svelte:window {onkeydown} />
 
-<div class="menu" class:glass role="menu">
+<div class="menu" class:glass role="menu" tabindex="-1" oncontextmenu={(e) => e.preventDefault()}>
   <button bind:this={button} role="menuitem" disabled={busy} onclick={create}>
     <span class="plus" aria-hidden="true">+</span>
     Create vial here

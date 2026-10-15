@@ -17,6 +17,7 @@ Everything the Vials UI needs
 - `allow-end-rename`
 - `allow-drop-items`
 - `allow-drag-item-out`
+- `allow-show-item-menu`
 - `allow-get-monitors`
 - `allow-desktop-status`
 - `allow-module-start`
@@ -496,6 +497,32 @@ Enables the set_config command without any pre-configured scope.
 <td>
 
 Denies the set_config command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-show-item-menu`
+
+</td>
+<td>
+
+Enables the show_item_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-show-item-menu`
+
+</td>
+<td>
+
+Denies the show_item_menu command without any pre-configured scope.
 
 </td>
 </tr>

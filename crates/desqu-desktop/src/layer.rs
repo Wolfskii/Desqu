@@ -13,9 +13,6 @@ pub enum DesktopError {
     /// Explorer's desktop view could not be reached (Explorer starting up or restarting).
     #[error("the desktop view is not available: {0}")]
     ViewUnavailable(String),
-    /// "Auto arrange icons" is on, so the shell ignores icon positions.
-    #[error("turn off \"Auto arrange icons\" on the desktop to hide items")]
-    AutoArrange,
     #[error("{op} failed: {message}")]
     Native { op: &'static str, message: String },
     #[error("desktop item not found: {0}")]
@@ -29,13 +26,14 @@ pub type DesktopResult<T> = Result<T, DesktopError>;
 /// Result of a hide request.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HideReport {
-    /// Items now parked (including ones another owner had already parked).
+    /// Items now hidden (including ones another owner had already hidden).
     pub hidden: Vec<String>,
     /// Items the desktop view does not show (yet): it lags the file system by several seconds, so
     /// callers retry these after the next change notification.
     pub missing: Vec<String>,
-    /// Items Explorer did not leave parked (it refused, timed out or moved them back). They are
-    /// still claimed in the journal, so asking again parks them again.
+    /// Items that cannot be hidden: system items such as the Recycle Bin (no file to mark), or files
+    /// Windows would not let the attribute be set on (the Public Desktop needs administrator rights).
+    /// They stay visible and are not claimed.
     pub failed: Vec<String>,
 }
 
@@ -67,6 +65,9 @@ impl Drop for Subscription {
     }
 }
 
+/// What a claim change tells its listeners: some owner hid or showed items.
+pub type ClaimSink = Box<dyn Fn() + Send + 'static>;
+
 pub trait DesktopLayer: Send + Sync {
     /// Everything the desktop shows right now, including parked items.
     fn items(&self) -> DesktopResult<Vec<DesktopItem>>;
@@ -75,10 +76,12 @@ pub trait DesktopLayer: Send + Sync {
     /// thread and cache.
     fn icon_png(&self, id: &str, size: u32) -> DesktopResult<Vec<u8>>;
 
-    /// `false` when auto-arrange is on and hiding would not work.
+    /// `false` when Windows is set to show hidden files, so hidden items would stay visible.
     fn can_hide(&self) -> DesktopResult<bool>;
 
-    /// Hides items for this owner. An item stays hidden until every owner that hid it shows it.
+    /// Hides items for this owner (they get the hidden attribute, or while a surface is active just
+    /// a claim). An item stays hidden until every owner that hid it shows it. A hidden item is still
+    /// listed by [`DesktopLayer::items`], flagged `parked`.
     fn hide(&self, ids: &[String]) -> DesktopResult<HideReport>;
 
     /// Stops hiding items for this owner.
@@ -97,4 +100,18 @@ pub trait DesktopLayer: Send + Sync {
 
     /// Calls `sink` (on another thread) whenever the desktop folders change.
     fn subscribe(&self, sink: EventSink) -> DesktopResult<Subscription>;
+
+    /// Switches the desktop's own icon layer off (`true`) or back on, for this owner. While it is
+    /// off, the owner draws the desktop's icons itself, and `hide`/`show` no longer move anything:
+    /// they only record which items *no one should draw* (see [`DesktopItem::parked`]). It works
+    /// where Windows refuses to park icons off-screen. Items parked before the switch are put back.
+    /// Turning it off again puts the owners' hidden items back to parking.
+    fn set_surface(&self, on: bool) -> DesktopResult<()>;
+
+    /// Whether the icon layer is switched off by an owner (see [`DesktopLayer::set_surface`]).
+    fn surface_active(&self) -> bool;
+
+    /// Calls `sink` (on another thread) whenever any owner hides or shows items or the surface is
+    /// switched, so a module drawing the desktop can redraw.
+    fn subscribe_claims(&self, sink: ClaimSink) -> DesktopResult<Subscription>;
 }

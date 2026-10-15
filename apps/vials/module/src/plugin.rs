@@ -37,6 +37,7 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             commands::end_rename,
             commands::drop_items,
             commands::drag_item_out,
+            commands::show_item_menu,
             commands::get_monitors,
             commands::desktop_status,
             commands::module_start,

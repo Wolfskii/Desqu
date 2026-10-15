@@ -1,6 +1,12 @@
 //! Runtime of the module: the shared desktop layer, one worker thread that reconciles the desktop
 //! with the config, and one window per vial.
 //!
+//! Two ways to keep a vial's items off the loose desktop. Where Windows lets icons be parked
+//! off-screen they are parked. Where it does not (build 26300 since October 2026), Vials takes over
+//! the desktop: the desktop's own icons are switched off (as "View, Show desktop icons" does) and
+//! the built-in "Desktop" vial draws every item that is in no other vial. That mode is the default
+//! (`draw_desktop`) and also lets Workspaces hide items per virtual desktop.
+//!
 //! Everything is event-driven. The worker sleeps until a desktop change, a window move, a command
 //! or one of two timers fires: a single re-check a few seconds after each desktop change (Explorer's
 //! view lags the file system), and a debounce for window moves.
@@ -58,6 +64,8 @@ pub(crate) enum Job {
     ButtonDown((i32, i32)),
     /// The desktop's icon view was shown or hidden ("Show desktop icons").
     IconsChanged,
+    /// Another owner (Workspaces) hid or showed items: the vials only need to redraw.
+    ClaimsChanged,
     Stop,
 }
 
@@ -65,6 +73,7 @@ struct Running {
     layer: Arc<dyn DesktopLayer>,
     jobs: Sender<Job>,
     _subscription: Subscription,
+    _claims: Subscription,
     _mouse: Option<MouseWatcher>,
     _icons: Option<IconsWatcher>,
     worker: Option<JoinHandle<()>>,
@@ -228,6 +237,15 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         }))
         .map_err(|e| e.to_string())?;
 
+    let claims = {
+        let sink = jobs.clone();
+        layer
+            .subscribe_claims(Box::new(move || {
+                let _ = sink.send(Job::ClaimsChanged);
+            }))
+            .map_err(|e| e.to_string())?
+    };
+
     // Not fatal: without the hook everything works except creating vials by dragging a box.
     let mouse = {
         let sink = jobs.clone();
@@ -242,7 +260,10 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .ok()
     };
 
-    state.icons_visible.store(desqu_desktop::icons_visible().unwrap_or(true), Ordering::Relaxed);
+    // When Vials draws the desktop itself its windows stay up whatever the icons' switch says.
+    state
+        .icons_visible
+        .store(state.config().draw_desktop || desqu_desktop::icons_visible().unwrap_or(true), Ordering::Relaxed);
     let icons = {
         let sink = jobs.clone();
         IconsWatcher::start(Box::new(move || {
@@ -268,6 +289,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         layer,
         jobs,
         _subscription: subscription,
+        _claims: claims,
         _mouse: mouse,
         _icons: icons,
         worker: Some(worker),
@@ -331,7 +353,10 @@ fn worker<R: Runtime>(app: AppHandle<R>, rx: Receiver<Job>, jobs: Sender<Job>, l
             }
             Ok(Job::WindowChanged) => moved = Some(now + MOVE_DEBOUNCE),
             Ok(Job::Marquee(down, up)) => offer_new_vial(&app, down, up),
-            Ok(Job::IconsChanged) => apply_icons_visibility(&app),
+            Ok(Job::IconsChanged) => apply_icons_visibility(&app, &layer),
+            Ok(Job::ClaimsChanged) => {
+                let _ = app.emit(EVENT_CHANGED, ());
+            }
             Ok(Job::ButtonDown(at)) => {
                 let outside = app.try_state::<ModuleState>().is_some_and(|state| {
                     lock(&state.menu_rect).is_some_and(|r| at.0 < r.left || at.0 >= r.right || at.1 < r.top || at.1 >= r.bottom)
@@ -371,6 +396,16 @@ fn reconcile<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>, jobs
     let Some(state) = app.try_state::<ModuleState>() else {
         return Outcome { missing: false };
     };
+    // The Desktop vial exists while Vials draws the desktop, and the desktop's own icons follow.
+    {
+        let mut cfg = lock(&state.config);
+        if cfg.ensure_inbox() {
+            if let Err(e) = cfg.save(&state.config_path) {
+                tracing::warn!("could not save vials config: {e}");
+            }
+        }
+    }
+    let surface_problem = sync_surface(layer, &state.config());
     let items = match layer.items() {
         Ok(items) => items,
         Err(e) => {
@@ -397,10 +432,12 @@ fn reconcile<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>, jobs
 
     // 2. Hide what the vials hold, show what no longer belongs in one.
     let cfg = state.config();
-    let desired: HashSet<String> = if cfg.hide_on_desktop { cfg.assigned_ids().into_iter().collect() } else { HashSet::new() };
+    // Taking over the desktop, nothing is parked: a vial's items simply are not drawn in the Desktop vial.
+    let desired: HashSet<String> =
+        if cfg.hide_on_desktop && !cfg.draw_desktop { cfg.assigned_ids().into_iter().collect() } else { HashSet::new() };
     let on_desktop: HashSet<&str> = items.iter().map(|i| i.id.as_str()).collect();
     let mut missing = false;
-    let mut problem = None;
+    let mut problem = surface_problem;
 
     match layer.hidden() {
         Ok(hidden) => {
@@ -420,8 +457,17 @@ fn reconcile<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>, jobs
     }
     if !to_hide.is_empty() {
         match layer.hide(&to_hide) {
-            Ok(report) => missing |= !report.missing.is_empty() || !report.failed.is_empty(),
-            Err(DesktopError::AutoArrange) => problem = Some(DesktopError::AutoArrange.to_string()),
+            Ok(report) => {
+                missing |= !report.missing.is_empty();
+                if !report.failed.is_empty() {
+                    // System items (Recycle Bin) have no file to mark hidden, and Windows refuses the
+                    // Public Desktop without administrator rights: they stay on the desktop.
+                    problem = Some(format!(
+                        "{} item(s) in a vial cannot be hidden on the desktop (system items such as the Recycle Bin, or files Windows will not let Vials mark hidden), so they stay visible there too",
+                        report.failed.len()
+                    ));
+                }
+            }
             Err(e) => problem = Some(e.to_string()),
         }
     }
@@ -475,7 +521,9 @@ fn close_vial_windows<R: Runtime>(app: &AppHandle<R>, keep: &HashSet<String>) {
 /// Creates, moves and removes vial windows so they match `cfg`.
 fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender<Job>) {
     let monitors = monitor_refs(app);
-    let wanted: HashSet<String> = cfg.vials.iter().map(|v| label_for(&v.id)).collect();
+    // The Desktop vial only exists as a window while Vials draws the desktop.
+    let shown: Vec<&Vial> = cfg.vials.iter().filter(|v| !v.inbox || cfg.draw_desktop).collect();
+    let wanted: HashSet<String> = shown.iter().map(|v| label_for(&v.id)).collect();
     // A new look is applied to the open windows in place. (Rebuilding them under the same label
     // fails: the old window is still being destroyed, so the vials would vanish.)
     let theme_changed = app.try_state::<ModuleState>().is_some_and(|state| {
@@ -487,7 +535,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
     });
     close_vial_windows(app, &wanted);
 
-    for vial in &cfg.vials {
+    for vial in shown {
         let Some(monitor) = layout::pick_monitor(vial.monitor.as_deref(), &monitors) else {
             continue;
         };
@@ -559,11 +607,43 @@ fn show_vial_window<R: Runtime>(window: &tauri::WebviewWindow<R>) {
     }
 }
 
+/// Brings the desktop's own icon layer in line with `draw_desktop`. Returns a problem to show.
+fn sync_surface(layer: &Arc<dyn DesktopLayer>, cfg: &VialsConfig) -> Option<String> {
+    let have = layer.surface_active();
+    let result = if cfg.draw_desktop {
+        // Also re-asserts it when the icons were switched back on behind our back.
+        let icons_back = desqu_desktop::icons_visible().unwrap_or(false);
+        if have && !icons_back {
+            return None;
+        }
+        layer.set_surface(true)
+    } else if have {
+        layer.set_surface(false)
+    } else {
+        return None;
+    };
+    result.err().map(|e| {
+        tracing::warn!("could not switch the desktop's own icons: {e}");
+        format!("Vials could not take over the desktop: {e}")
+    })
+}
+
 /// The desktop's "Show desktop icons" was switched: the vials follow, since they are desktop icons
 /// grouped in a box.
-fn apply_icons_visibility<R: Runtime>(app: &AppHandle<R>) {
+fn apply_icons_visibility<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>) {
     let Some(state) = app.try_state::<ModuleState>() else { return };
-    let visible = desqu_desktop::icons_visible().unwrap_or(true);
+    let mut visible = desqu_desktop::icons_visible().unwrap_or(true);
+    if state.config().draw_desktop {
+        // Vials draws the desktop, so the desktop's own icons stay off (the setting in Vials decides,
+        // not the View menu) and the vials stay up.
+        if visible {
+            if let Err(e) = layer.set_surface(true) {
+                tracing::warn!("could not switch the desktop icons off again: {e}");
+                *lock(&state.problem) = Some(e.to_string());
+            }
+        }
+        visible = true;
+    }
     if state.icons_visible.swap(visible, Ordering::Relaxed) == visible {
         return;
     }
@@ -817,6 +897,7 @@ fn create_vial_in<R: Runtime>(app: &AppHandle<R>, rect: PixelRect) -> Result<Str
         rect: normalized,
         items: Vec::new(),
         collapsed: false,
+        inbox: false,
     });
     state.set_config(cfg)?;
     Ok(id)
@@ -837,9 +918,7 @@ fn apply_context_menu(enabled: bool) {
 /// Runs the native drag on the main (UI) thread, waits for it to end and settles the result.
 pub async fn drag_item_out<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Result<(), String> {
     let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
-    if state.config().vial_of(item_id).is_none() {
-        return Err(format!("{item_id} is not in a vial"));
-    }
+    ensure_known_item(&state, item_id)?;
     let path = item_id.to_string();
     let (tx, rx) = mpsc::channel();
     app.run_on_main_thread(move || {
@@ -862,4 +941,36 @@ pub async fn drag_item_out<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Res
         state.set_config(cfg)?;
     }
     Ok(())
+}
+
+// ------------------------------------------------------------------- the item's right-click menu
+
+/// Shows Explorer's own right-click menu for an item that sits in a vial, at the cursor, and runs
+/// what the user picks. The menu is modal, so it runs on the main (UI) thread like the drag does.
+pub async fn show_item_menu<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Result<(), String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    ensure_known_item(&state, item_id)?;
+    let path = item_id.to_string();
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(platform::show_item_menu(&path));
+    })
+    .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv().map_err(|e| e.to_string())?)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Only things Vials knows about may be dragged, opened or given a menu, so the UI cannot be used
+/// to act on arbitrary paths: items in a vial, or on the desktop.
+pub(crate) fn ensure_known_item(state: &ModuleState, id: &str) -> Result<(), String> {
+    if state.config().vial_of(id).is_some() {
+        return Ok(());
+    }
+    let on_desktop = state.layer()?.items().map_err(|e| e.to_string())?.iter().any(|i| i.id == id);
+    if on_desktop {
+        Ok(())
+    } else {
+        Err(format!("{id} is not an item on the desktop"))
+    }
 }

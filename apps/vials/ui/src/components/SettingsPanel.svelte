@@ -101,30 +101,52 @@
       />
     </SettingsRow>
     <SettingsRow
-      label="Hide items on the desktop"
-      description="Items in a vial are moved out of sight on the desktop (never deleted or changed) and put back when you take them out of the vial, turn Vials off, or quit. If Vials crashes, they are restored the next time it starts."
+      label="Draw the whole desktop in Vials (advanced)"
+      description="Off: the desktop stays Windows' own, with everything it does, and only the items in a vial are hidden from it. On: Windows' desktop icons are switched off (the same as View, Show desktop icons) and Vials draws every icon itself, the rest in a built-in Desktop vial; useful when Windows is set to show hidden files. The desktop's own icons come back when you turn this off, turn Vials off, or quit, and after a crash at the next start."
     >
       <Switch
-        checked={vials.config?.hideOnDesktop ?? true}
-        label="Hide items on the desktop"
+        checked={vials.config?.drawDesktop ?? false}
+        label="Draw the whole desktop in Vials"
         disabled={!vials.config}
         onchange={(next) => {
           if (!vials.config) return;
-          vials.config.hideOnDesktop = next;
+          vials.config.drawDesktop = next;
           vials.scheduleSave(true);
         }}
       />
     </SettingsRow>
+    {#if !vials.config?.drawDesktop}
+      <SettingsRow
+        label="Hide items on the desktop"
+        description="Items in a vial are marked hidden, which is all Vials changes about the file: it is not moved, renamed or deleted. They vanish from the desktop and the mark is removed when you take them out of the vial, turn Vials off, or quit; after a crash it is removed the next time Vials starts. Needs Windows' “Show hidden files” to be off, and cannot hide system items such as the Recycle Bin."
+      >
+        <Switch
+          checked={vials.config?.hideOnDesktop ?? true}
+          label="Hide items on the desktop"
+          disabled={!vials.config}
+          onchange={(next) => {
+            if (!vials.config) return;
+            vials.config.hideOnDesktop = next;
+            vials.scheduleSave(true);
+          }}
+        />
+      </SettingsRow>
+    {/if}
   </section>
 
   <section class="card status">
     <h3>Desktop</h3>
     {#if vials.desktop?.problem}
       <p class="problem">{vials.desktop.problem}</p>
+    {:else if vials.desktop?.surface}
+      <p class="dim">
+        Vials is drawing your desktop: Windows' own icons are switched off, and the Desktop vial shows every item
+        that is in no other vial.
+      </p>
     {:else if vials.desktop?.canHide === false}
       <p class="problem">
-        “Auto arrange icons” is on, so Windows ignores icon positions and items cannot be hidden. Right-click the
-        desktop → View → turn off “Auto arrange icons”.
+        Windows is set to show hidden files, so items in a vial stay visible on the desktop as well. Turn that off in
+        File Explorer (View → Show → Hidden items), or switch on “Draw the whole desktop in Vials”.
       </p>
     {:else}
       <p class="dim">

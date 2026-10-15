@@ -60,6 +60,9 @@ function Peek([string]$id) {
     if ($parts.Count -ne 2) { throw "peek failed: $out" }
     return [pscustomobject]@{ X = [int]$parts[0]; Y = [int]$parts[1] }
 }
+function IsMarkedHidden([string]$path) {
+    return ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::Hidden) -ne 0
+}
 function WaitFor([scriptblock]$cond, [int]$seconds) {
     $end = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $end) { $v = & $cond; if ($v) { return $v }; Start-Sleep -Milliseconds 300 }
@@ -89,15 +92,16 @@ try {
         vials = @(@{ id = 'smoke-vial'; name = 'Smoke vial'; monitor = $null
                      rect = @{ x = 0.45; y = 0.55; width = 0.15; height = 0.2 }
                      items = @($temp); collapsed = $false })
-        rules = @(); autoSort = $false; hideOnDesktop = $true
+        rules = @(); autoSort = $false; hideOnDesktop = $true; drawDesktop = $false
     }
     $config | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
 
     Write-Host 'Starting vials.exe'
     $env:RUST_LOG = 'info'
     $proc = Start-Process -FilePath $Exe -PassThru
-    $parked = WaitFor { $p = Peek $temp; if ($p -and $p.X -le -2000) { $p } } 45
-    Check ($null -ne $parked) 'the item is parked off-screen on the real desktop'
+    $parked = WaitFor { if ($null -eq (Peek $temp)) { 'hidden' } } 45
+    Check ($null -ne $parked) 'the item is hidden (marked hidden) on the real desktop'
+    Check (IsMarkedHidden $temp) 'the file carries the hidden attribute (and nothing else changed about it)'
 
     # The window is created right after the item is parked and styled a moment later: wait for it.
     $vial = WaitFor {
@@ -123,8 +127,9 @@ try {
     Check ($proc.WaitForExit(20000)) 'the running Vials exits'
     if ($proc.HasExited) { Check ($proc.ExitCode -eq 0) 'it exits with code 0' }
 
-    $restored = WaitFor { $p = Peek $temp; if ($p -and $p.X -gt -2000) { $p } } 20
+    $restored = WaitFor { Peek $temp } 20
     Check ($null -ne $restored) 'after exit the item is back on the desktop'
+    Check (-not (IsMarkedHidden $temp)) 'the hidden attribute is gone again'
     if ($restored) { Check (($restored.X -eq $before.X) -and ($restored.Y -eq $before.Y)) ('it returned to its original place ({0}, {1})' -f $restored.X, $restored.Y) }
     Check (-not (Test-Path (Join-Path $configDir 'desktop-journal.json'))) 'the journal is cleared'
 
@@ -134,21 +139,21 @@ try {
     $journal = Join-Path $configDir 'desktop-journal.json'
     $config | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
     $proc = Start-Process -FilePath $Exe -PassThru
-    $parked2 = WaitFor { $p = Peek $temp; if ($p -and $p.X -le -2000) { $p } } 45
-    Check ($null -ne $parked2) 'the item is parked again'
+    $parked2 = WaitFor { if ($null -eq (Peek $temp)) { 'hidden' } } 45
+    Check ($null -ne $parked2) 'the item is hidden again'
     Stop-Process -Id $proc.Id -Force
     $proc.WaitForExit(10000) | Out-Null
     Get-Process -Name vials -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 1
     $still = Peek $temp
-    Check ($null -ne $still -and $still.X -le -2000) 'after the kill the item is still parked (nobody put it back)'
+    Check ($null -eq $still) 'after the kill the item is still hidden (nobody put it back)'
     Check (Test-Path $journal) 'the journal survived the kill'
 
     # Restart with the item no longer in the vial: only crash recovery can bring it back.
     $config.vials[0].items = @()
     $config | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
     $proc = Start-Process -FilePath $Exe -PassThru
-    $back = WaitFor { $p = Peek $temp; if ($p -and $p.X -gt -2000) { $p } } 45
+    $back = WaitFor { Peek $temp } 45
     Check ($null -ne $back) 'the next start restores the item'
     if ($back) { Check (($back.X -eq $before.X) -and ($back.Y -eq $before.Y)) ('...to its original place ({0}, {1})' -f $back.X, $back.Y) }
     Start-Process -FilePath $Exe -ArgumentList '--quit' -WindowStyle Hidden | Out-Null

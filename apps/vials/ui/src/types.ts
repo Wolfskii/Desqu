@@ -19,6 +19,8 @@ export interface Vial {
     /** Desktop item ids (absolute parsing names), in display order. */
     items: string[];
     collapsed?: boolean;
+    /** The built-in "Desktop" vial: it shows every item that is in no other vial. */
+    inbox?: boolean;
 }
 
 export type ItemKind = "shortcut" | "folder" | "app" | "file" | "special";
@@ -48,6 +50,8 @@ export interface VialsConfig {
     rules: SortRule[];
     autoSort: boolean;
     hideOnDesktop: boolean;
+    /** Vials draws the whole desktop: Windows' own icons are switched off, the "Desktop" vial shows the loose items. */
+    drawDesktop: boolean;
     /** Dragging a box on the empty desktop offers to create a vial there. */
     createOnDrag: boolean;
     /** "Create vial here" in the desktop's right-click menu. */
@@ -68,7 +72,7 @@ export interface ItemInfo {
     kind: ItemKind;
     /** The vial holding it, if any. */
     vial: string | null;
-    /** Currently hidden on the desktop. */
+    /** Hidden: parked off-screen, or (when Vials draws the desktop) hidden by Workspaces on this desktop. */
     parked: boolean;
     /** In a vial but no longer on the desktop. */
     missing: boolean;
@@ -87,6 +91,8 @@ export interface DesktopStatus {
     running: boolean;
     /** False when "Auto arrange icons" is on, so items cannot be hidden. */
     canHide: boolean | null;
+    /** Vials has switched Windows' own desktop icons off and draws the desktop itself. */
+    surface: boolean;
     problem: string | null;
     hiddenCount: number;
 }

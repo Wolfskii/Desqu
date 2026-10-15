@@ -4,7 +4,7 @@
 mod windows;
 #[cfg(windows)]
 pub(crate) use self::windows::{
-    drag_item, mark_as_tool_window, round_corners, set_context_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
+    drag_item, mark_as_tool_window, round_corners, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
 };
 
 #[cfg(not(windows))]
@@ -51,6 +51,11 @@ pub(crate) fn drag_item(_path: &str) -> Result<DragEnd, String> {
     Err("Vials is only available on Windows".into())
 }
 
+
+#[cfg(not(windows))]
+pub(crate) fn show_item_menu(_path: &str) -> Result<(), String> {
+    Err("Vials is only available on Windows".into())
+}
 
 #[cfg(not(windows))]
 pub(crate) fn round_corners(_hwnd: isize, _round: bool) {}

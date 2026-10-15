@@ -46,6 +46,7 @@ struct Running {
     layer: Arc<dyn DesktopLayer>,
     jobs: Sender<Job>,
     _subscription: Subscription,
+    _claims: Subscription,
     _paste: Option<CutPasteWatcher>,
     worker: Option<JoinHandle<()>>,
     _lock: ModuleLock,
@@ -196,6 +197,16 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         }))
         .map_err(|e| e.to_string())?;
 
+    // Vials switching the desktop's own icons off (or back on) changes how hiding works: look again.
+    let claims = {
+        let sink = jobs.clone();
+        layer
+            .subscribe_claims(Box::new(move || {
+                let _ = sink.send(Job::Reconcile);
+            }))
+            .map_err(|e| e.to_string())?
+    };
+
     // Not fatal: without the hook everything works except moving icons with Ctrl+X / Ctrl+V.
     let paste = {
         let sink = jobs.clone();
@@ -221,6 +232,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         layer,
         jobs,
         _subscription: subscription,
+        _claims: claims,
         _paste: paste,
         worker: Some(worker),
         _lock: module_lock,
@@ -395,6 +407,14 @@ fn reconcile<R: Runtime>(
             Ok(report) => {
                 lagging = !report.missing.is_empty() || !report.failed.is_empty();
                 failed = report.failed.len();
+                if failed > 0 {
+                    // Retrying changes nothing: system items have no file to mark hidden, and Windows
+                    // refuses the Public Desktop without administrator rights.
+                    problem = Some(format!(
+                        "{failed} item(s) cannot be hidden on other desktops (system items such as the Recycle Bin, or files Windows will not let Workspaces mark hidden)"
+                    ));
+                    lagging = !report.missing.is_empty();
+                }
             }
             Err(e) => {
                 tracing::warn!("could not hide desktop items: {e}");

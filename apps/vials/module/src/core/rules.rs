@@ -57,7 +57,7 @@ impl ItemMatcher {
 pub fn first_match<'a>(cfg: &'a VialsConfig, item: &DesktopItem) -> Option<&'a SortRule> {
     cfg.rules
         .iter()
-        .find(|r| r.enabled && cfg.vial(&r.target_vial).is_some() && r.matcher.matches(item))
+        .find(|r| r.enabled && cfg.vial(&r.target_vial).is_some_and(|v| !v.inbox) && r.matcher.matches(item))
 }
 
 /// `(item id, vial id)` for every desktop item that is in no vial yet and matches a rule.
@@ -99,6 +99,7 @@ mod tests {
             rect: NormalizedRect { x: 0.0, y: 0.0, width: 0.2, height: 0.3 },
             items: items.iter().map(|s| s.to_string()).collect(),
             collapsed: false,
+            inbox: false,
         }
     }
 

@@ -118,8 +118,14 @@ class VialsState {
 
     /** Items of one vial in its own order, including references whose item has gone. */
     itemsOf(vial: Vial): ItemInfo[] {
+        // Vials draws the desktop: `parked` then means another module (Workspaces) hides the item here.
+        const drawDesktop = this.config?.drawDesktop ?? false;
+        if (vial.inbox) {
+            const showAssigned = this.config?.hideOnDesktop === false;
+            return this.items.filter((i) => !i.missing && !i.parked && (!i.vial || showAssigned));
+        }
         const byId = new Map(this.items.map((i) => [i.id, i]));
-        return vial.items.map(
+        const list = vial.items.map(
             (id) =>
                 byId.get(id) ?? {
                     id,
@@ -130,6 +136,7 @@ class VialsState {
                     missing: true,
                 },
         );
+        return drawDesktop ? list.filter((i) => !i.parked) : list;
     }
 
     async assign(itemId: string, vialId: string | null) {
@@ -154,11 +161,12 @@ class VialsState {
         const n = this.config.vials.length;
         const vial: Vial = {
             id: newId("vial"),
-            name: `Vial ${n + 1}`,
+            name: `Vial ${n + 1 - (this.config.vials.some((v) => v.inbox) ? 1 : 0)}`,
             monitor: null,
             rect: { x: Math.min(0.02 + 0.03 * n, 0.7), y: Math.min(0.05 + 0.04 * n, 0.6), width: 0.2, height: 0.35 },
             items: [],
             collapsed: false,
+            inbox: false,
         };
         this.config.vials.push(vial);
         this.scheduleSave(true);
@@ -167,6 +175,8 @@ class VialsState {
 
     removeVial(id: string) {
         if (!this.config) return;
+        // The "Desktop" vial cannot be deleted: it is where loose items show.
+        if (this.config.vials.find((v) => v.id === id)?.inbox) return;
         this.config.vials = this.config.vials.filter((v) => v.id !== id);
         // A rule pointing at a deleted vial would make the whole config invalid.
         this.config.rules = this.config.rules.filter((r) => r.targetVial !== id);
@@ -174,7 +184,7 @@ class VialsState {
     }
 
     addRule(): SortRule | null {
-        const target = this.config?.vials[0]?.id;
+        const target = this.config?.vials.find((v) => !v.inbox)?.id;
         if (!this.config || !target) return null;
         const rule: SortRule = {
             id: newId("rule"),

@@ -12,6 +12,11 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, IServiceProvider, CLSCTX_ALL};
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
+use windows::Win32::Storage::FileSystem::{
+    GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_FLAGS_AND_ATTRIBUTES, INVALID_FILE_ATTRIBUTES,
+};
+use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ATTRIBUTES, SHCNF_FLUSH, SHCNF_PATHW};
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemImageFactory,
     IShellWindows, SHCreateItemFromIDList, SHCreateItemFromParsingName, SHGetKnownFolderPath, ShellWindows,
@@ -19,7 +24,7 @@ use windows::Win32::UI::Shell::{
     SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, SendMessageTimeoutW, SMTO_NORMAL,
+    EnumWindows, FindWindowExW, GetParent, IsWindowVisible, SendMessageTimeoutW, SMTO_ABORTIFHUNG, SMTO_NORMAL,
 };
 
 use crate::layer::{DesktopError, DesktopResult};
@@ -28,7 +33,9 @@ use crate::model::Point;
 /// `LVM_SETITEMPOSITION`: x and y are packed as signed 16-bit values in `lParam`, so the message
 /// carries no pointer and works across processes.
 const LVM_SETITEMPOSITION: u32 = 0x1000 + 15;
-const FWF_AUTOARRANGE: u32 = 0x1;
+const WM_COMMAND: u32 = 0x0111;
+/// The command Explorer's own "View, Show desktop icons" sends to `SHELLDLL_DefView`.
+const CMD_TOGGLE_DESKTOP_ICONS: usize = 0x7402;
 /// `SID_STopLevelBrowser`
 const SID_TOP_LEVEL_BROWSER: GUID = GUID::from_u128(0x4c96be40_915c_11cf_99d3_00aa004ae837);
 
@@ -61,9 +68,60 @@ pub(super) unsafe fn desktop_view() -> DesktopResult<IFolderView2> {
     view.cast::<IFolderView2>().map_err(view_error)
 }
 
-pub(super) unsafe fn auto_arrange(view: &IFolderView2) -> DesktopResult<bool> {
-    let flags = view.GetCurrentFolderFlags().map_err(|e| native("GetCurrentFolderFlags", e))?;
-    Ok(flags & FWF_AUTOARRANGE != 0)
+/// Whether Windows is set to show hidden files and folders (then the hidden attribute hides nothing).
+pub(super) fn show_hidden_files() -> bool {
+    let mut value = 0u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    // SAFETY: plain registry read into a local.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
+            w!("Hidden"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&mut value as *mut u32).cast()),
+            Some(&mut size),
+        )
+    };
+    // 1 = show hidden files, 2 = do not.
+    status.is_ok() && value == 1
+}
+
+/// Whether the file or folder has the hidden attribute; `None` when it does not exist.
+pub(super) fn is_hidden_attribute(path: &str) -> Option<bool> {
+    // SAFETY: plain file system query on a string that outlives the call.
+    let attrs = unsafe { GetFileAttributesW(&windows::core::HSTRING::from(path)) };
+    (attrs != INVALID_FILE_ATTRIBUTES).then_some(attrs & FILE_ATTRIBUTE_HIDDEN.0 != 0)
+}
+
+/// Sets or clears the hidden attribute and tells the shell, so the desktop follows within a
+/// fraction of a second (without the notification it takes several seconds). Other attributes are
+/// kept. The file's contents, name and place are never touched.
+pub(super) fn set_hidden_attribute(path: &str, hidden: bool) -> DesktopResult<()> {
+    let wide = windows::core::HSTRING::from(path);
+    // SAFETY: plain file system calls on a string that outlives them.
+    unsafe {
+        let attrs = GetFileAttributesW(&wide);
+        if attrs == INVALID_FILE_ATTRIBUTES {
+            return Err(DesktopError::NotFound(path.to_string()));
+        }
+        let next = if hidden { attrs | FILE_ATTRIBUTE_HIDDEN.0 } else { attrs & !FILE_ATTRIBUTE_HIDDEN.0 };
+        if next != attrs {
+            SetFileAttributesW(&wide, FILE_FLAGS_AND_ATTRIBUTES(next)).map_err(|e| native("SetFileAttributes", e))?;
+        }
+        SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW | SHCNF_FLUSH, Some(wide.as_ptr().cast()), None);
+    }
+    Ok(())
+}
+
+/// What the desktop labels the file (extensions of known types are hidden). Needs a COM thread.
+pub(super) unsafe fn display_name_of(path: &str) -> String {
+    let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
+    match SHCreateItemFromParsingName::<_, _, IShellItem>(PCWSTR(wide.as_ptr()), None) {
+        Ok(item) => display_name(&item, SIGDN_NORMALDISPLAY),
+        Err(_) => String::new(),
+    }
 }
 
 unsafe fn display_name(item: &IShellItem, kind: SIGDN) -> String {
@@ -124,7 +182,42 @@ pub(super) unsafe fn listview() -> DesktopResult<HWND> {
     found.0.ok_or_else(|| DesktopError::ViewUnavailable("the desktop icon list was not found".into()))
 }
 
-/// Moves one item (by its index in the view). Negative coordinates park it off-screen.
+/// Whether the desktop's icon layer is showing.
+pub(super) unsafe fn icons_visible() -> DesktopResult<bool> {
+    Ok(IsWindowVisible(listview()?).as_bool())
+}
+
+/// Switches the desktop's icon layer off or on, like "View, Show desktop icons" does, and waits
+/// until the list view has followed. Explorer remembers the setting itself. Returns whether the
+/// state changed (`false` when it already was as asked).
+pub(super) unsafe fn set_icons_hidden(hidden: bool) -> DesktopResult<bool> {
+    let lv = listview()?;
+    if IsWindowVisible(lv).as_bool() != hidden {
+        return Ok(false);
+    }
+    let target = GetParent(lv).map_err(|e| native("GetParent", e))?;
+    let mut result = 0usize;
+    let sent = SendMessageTimeoutW(
+        target,
+        WM_COMMAND,
+        WPARAM(CMD_TOGGLE_DESKTOP_ICONS),
+        LPARAM(0),
+        SMTO_ABORTIFHUNG,
+        2000,
+        Some(&mut result),
+    );
+    if sent.0 == 0 {
+        return Err(DesktopError::Native { op: "toggle desktop icons", message: "Explorer did not respond".into() });
+    }
+    for _ in 0..20 {
+        if IsWindowVisible(lv).as_bool() != hidden {
+            return Ok(true);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Err(DesktopError::Native { op: "toggle desktop icons", message: "the desktop icons did not change".into() })
+}
+
 /// A point in screen pixels as the desktop list view's client coordinates (what item positions use).
 pub(super) unsafe fn screen_to_client(lv: HWND, p: Point) -> Point {
     let mut pt = windows::Win32::Foundation::POINT { x: p.x, y: p.y };
@@ -132,6 +225,7 @@ pub(super) unsafe fn screen_to_client(lv: HWND, p: Point) -> Point {
     Point { x: pt.x, y: pt.y }
 }
 
+/// Moves one item (by its index in the view). Negative coordinates park it off-screen.
 pub(super) unsafe fn set_position(lv: HWND, index: i32, p: Point) -> DesktopResult<()> {
     let pack = |v: i32| v.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16 as u16 as u32;
     let lparam = LPARAM(((pack(p.y) << 16) | pack(p.x)) as isize);

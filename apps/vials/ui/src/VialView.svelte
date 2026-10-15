@@ -65,6 +65,15 @@
     press = null;
   }
 
+  // Right click on an icon shows Explorer's own menu for the file; nowhere in a vial may the web
+  // view's browser menu (Back, Refresh, Save as...) appear.
+  function itemMenu(e: MouseEvent, id: string, missing: boolean) {
+    e.preventDefault();
+    if (missing) return;
+    press = null;
+    api.showItemMenu(id).catch((err) => (vials.error = String(err)));
+  }
+
   // Clicking the name edits it right on the desktop.
   let editing = $state(false);
   let draft = $state("");
@@ -107,7 +116,13 @@
   }
 </script>
 
-<div class="vial" class:dropping class:glass={vials.config?.theme !== "classic"}>
+<div
+  class="vial"
+  class:dropping
+  class:glass={vials.config?.theme !== "classic"}
+  role="presentation"
+  oncontextmenu={(e) => e.preventDefault()}
+>
   <header data-tauri-drag-region>
     {#if editing}
       <input
@@ -150,6 +165,7 @@
                 onpointermove={(e) => movePress(e)}
                 onpointerup={endPress}
                 onpointercancel={endPress}
+                oncontextmenu={(e) => itemMenu(e, item.id, item.missing)}
                 aria-label="Open {item.name}"
               >
                 <ItemIcon id={item.id} size={40} dim={item.missing} />

@@ -115,3 +115,64 @@ Vials implements decision D5 ("references + hide on desktop") like this:
 Known limits to put in front of users: if the desktop uses *auto-arrange*, positions cannot be
 controlled and the layer reports that it cannot hide items (not tested here); a desktop with
 thousands of items needs more time to list.
+
+## Update 2026-10-15: parking no longer works, Vials takes over the desktop
+
+**Observation.** On the same machine (Windows 11 26H2, build 10.0.26300.9550) the `LVM_SETITEMPOSITION`
+parking measured above stopped working. Three updates were installed on 2026-10-15 (KB5121794,
+KB5127647, KB5127648); I suspect one of them, but did not confirm that. `spike_desktop_2`, part D, now
+reads: asked (-6000, -6000) -> reads back (14, 2); asked (11120, 8160) and (30000, 30000) -> reads back
+(5030, 1226). The call still returns success, and `IFolderView` writes were already clamped before, so
+there is no way left to place an icon off-screen. The app logs showed it as "N of N desktop items are
+still on screen after 3 passes"; the failed attempts also left the icons pushed into the screen corners.
+`FILE_ATTRIBUTE_HIDDEN` was not used: it edits the user's files.
+
+**What PecoFence does** ([github.com/DayuanJiang/PecoFence](https://github.com/DayuanJiang/PecoFence),
+`crates/platform/src/shell_icons.rs`): it never hides single icons. It switches off the whole icon layer
+with the command Explorer's own "View, Show desktop icons" sends (`WM_COMMAND 0x7402` to
+`SHELLDLL_DefView`; Explorer persists it) and draws every icon itself, with a built-in "Desktop" fence
+for the items that are in no other fence. The desktop icons come back on exit and after a crash.
+
+**Measured here** (`cargo run -p desqu-desktop --example surface_probe`): with the icon layer switched
+off, `IFolderView` still lists every item with its position (4 before, 4 while off), the selection count
+is 0, and switching back restores the list view. The system items (Recycle Bin, This PC) are listed too.
+
+**Why not just PecoFence's way.** It switches the whole layer off and re-implements the desktop
+(menus, drag and drop, selection, placement) in its own windows. The owner wanted the native desktop
+as Stardock Fences leaves it, so that is an option here, not the default.
+
+**Measured: the hidden attribute with an explicit shell notification** (`attr_probe` example, temp file
+only, "show hidden files" off): `SetFileAttributesW(+HIDDEN)` then `SHChangeNotify(SHCNE_ATTRIBUTES,
+SHCNF_PATHW | SHCNF_FLUSH)` removed the item from the desktop view after 0.46 s; clearing it brought it
+back after 65 ms at the same position (14, 2). Without the notification the view needed about 4.4 s.
+
+**Decision, default (native desktop).** Items in a vial (and items Workspaces hides on other virtual
+desktops) get the hidden attribute and nothing else about the file changes. The journal records every
+file before it is touched and whether it already was hidden (then its attribute is left alone); stop,
+exit and the next start clear the marks. Explorer no longer lists a hidden item, so the layer lists it
+from its journal (flagged `parked`) for the owners. Dropping an item on the desktop unhides it and moves
+it to the drop point. System items (`::{CLSID}`, e.g. the Recycle Bin) have no file and cannot be hidden
+(reported in `HideReport::failed`); the Public Desktop needs administrator rights, so those fail too. If
+Windows is set to show hidden files (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Hidden = 1`)
+hiding does nothing and `can_hide()` says so.
+
+**Decision, optional (`drawDesktop`).** `desqu-desktop` has a *surface mode* (`DesktopLayer::set_surface`):
+
+1. Vials (`drawDesktop`, default off) switches the icon layer off and draws the desktop. The built-in
+   "Desktop" vial (`Vial.inbox`, id `desktop`) lists every item in no other vial, in the desktop's
+   own column order; a vial's items show in the vial only.
+2. In surface mode `hide`/`show` move nothing. They record per-owner *claims*; an item claimed by any
+   owner is reported as `parked` and no surface draws it. Workspaces uses this to hide the items of
+   other virtual desktops. Items parked before the switch are put back and keep their claims.
+3. The journal records `iconsHidden` when *we* switched the layer off, so stop, exit and the next start
+   switch it back on. If the user had the icons off already, nothing is recorded and nothing is undone.
+4. If someone switches the icons back on while Vials takes over, Vials switches them off again: the
+   Settings switch decides, not the View menu.
+5. The mouse hook treats a press on the desktop's top-level window (`Progman`/`WorkerW`) as "on the
+   desktop", since the hidden list view no longer receives it.
+6. Parking icons off-screen was removed; journals it wrote are still understood and restored.
+
+**Not observed.** Behaviour of the vial windows across virtual desktops (they are tool windows the
+shell does not manage per desktop; whether they show on every desktop is unverified), Explorer restart
+and sign-out while the layer is off, other Windows builds, and DPI other than 100 %. No marquee is
+drawn while the icons are off (a dragged box still offers "Create vial here").

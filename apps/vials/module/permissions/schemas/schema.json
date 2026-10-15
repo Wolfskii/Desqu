@@ -511,10 +511,22 @@
           "markdownDescription": "Denies the set_config command without any pre-configured scope."
         },
         {
-          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Enables the show_item_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-show-item-menu",
+          "markdownDescription": "Enables the show_item_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the show_item_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-show-item-menu",
+          "markdownDescription": "Denies the show_item_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
         }
       ]
     }

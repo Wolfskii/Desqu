@@ -17,7 +17,11 @@
       <div class="row">
         <input class="name" bind:value={vial.name} oninput={() => vials.scheduleSave()} aria-label="Vial name" />
         <div class="spacer"></div>
-        <button class="danger" onclick={() => vials.removeVial(vial.id)}>Delete</button>
+        {#if vial.inbox}
+          <span class="dim">Shows everything that is in no other vial. Cannot be deleted.</span>
+        {:else}
+          <button class="danger" onclick={() => vials.removeVial(vial.id)}>Delete</button>
+        {/if}
       </div>
     </div>
   {:else}

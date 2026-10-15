@@ -1,8 +1,10 @@
 //! Shared desktop-icon layer for Vials and Workspaces.
 //!
-//! It lists what the desktop shows, extracts icons, and hides items by *parking* them off-screen
-//! (and restoring them), journaling every change so a crash never loses an item's position. The
-//! approach comes from the P8.1 spike: see `apps/vials/docs/desktop-research.md`.
+//! It lists what the desktop shows, extracts icons, and hides items either by *parking* them
+//! off-screen (and restoring them), journaling every change so a crash never loses an item's
+//! position, or, where Windows no longer allows that, by switching the desktop's own icon layer off
+//! so that an owner draws the icons itself ("surface" mode). See
+//! `apps/vials/docs/desktop-research.md` for the measurements behind both.
 //!
 //! One layer exists per process, shared by every module through [`open`]; a named lock keeps two
 //! *processes* (for example a standalone Vials and Desqu) from rearranging the desktop at once.
@@ -14,7 +16,7 @@ mod platform;
 use std::path::Path;
 use std::sync::Arc;
 
-pub use layer::{DesktopError, DesktopEvent, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
+pub use layer::{ClaimSink, DesktopError, DesktopEvent, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
 pub use model::{
     classify, is_parked, plan_recovery, DesktopItem, ItemKind, Journal, ParkedItem, Point, RecoveryPlan,
     park_slot, FALLBACK_ORIGIN, PARK_POINT,
@@ -56,4 +58,12 @@ pub fn selection_count() -> DesktopResult<usize> {
 /// no lock, so it also works while another process owns the layer (for tests and diagnostics).
 pub fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
     platform::item_position(item_id)
+}
+
+/// Diagnostics only: switches the desktop's icons off for a moment and reports what the shell still
+/// answers. See the `surface_probe` example.
+#[doc(hidden)]
+#[cfg(windows)]
+pub fn surface_probe() -> DesktopResult<(usize, usize, usize, bool)> {
+    platform::surface_probe()
 }

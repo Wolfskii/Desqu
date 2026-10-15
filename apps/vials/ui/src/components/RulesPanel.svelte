@@ -38,7 +38,7 @@
       Rules put <em>new</em> desktop items into a vial automatically. They are checked top to bottom and the first
       match wins. Items you already placed, or took out on purpose, are never moved. Switch this off under Settings.
     </p>
-    <button onclick={() => vials.addRule()} disabled={!vials.config?.vials.length}>+ New rule</button>
+    <button onclick={() => vials.addRule()} disabled={!vials.config?.vials.some((v) => !v.inbox)}>+ New rule</button>
   </div>
 
   {#each vials.config?.rules ?? [] as rule, i (rule.id)}
@@ -97,7 +97,7 @@
               vials.scheduleSave(true);
             }}
           >
-            {#each vials.config?.vials ?? [] as v (v.id)}
+            {#each (vials.config?.vials ?? []).filter((v) => !v.inbox) as v (v.id)}
               <option value={v.id}>{v.name}</option>
             {/each}
           </select>

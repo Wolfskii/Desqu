@@ -6,8 +6,9 @@ mod lock;
 mod shell;
 mod watch;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread::JoinHandle;
@@ -15,8 +16,8 @@ use std::time::Duration;
 
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
-use crate::layer::{DesktopError, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
-use crate::model::{classify, is_parked, park_slot, plan_recovery, DesktopItem, Journal, ParkedItem, Point};
+use crate::layer::{ClaimSink, DesktopError, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
+use crate::model::{classify, is_parked, plan_recovery, DesktopItem, Journal, ParkedItem, Point, FALLBACK_ORIGIN};
 
 /// How long a handle waits for the worker before giving up (Explorer can be slow or hung).
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -32,12 +33,42 @@ enum Command {
     ShowAt { owner: String, id: String, screen: Point, reply: Reply<()> },
     ShowAll { owner: String, reply: Reply<()> },
     Hidden { owner: String, reply: Reply<Vec<String>> },
+    SetSurface { owner: String, on: bool, reply: Reply<()> },
+    SurfaceActive(Reply<bool>),
     Shutdown,
 }
 
 struct State {
     journal: Journal,
     path: PathBuf,
+    /// The owner that switched the desktop's own icons off and draws them itself. While it is
+    /// set nothing is parked: hiding only records claims, and `journal.items` stays empty.
+    surface: Option<String>,
+    /// Surface mode: the ids each owner wants hidden.
+    claims: HashMap<String, HashSet<String>>,
+    notifier: Arc<Notifier>,
+}
+
+/// Listeners for "an owner hid or showed something". Called on the worker thread.
+#[derive(Default)]
+struct Notifier {
+    next: AtomicU64,
+    sinks: Mutex<Vec<(u64, ClaimSink)>>,
+}
+
+impl Notifier {
+    fn add(self: &Arc<Self>, sink: ClaimSink) -> Subscription {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        self.sinks.lock().unwrap_or_else(|e| e.into_inner()).push((id, sink));
+        let this = Arc::clone(self);
+        Subscription::new(move || this.sinks.lock().unwrap_or_else(|e| e.into_inner()).retain(|(i, _)| *i != id))
+    }
+
+    fn notify(&self) {
+        for (_, sink) in self.sinks.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+            sink();
+        }
+    }
 }
 
 impl State {
@@ -49,6 +80,7 @@ impl State {
 /// The process-wide layer. Dropping the last handle drops it, which restores every parked item.
 struct Host {
     journal_path: PathBuf,
+    notifier: Arc<Notifier>,
     tx: Mutex<Sender<Command>>,
     thread: Mutex<Option<JoinHandle<()>>>,
     _lock: lock::NamedLock,
@@ -108,10 +140,7 @@ pub(crate) fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
 /// icons"). Read-only, takes no lock.
 pub(crate) fn icons_visible() -> DesktopResult<bool> {
     // SAFETY: plain window lookup and visibility query.
-    unsafe {
-        let lv = shell::listview()?;
-        Ok(windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(lv).as_bool())
-    }
+    unsafe { shell::icons_visible() }
 }
 
 /// Diagnostics: asks Explorer to put one item where it already is, `rounds` times, and returns how
@@ -141,6 +170,41 @@ pub(crate) fn nudge_timing(item_id: &str, rounds: usize) -> DesktopResult<std::t
         })?
         .join()
         .map_err(|_| DesktopError::Native { op: "timing", message: "thread panicked".into() })?
+}
+
+/// Diagnostics: switches the desktop's icons off for a moment and reports what the shell still
+/// answers while they are off: (items listed before, items listed while off, selected while off,
+/// icons visible again afterwards). Always switches them back on.
+pub(crate) fn surface_probe() -> DesktopResult<(usize, usize, usize, bool)> {
+    std::thread::Builder::new()
+        .name("desqu-desktop-probe".into())
+        .spawn(move || {
+            with_com(|| {
+                struct Restore(bool);
+                impl Drop for Restore {
+                    fn drop(&mut self) {
+                        if self.0 {
+                            // SAFETY: on a COM thread.
+                            let _ = unsafe { shell::set_icons_hidden(false) };
+                        }
+                    }
+                }
+                // SAFETY: on a COM thread of its own.
+                unsafe {
+                    let before = shell::list(&shell::desktop_view()?)?.len();
+                    let mut guard = Restore(false);
+                    guard.0 = shell::set_icons_hidden(true)?;
+                    std::thread::sleep(Duration::from_millis(400));
+                    let view = shell::desktop_view()?;
+                    let during = shell::list(&view)?.len();
+                    let selected = shell::selection_count(&view)?;
+                    drop(guard);
+                    Ok((before, during, selected, shell::icons_visible()?))
+                }
+            })
+        })?
+        .join()
+        .map_err(|_| DesktopError::Native { op: "probe", message: "thread panicked".into() })?
 }
 
 /// How many desktop items are selected right now. Read-only, takes no lock.
@@ -174,11 +238,16 @@ impl Host {
             .ok_or(DesktopError::OwnedElsewhere)?;
         let (tx, rx) = mpsc::channel();
         let path = journal_path.to_path_buf();
-        let thread = std::thread::Builder::new()
-            .name("desqu-desktop".into())
-            .spawn(move || with_com(|| worker(rx, path)))?;
+        let notifier = Arc::new(Notifier::default());
+        let thread = {
+            let notifier = Arc::clone(&notifier);
+            std::thread::Builder::new()
+                .name("desqu-desktop".into())
+                .spawn(move || with_com(|| worker(rx, path, notifier)))?
+        };
         Ok(Arc::new(Self {
             journal_path: journal_path.to_path_buf(),
+            notifier,
             tx: Mutex::new(tx),
             thread: Mutex::new(Some(thread)),
             _lock: lock,
@@ -209,8 +278,9 @@ impl Drop for Host {
 
 // ---------------------------------------------------------------------------------- the worker
 
-fn worker(rx: Receiver<Command>, path: PathBuf) {
-    let mut state = State { journal: Journal::load(&path), path };
+fn worker(rx: Receiver<Command>, path: PathBuf, notifier: Arc<Notifier>) {
+    let mut state =
+        State { journal: Journal::load(&path), path, surface: None, claims: HashMap::new(), notifier };
     // A journal at startup is a previous run's leftovers (crash or kill): put everything back.
     if let Err(e) = restore_all(&mut state) {
         tracing::warn!("could not restore desktop items left by a previous run: {e}");
@@ -240,12 +310,23 @@ fn worker(rx: Receiver<Command>, path: PathBuf) {
                 let _ = reply.send(show_all(&mut state, &owner));
             }
             Command::Hidden { owner, reply } => {
-                let _ = reply.send(Ok(state.journal.hidden_by(&owner)));
+                let hidden = match state.surface {
+                    Some(_) => state.claims.get(&owner).map(|c| c.iter().cloned().collect()).unwrap_or_default(),
+                    None => state.journal.hidden_by(&owner),
+                };
+                let _ = reply.send(Ok(hidden));
+            }
+            Command::SetSurface { owner, on, reply } => {
+                let _ = reply.send(set_surface(&mut state, &owner, on));
+            }
+            Command::SurfaceActive(reply) => {
+                let _ = reply.send(Ok(state.surface.is_some()));
             }
             Command::Shutdown => break,
         }
     }
-    // The last handle is gone (or the process is ending): never leave items parked.
+    // The last handle is gone (or the process is ending): never leave items parked or the desktop's
+    // own icons switched off.
     if let Err(e) = restore_all(&mut state) {
         tracing::warn!("could not restore desktop items on shutdown: {e}");
     }
@@ -257,115 +338,131 @@ fn items(state: &State) -> DesktopResult<Vec<DesktopItem>> {
         let view = shell::desktop_view()?;
         shell::list(&view)?
     };
-    Ok(raw
-        .into_iter()
+    let mut items: Vec<DesktopItem> = raw
+        .iter()
         .map(|r| {
             let kind = classify(&r.id, Path::new(&r.id).is_dir());
             DesktopItem {
-                parked: state.journal.contains(&r.id) || is_parked(r.pos),
-                id: r.id,
-                name: r.name,
+                parked: if state.surface.is_some() {
+                    state.claims.values().any(|ids| ids.contains(&r.id))
+                } else {
+                    state.journal.contains(&r.id) || is_parked(r.pos)
+                },
+                id: r.id.clone(),
+                name: r.name.clone(),
                 kind,
                 position: r.pos,
             }
         })
-        .collect())
+        .collect();
+    // Explorer no longer lists what we marked hidden, but it is still on the desktop as far as the
+    // owners are concerned: list it from the journal, flagged as hidden.
+    if state.surface.is_none() {
+        for hidden in state.journal.items.iter().filter(|i| i.by_attribute) {
+            if raw.iter().any(|r| r.id == hidden.id) || !Path::new(&hidden.id).exists() {
+                continue;
+            }
+            // SAFETY: on the COM thread.
+            let name = unsafe { shell::display_name_of(&hidden.id) };
+            items.push(DesktopItem {
+                kind: classify(&hidden.id, Path::new(&hidden.id).is_dir()),
+                name: if name.is_empty() { hidden.id.rsplit('\\').next().unwrap_or(&hidden.id).to_string() } else { name },
+                id: hidden.id.clone(),
+                position: hidden.original,
+                parked: true,
+            });
+        }
+    }
+    Ok(items)
 }
 
 fn can_hide() -> DesktopResult<bool> {
-    // SAFETY: on the COM thread.
-    unsafe { Ok(!shell::auto_arrange(&shell::desktop_view()?)?) }
+    Ok(!shell::show_hidden_files())
 }
 
 fn hide(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<HideReport> {
-    let started = std::time::Instant::now();
-    // SAFETY: on the COM thread.
-    unsafe {
-        let view = shell::desktop_view()?;
-        if shell::auto_arrange(&view)? {
-            return Err(DesktopError::AutoArrange);
-        }
-        let lv = shell::listview()?;
-        let raw = shell::list(&view)?;
-
-        let mut report = HideReport::default();
-        for id in ids {
-            match raw.iter().find(|r| &r.id == id) {
-                None => report.missing.push(id.clone()),
-                Some(item) => {
-                    state.journal.park(owner, id, item.pos);
-                    report.hidden.push(id.clone());
-                }
-            }
-        }
-        // Write-ahead: the original positions are on disk before anything moves.
-        state.save()?;
-
-        // Park, read the positions back, and try again for whatever Explorer left on screen (it can
-        // be slow or refuse a few items of a big batch). Items that are already parked are skipped,
-        // so this also repairs a claim whose item was found back on screen.
-        let base = state.journal.items.len();
-        let mut pending = report.hidden.clone();
-        let mut passes = 0;
-        while !pending.is_empty() && passes < PARK_PASSES {
-            if passes > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(150));
-            }
-            passes += 1;
-            pending = park_pass(&view, lv, &pending, base)?;
-        }
-        if !pending.is_empty() {
-            tracing::warn!("{} of {} desktop items are still on screen after {passes} passes", pending.len(), report.hidden.len());
-            report.hidden.retain(|id| !pending.contains(id));
-            report.failed = pending;
-        }
-        tracing::info!(
-            "parked {} desktop items in {} ms ({passes} passes, {} missing, {} failed)",
-            report.hidden.len(),
-            started.elapsed().as_millis(),
-            report.missing.len(),
-            report.failed.len()
-        );
-        Ok(report)
+    if state.surface.is_some() {
+        return claim(state, owner, ids);
     }
+    hide_by_attribute(state, owner, ids)
 }
 
-/// How often `hide` re-parks items that did not stay parked.
-const PARK_PASSES: usize = 3;
-
-/// One pass: parks every listed item that is not parked yet and returns the ones that still are
-/// not parked when the positions are read back.
-unsafe fn park_pass(
-    view: &windows::Win32::UI::Shell::IFolderView2,
-    lv: windows::Win32::Foundation::HWND,
-    ids: &[String],
-    base: usize,
-) -> DesktopResult<Vec<String>> {
-    let before = shell::list(view)?;
-    let mut n = 0;
+/// Surface mode: remembers that `owner` wants these items not drawn. Nothing moves.
+fn claim(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<HideReport> {
+    // SAFETY: on the COM thread.
+    let raw = unsafe { shell::list(&shell::desktop_view()?)? };
+    let mut report = HideReport::default();
+    let claimed = state.claims.entry(owner.to_string()).or_default();
+    let mut changed = false;
     for id in ids {
-        let Some(item) = before.iter().find(|r| &r.id == id) else { continue };
-        if is_parked(item.pos) {
+        if raw.iter().any(|r| &r.id == id) {
+            changed |= claimed.insert(id.clone());
+            report.hidden.push(id.clone());
+        } else {
+            report.missing.push(id.clone());
+        }
+    }
+    if changed {
+        state.notifier.notify();
+    }
+    Ok(report)
+}
+
+/// Hides files with the hidden attribute (journaled first). System items (the Recycle Bin) have no
+/// file to mark and are reported as failed; they stay where they are.
+fn hide_by_attribute(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<HideReport> {
+    // SAFETY: on the COM thread.
+    let raw = unsafe { shell::list(&shell::desktop_view()?)? };
+    let mut report = HideReport::default();
+    let mut to_mark = Vec::new();
+    for id in ids {
+        if id.starts_with("::") {
+            report.failed.push(id.clone());
             continue;
         }
-        // One refused item must not leave the rest of a big batch on screen.
-        if let Err(e) = shell::set_position(lv, item.index, park_slot(base + n)) {
-            tracing::warn!("could not park desktop item {}: {e}", item.index);
+        let Some(was_hidden) = shell::is_hidden_attribute(id) else {
+            report.missing.push(id.clone());
+            continue;
+        };
+        let at = raw.iter().find(|r| &r.id == id).map(|r| r.pos);
+        // Not in the view although the file exists: hidden already by someone (us or the user), or
+        // the view has not caught up with a new file yet.
+        let known = state.journal.contains(id);
+        if at.is_none() && !known && !was_hidden {
+            report.missing.push(id.clone());
+            continue;
         }
-        n += 1;
+        if state.journal.claim_attr(owner, id, at.unwrap_or(FALLBACK_ORIGIN), was_hidden) {
+            to_mark.push(id.clone());
+        }
+        report.hidden.push(id.clone());
     }
-    let after = shell::list(view)?;
-    Ok(ids
-        .iter()
-        .filter(|id| after.iter().find(|r| &r.id == *id).is_some_and(|r| !is_parked(r.pos)))
-        .cloned()
-        .collect())
+    // Write-ahead: the journal says what to undo before any file is touched.
+    state.save()?;
+    for id in to_mark {
+        if let Err(e) = shell::set_hidden_attribute(&id, true) {
+            tracing::warn!("could not hide {id}: {e}");
+            state.journal.unpark(owner, &id);
+            report.hidden.retain(|h| h != &id);
+            report.failed.push(id);
+        }
+    }
+    state.save()?;
+    Ok(report)
 }
 
-/// Moves items back, then (only after that succeeded) commits the journal change. A crash in the
-/// middle therefore leaves the journal claiming *more* hidden items, never fewer.
-fn restore_positions(restore: &[ParkedItem]) -> DesktopResult<()> {
-    if restore.is_empty() {
+/// Undoes what was done to the items: the hidden attribute is cleared (unless the file had it
+/// before us) and items an older build parked off-screen are moved back. The journal is changed only
+/// after this succeeded, so a crash in the middle leaves it claiming *more* hidden items, never fewer.
+fn restore_items(restore: &[ParkedItem]) -> DesktopResult<()> {
+    for item in restore.iter().filter(|i| i.by_attribute && !i.attr_was_set) {
+        match shell::set_hidden_attribute(&item.id, false) {
+            Ok(()) | Err(DesktopError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    let parked: Vec<&ParkedItem> = restore.iter().filter(|i| !i.by_attribute).collect();
+    if parked.is_empty() {
         return Ok(());
     }
     // SAFETY: on the COM thread.
@@ -373,7 +470,7 @@ fn restore_positions(restore: &[ParkedItem]) -> DesktopResult<()> {
         let view = shell::desktop_view()?;
         let lv = shell::listview()?;
         let raw = shell::list(&view)?;
-        for item in restore {
+        for item in parked {
             // An item deleted meanwhile has nothing to restore.
             if let Some(found) = raw.iter().find(|r| r.id == item.id) {
                 shell::set_position(lv, found.index, item.original)?;
@@ -384,14 +481,21 @@ fn restore_positions(restore: &[ParkedItem]) -> DesktopResult<()> {
 }
 
 fn show(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<()> {
-    let mut next = state.journal.clone();
-    let mut restore = Vec::new();
-    for id in ids {
-        if let Some(original) = next.unpark(owner, id) {
-            restore.push(ParkedItem { id: id.clone(), original, owners: Vec::new() });
+    if state.surface.is_some() {
+        let mut changed = false;
+        if let Some(claimed) = state.claims.get_mut(owner) {
+            for id in ids {
+                changed |= claimed.remove(id);
+            }
         }
+        if changed {
+            state.notifier.notify();
+        }
+        return Ok(());
     }
-    restore_positions(&restore)?;
+    let mut next = state.journal.clone();
+    let restore: Vec<ParkedItem> = ids.iter().filter_map(|id| next.unpark_item(owner, id)).collect();
+    restore_items(&restore)?;
     state.journal = next;
     state.save()
 }
@@ -400,59 +504,169 @@ fn show(state: &mut State, owner: &str, ids: &[String]) -> DesktopResult<()> {
 const ICON_HALF: i32 = 32;
 
 fn show_at(state: &mut State, owner: &str, id: &str, screen: Point) -> DesktopResult<()> {
+    if state.surface.is_some() {
+        // No native position to give it: the owner draws the item wherever it belongs.
+        return show(state, owner, std::slice::from_ref(&id.to_string()));
+    }
     let mut next = state.journal.clone();
     // Only when this was the last owner does the item come back at all.
-    if next.unpark(owner, id).is_some() {
-        // SAFETY: on the COM thread.
-        let at = unsafe {
-            let lv = shell::listview()?;
-            let p = shell::screen_to_client(lv, screen);
-            Point { x: p.x - ICON_HALF, y: p.y - ICON_HALF }
-        };
-        restore_positions(&[ParkedItem { id: id.to_string(), original: at, owners: Vec::new() }])?;
+    let restored = next.unpark_item(owner, id);
+    if let Some(item) = &restored {
+        restore_items(std::slice::from_ref(item))?;
     }
     state.journal = next;
-    state.save()
+    state.save()?;
+    if restored.is_some_and(|i| i.by_attribute) {
+        // The desktop shows the item again within a moment; put it where the user dropped it.
+        // SAFETY: on the COM thread.
+        unsafe { place_when_back(id, screen) };
+    }
+    Ok(())
+}
+
+/// Waits (briefly) for the desktop to show `id` again and moves it under `screen`. Best effort: if
+/// the item does not show up the desktop keeps it where it was.
+unsafe fn place_when_back(id: &str, screen: Point) {
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(3) {
+        if let (Ok(view), Ok(lv)) = (shell::desktop_view(), shell::listview()) {
+            if let Ok(raw) = shell::list(&view) {
+                if let Some(item) = raw.iter().find(|r| r.id == id) {
+                    let p = shell::screen_to_client(lv, screen);
+                    let _ = shell::set_position(lv, item.index, Point { x: p.x - ICON_HALF, y: p.y - ICON_HALF });
+                    return;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 fn show_all(state: &mut State, owner: &str) -> DesktopResult<()> {
+    if state.surface.is_some() {
+        let had = state.claims.remove(owner).is_some_and(|c| !c.is_empty());
+        if state.surface.as_deref() == Some(owner) {
+            return set_surface(state, owner, false);
+        }
+        if had {
+            state.notifier.notify();
+        }
+        return Ok(());
+    }
     let mut next = state.journal.clone();
     let restore = next.release_owner(owner);
-    restore_positions(&restore)?;
+    restore_items(&restore)?;
     state.journal = next;
     state.save()
 }
 
 fn restore_all(state: &mut State) -> DesktopResult<()> {
+    state.claims.clear();
+    state.surface = None;
+    let icons = restore_icons(&mut state.journal);
     if state.journal.items.is_empty() {
+        if icons {
+            state.save()?;
+        }
         return Ok(());
+    }
+    restore_journal(&state.journal)?;
+    state.journal.items.clear();
+    state.save()
+}
+
+/// Puts back everything a journal says was hidden. Files marked hidden are cleared whether or not the
+/// desktop lists them (it does not); items an older build parked are only moved if still there.
+fn restore_journal(journal: &Journal) -> DesktopResult<usize> {
+    let (by_attr, parked): (Vec<ParkedItem>, Vec<ParkedItem>) =
+        journal.items.iter().cloned().partition(|i| i.by_attribute);
+    restore_items(&by_attr)?;
+    if parked.is_empty() {
+        return Ok(by_attr.len());
     }
     // SAFETY: on the COM thread.
     let present: HashSet<String> = unsafe {
         let view = shell::desktop_view()?;
         shell::list(&view)?.into_iter().map(|r| r.id).collect()
     };
-    let plan = plan_recovery(&state.journal, &present);
-    restore_positions(&plan.restore)?;
-    state.journal = Journal::default();
-    state.save()
+    let plan = plan_recovery(&Journal { items: parked, icons_hidden: false }, &present);
+    restore_items(&plan.restore)?;
+    Ok(by_attr.len() + plan.restore.len())
+}
+
+/// Switches the desktop's own icons back on if a run of ours switched them off. Returns whether
+/// the journal changed.
+fn restore_icons(journal: &mut Journal) -> bool {
+    if !journal.icons_hidden {
+        return false;
+    }
+    // SAFETY: on a COM thread.
+    match unsafe { shell::set_icons_hidden(false) } {
+        Ok(_) => {
+            journal.icons_hidden = false;
+            true
+        }
+        Err(e) => {
+            tracing::warn!("could not switch the desktop icons back on: {e}");
+            false
+        }
+    }
+}
+
+/// Surface mode on or off for `owner`; see [`DesktopLayer::set_surface`].
+fn set_surface(state: &mut State, owner: &str, on: bool) -> DesktopResult<()> {
+    if on {
+        if state.surface.is_none() {
+            // What was parked comes back, and whoever hid it keeps the claim.
+            let parked = std::mem::take(&mut state.journal.items);
+            restore_items(&parked)?;
+            for item in &parked {
+                for o in &item.owners {
+                    state.claims.entry(o.clone()).or_default().insert(item.id.clone());
+                }
+            }
+        }
+        // SAFETY: on the COM thread. Also re-asserts the state if someone switched the icons on.
+        let changed = unsafe { shell::set_icons_hidden(true)? };
+        state.journal.icons_hidden |= changed;
+        state.surface = Some(owner.to_string());
+        state.save()?;
+        state.notifier.notify();
+        return Ok(());
+    }
+    if state.surface.as_deref() != Some(owner) {
+        return Ok(());
+    }
+    if state.journal.icons_hidden {
+        // SAFETY: on the COM thread.
+        unsafe { shell::set_icons_hidden(false)? };
+        state.journal.icons_hidden = false;
+    }
+    state.surface = None;
+    state.save()?;
+    // Whatever the owners hid goes back to being hidden on the desktop itself.
+    for (claimant, ids) in std::mem::take(&mut state.claims) {
+        let ids: Vec<String> = ids.into_iter().collect();
+        if let Err(e) = hide_by_attribute(state, &claimant, &ids) {
+            tracing::warn!("could not hide {} items for {claimant} after leaving surface mode: {e}", ids.len());
+        }
+    }
+    state.notifier.notify();
+    Ok(())
 }
 
 fn recover_file(path: &Path) -> DesktopResult<usize> {
-    let journal = Journal::load(path);
-    if journal.items.is_empty() {
+    let mut journal = Journal::load(path);
+    let restored = restore_journal(&journal)?;
+    journal.items.clear();
+    restore_icons(&mut journal);
+    if journal.icons_hidden {
+        // Could not switch them on: keep the file so the next start tries again.
+        let _ = journal.save(path);
+    } else {
         let _ = std::fs::remove_file(path);
-        return Ok(0);
     }
-    // SAFETY: on a COM thread.
-    let present: HashSet<String> = unsafe {
-        let view = shell::desktop_view()?;
-        shell::list(&view)?.into_iter().map(|r| r.id).collect()
-    };
-    let plan = plan_recovery(&journal, &present);
-    restore_positions(&plan.restore)?;
-    let _ = std::fs::remove_file(path);
-    Ok(plan.restore.len())
+    Ok(restored)
 }
 
 // ---------------------------------------------------------------------------------- the handle
@@ -497,6 +711,18 @@ impl DesktopLayer for Handle {
 
     fn subscribe(&self, sink: EventSink) -> DesktopResult<Subscription> {
         watch::watch(shell::desktop_folders(), sink)
+    }
+
+    fn set_surface(&self, on: bool) -> DesktopResult<()> {
+        self.host.call(|reply| Command::SetSurface { owner: self.owner.clone(), on, reply })
+    }
+
+    fn surface_active(&self) -> bool {
+        self.host.call(Command::SurfaceActive).unwrap_or(false)
+    }
+
+    fn subscribe_claims(&self, sink: ClaimSink) -> DesktopResult<Subscription> {
+        Ok(self.host.notifier.add(sink))
     }
 }
 

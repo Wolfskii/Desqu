@@ -45,8 +45,8 @@ use ::windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use ::windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use ::windows::Win32::System::Threading::GetCurrentThreadId;
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetClassNameW, GetMessageW, GetParent, PostThreadMessageW, SetWindowsHookExW,
-    UnhookWindowsHookEx, WindowFromPoint, MSG, MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_QUIT, WM_RBUTTONDOWN,
+    CallNextHookEx, GetAncestor, GetClassNameW, GetMessageW, GetParent, PostThreadMessageW, SetWindowsHookExW,
+    UnhookWindowsHookEx, WindowFromPoint, MSG, MSLLHOOKSTRUCT, GA_ROOT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_QUIT, WM_RBUTTONDOWN,
 };
 
 /// Mouse gestures on the desktop icon view.
@@ -78,15 +78,19 @@ fn class_of(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
 }
 
-/// Whether the point is on the desktop's icon view (not on a normal window above it).
+/// Whether the point is on the desktop itself (not on a normal window above it). With the desktop's
+/// icons showing that is its icon view; with them switched off (Vials draws them) it is whatever
+/// the desktop window (`Progman`, or the `WorkerW` that hosts the icons) shows there, such as a live
+/// wallpaper.
 fn on_desktop_view(x: i32, y: i32) -> bool {
     // SAFETY: plain window queries.
     unsafe {
         let hwnd = WindowFromPoint(POINT { x, y });
-        if hwnd.0.is_null() || class_of(hwnd) != "SysListView32" {
+        if hwnd.0.is_null() {
             return false;
         }
-        GetParent(hwnd).is_ok_and(|p| class_of(p) == "SHELLDLL_DefView")
+        let root = GetAncestor(hwnd, GA_ROOT);
+        !root.0.is_null() && matches!(class_of(root).as_str(), "Progman" | "WorkerW")
     }
 }
 
@@ -386,6 +390,140 @@ pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
             Err(format!("the drag failed: {result:?}"))
         }
     }
+}
+
+
+// --------------------------------------------------------------- the shell's right-click menu
+
+use ::windows::Win32::Foundation::{GetLastError, ERROR_CLASS_ALREADY_EXISTS};
+use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_SHIFT};
+use ::windows::Win32::UI::Shell::{
+    IContextMenu, IContextMenu2, IContextMenu3, BHID_SFUIObject, CMF_EXTENDEDVERBS, CMF_NORMAL, CMIC_MASK_PTINVOKE,
+    SEE_MASK_UNICODE, CMINVOKECOMMANDINFO, CMINVOKECOMMANDINFOEX,
+};
+use ::windows::Win32::UI::WindowsAndMessaging::{
+    CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, PostMessageW, RegisterClassW,
+    SetForegroundWindow, TrackPopupMenuEx, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_DRAWITEM, WM_INITMENUPOPUP, WM_MEASUREITEM,
+    WM_MENUCHAR, WM_NULL, WNDCLASSW, WS_POPUP, SW_SHOWNORMAL,
+};
+
+/// Command ids the shell may use in the popup menu.
+const MENU_FIRST: u32 = 1;
+const MENU_LAST: u32 = 0x7FFF;
+
+thread_local! {
+    /// The menu being shown, so its owner window can forward the messages that fill and draw
+    /// submenus ("Send to", "Open with") and owner-drawn entries. The menu loop runs on this thread.
+    static OPEN_MENU: RefCell<Option<(IContextMenu2, Option<IContextMenu3>)>> = const { RefCell::new(None) };
+}
+
+unsafe extern "system" fn menu_host_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if matches!(msg, WM_INITMENUPOPUP | WM_DRAWITEM | WM_MEASUREITEM | WM_MENUCHAR) {
+        let handled = OPEN_MENU.with(|open| {
+            let open = open.borrow();
+            let (menu2, menu3) = open.as_ref()?;
+            if let Some(menu3) = menu3 {
+                let mut result = LRESULT(0);
+                return menu3.HandleMenuMsg2(msg, wparam, lparam, Some(&mut result)).ok().map(|()| result);
+            }
+            if msg == WM_MENUCHAR {
+                return None;
+            }
+            menu2.HandleMenuMsg(msg, wparam, lparam).ok().map(|()| LRESULT(if msg == WM_INITMENUPOPUP { 0 } else { 1 }))
+        });
+        if let Some(result) = handled {
+            return result;
+        }
+    }
+    DefWindowProcW(hwnd, msg, wparam, lparam)
+}
+
+/// Shows Explorer's own right-click menu for a file, folder or shortcut at the cursor and runs the
+/// entry the user picks. It is the real shell menu (`IContextMenu`), so "Open", "Cut", "Copy",
+/// "Delete", "Properties", "Send to" and the entries other programs add are all there.
+///
+/// Must run on the UI thread: the menu runs a modal loop. A vial window never takes focus, so the
+/// menu is owned by a small hidden window that exists only while it is open.
+pub(crate) fn show_item_menu(path: &str) -> Result<(), String> {
+    // SAFETY: COM and window calls on the calling (UI) thread; every interface pointer and the
+    // helper window stay alive until the menu is closed and the chosen command has run.
+    unsafe {
+        let item: IShellItem = SHCreateItemFromParsingName(&HSTRING::from(path), None).map_err(|e| e.to_string())?;
+        let menu: IContextMenu = item.BindToHandler(None, &BHID_SFUIObject).map_err(|e| e.to_string())?;
+
+        let class = ::windows::core::w!("DesquVialsMenuHost");
+        let instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
+        let class_info =
+            WNDCLASSW { lpfnWndProc: Some(menu_host_proc), hInstance: instance.into(), lpszClassName: class, ..Default::default() };
+        let registered = RegisterClassW(&class_info);
+        if registered == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS {
+            return Err("could not register the menu window".into());
+        }
+        let host = CreateWindowExW(
+            WS_EX_TOOLWINDOW,
+            class,
+            ::windows::core::w!(""),
+            WS_POPUP,
+            0,
+            0,
+            0,
+            0,
+            None,
+            None,
+            Some(instance.into()),
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+
+        let result = run_item_menu(host, &menu);
+        let _ = DestroyWindow(host);
+        result
+    }
+}
+
+unsafe fn run_item_menu(host: HWND, menu: &IContextMenu) -> Result<(), String> {
+    let popup = CreatePopupMenu().map_err(|e| e.to_string())?;
+    // Shift held: the longer menu Explorer shows for Shift+right-click.
+    let extended = if GetKeyState(i32::from(VK_SHIFT.0)) < 0 { CMF_EXTENDEDVERBS } else { 0 };
+    let queried = menu.QueryContextMenu(popup, 0, MENU_FIRST, MENU_LAST, CMF_NORMAL | extended).ok();
+    if let Err(e) = queried {
+        let _ = DestroyMenu(popup);
+        return Err(e.to_string());
+    }
+
+    OPEN_MENU.with(|open| {
+        let menu3 = menu.cast::<IContextMenu3>().ok();
+        let menu2 = menu.cast::<IContextMenu2>().ok();
+        *open.borrow_mut() = menu2.map(|m| (m, menu3));
+    });
+
+    let mut at = POINT::default();
+    let _ = GetCursorPos(&mut at);
+    // Without being the foreground window the menu would not close when the user clicks elsewhere.
+    let _ = SetForegroundWindow(host);
+    let picked = TrackPopupMenuEx(popup, (TPM_RETURNCMD | TPM_RIGHTBUTTON).0, at.x, at.y, host, None).0;
+    let _ = PostMessageW(Some(host), WM_NULL, WPARAM(0), LPARAM(0));
+    OPEN_MENU.with(|open| *open.borrow_mut() = None);
+
+    let result = if picked >= MENU_FIRST as i32 {
+        let offset = (picked as u32 - MENU_FIRST) as usize;
+        let info = CMINVOKECOMMANDINFOEX {
+            cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
+            fMask: SEE_MASK_UNICODE | CMIC_MASK_PTINVOKE,
+            hwnd: host,
+            // MAKEINTRESOURCE: a command offset in place of a verb string.
+            lpVerb: ::windows::core::PCSTR(offset as *const u8),
+            lpVerbW: PCWSTR(offset as *const u16),
+            nShow: SW_SHOWNORMAL.0,
+            ptInvoke: at,
+            ..Default::default()
+        };
+        menu.InvokeCommand(&info as *const CMINVOKECOMMANDINFOEX as *const CMINVOKECOMMANDINFO).map_err(|e| e.to_string())
+    } else {
+        Ok(())
+    };
+    let _ = DestroyMenu(popup);
+    result
 }
 
 

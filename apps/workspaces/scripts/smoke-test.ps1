@@ -59,6 +59,9 @@ function Peek([string]$id) {
     if ($parts.Count -ne 2) { throw "peek failed: $out" }
     return [pscustomobject]@{ X = [int]$parts[0]; Y = [int]$parts[1] }
 }
+function IsMarkedHidden([string]$path) {
+    return ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::Hidden) -ne 0
+}
 function WaitFor([scriptblock]$cond, [int]$seconds) {
     $end = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $end) { $v = & $cond; if ($v) { return $v }; Start-Sleep -Milliseconds 300 }
@@ -108,14 +111,16 @@ try {
     Write-Host 'Scenario 1: the item is tied to ANOTHER desktop'
     WriteConfig $other $false
     $proc = Start-Process -FilePath $Exe -PassThru
-    $parked = WaitFor { $p = Peek $temp; if ($p -and $p.X -le -2000) { $p } } 45
+    $parked = WaitFor { if ($null -eq (Peek $temp)) { 'hidden' } } 45
     Check ($null -ne $parked) 'the item is hidden on this desktop'
+    Check (IsMarkedHidden $temp) 'the file carries the hidden attribute (and nothing else changed about it)'
     $q = Start-Process -FilePath $Exe -ArgumentList '--quit' -PassThru -WindowStyle Hidden
     Check ($q.WaitForExit(20000)) 'the --quit launch finishes'
     Check ($proc.WaitForExit(20000)) 'Workspaces exits'
     if ($proc.HasExited) { Check ($proc.ExitCode -eq 0) 'it exits with code 0' }
-    $restored = WaitFor { $p = Peek $temp; if ($p -and $p.X -gt -2000) { $p } } 20
+    $restored = WaitFor { Peek $temp } 20
     Check ($null -ne $restored) 'after exit the item is back on the desktop'
+    Check (-not (IsMarkedHidden $temp)) 'the hidden attribute is gone again'
     if ($restored) { Check (($restored.X -eq $before.X) -and ($restored.Y -eq $before.Y)) ('it returned to its original place ({0}, {1})' -f $restored.X, $restored.Y) }
     Check (-not (Test-Path $journal)) 'the journal is cleared'
 
@@ -125,7 +130,7 @@ try {
     $proc = Start-Process -FilePath $Exe -PassThru
     Start-Sleep -Seconds 12
     $p = Peek $temp
-    Check ($null -ne $p -and $p.X -gt -2000) 'the item stays visible on its own desktop'
+    Check ($null -ne $p) 'the item stays visible on its own desktop'
     Check (-not $proc.HasExited) 'the app is running'
 
     Write-Host ''
@@ -143,7 +148,7 @@ try {
     } 40
     Check ($null -ne $joined) 'the new file is now tied to the current desktop in the config'
     $p2 = Peek $temp2
-    Check ($null -ne $p2 -and $p2.X -gt -2000) 'and it is visible here'
+    Check ($null -ne $p2) 'and it is visible here'
     Start-Process -FilePath $Exe -ArgumentList '--quit' -WindowStyle Hidden | Out-Null
     Check ($proc.WaitForExit(20000)) 'the app quits again'
 
@@ -151,20 +156,20 @@ try {
     Write-Host 'Scenario 4: the app is killed while the item is hidden'
     WriteConfig $other $false
     $proc = Start-Process -FilePath $Exe -PassThru
-    $parked2 = WaitFor { $p = Peek $temp; if ($p -and $p.X -le -2000) { $p } } 45
+    $parked2 = WaitFor { if ($null -eq (Peek $temp)) { 'hidden' } } 45
     Check ($null -ne $parked2) 'the item is hidden again'
     Stop-Process -Id $proc.Id -Force
     $proc.WaitForExit(10000) | Out-Null
     Get-Process -Name workspaces -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 1
     $still = Peek $temp
-    Check ($null -ne $still -and $still.X -le -2000) 'after the kill the item is still hidden (nobody put it back)'
+    Check ($null -eq $still) 'after the kill the item is still hidden (nobody put it back)'
     Check (Test-Path $journal) 'the journal survived the kill'
 
     # Restart with nothing tied to any desktop: only crash recovery can bring the item back.
     WriteConfig '' $false
     $proc = Start-Process -FilePath $Exe -PassThru
-    $back = WaitFor { $p = Peek $temp; if ($p -and $p.X -gt -2000) { $p } } 45
+    $back = WaitFor { Peek $temp } 45
     Check ($null -ne $back) 'the next start restores the item'
     if ($back) { Check (($back.X -eq $before.X) -and ($back.Y -eq $before.Y)) ('...to its original place ({0}, {1})' -f $back.X, $back.Y) }
     Start-Process -FilePath $Exe -ArgumentList '--quit' -WindowStyle Hidden | Out-Null

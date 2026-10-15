@@ -20,6 +20,7 @@ export const api = {
     dismissMenu: () => invoke<void>(`${PLUGIN}|dismiss_menu`),
     dropItems: (vialId: string, paths: string[]) => invoke<VialsConfig>(`${PLUGIN}|drop_items`, { vialId, paths }),
     dragItemOut: (itemId: string) => invoke<void>(`${PLUGIN}|drag_item_out`, { itemId }),
+    showItemMenu: (itemId: string) => invoke<void>(`${PLUGIN}|show_item_menu`, { itemId }),
     getMonitors: () => invoke<MonitorInfo[]>(`${PLUGIN}|get_monitors`),
     desktopStatus: () => invoke<DesktopStatus>(`${PLUGIN}|desktop_status`),
     moduleStart: () => invoke<void>(`${PLUGIN}|module_start`),

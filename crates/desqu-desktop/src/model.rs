@@ -1,9 +1,13 @@
 //! Pure model of the desktop layer: items, the park-and-restore journal, and the rules around
 //! them. Nothing here touches the shell, so it is fully unit tested.
 //!
-//! Hiding works by *parking*: moving an item to a position far off-screen and remembering where it
-//! was. The journal is written **before** an item is parked, so a crash can never lose the
-//! original position.
+//! Hiding works in one of two ways. The native way keeps the desktop as it is and gives the hidden
+//! items the file system's *hidden* attribute (Explorer does not draw those unless "show hidden
+//! files" is on), telling the shell right away. The journal is written **before** an item is
+//! touched, so a crash can never leave one hidden for good. The other way switches the desktop's
+//! own icon layer off and lets the owners draw the icons themselves; the journal then records that
+//! switch. (Items used to be *parked* off-screen; Windows 11 build 26300 stopped allowing that, see
+//! `apps/vials/docs/desktop-research.md`. Journals written back then are still understood.)
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -75,7 +79,8 @@ pub struct DesktopItem {
     pub name: String,
     pub kind: ItemKind,
     pub position: Point,
-    /// Currently parked off-screen (by us, or found that way).
+    /// Hidden: parked off-screen (by us, or found that way), or, while an owner draws the desktop
+    /// itself, claimed as hidden by some owner. A surface must not draw these.
     pub parked: bool,
 }
 
@@ -85,8 +90,16 @@ pub struct DesktopItem {
 #[serde(rename_all = "camelCase")]
 pub struct ParkedItem {
     pub id: String,
+    /// Where the desktop showed it when it was hidden. Parked items are put back here.
     pub original: Point,
     pub owners: Vec<String>,
+    /// Hidden with the hidden attribute (the current way). `false`: parked off-screen by an older
+    /// build, which is put back by position.
+    #[serde(default)]
+    pub by_attribute: bool,
+    /// The file was marked hidden before we touched it, so showing it must leave the attribute alone.
+    #[serde(default)]
+    pub attr_was_set: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +107,10 @@ pub struct ParkedItem {
 pub struct Journal {
     #[serde(default)]
     pub items: Vec<ParkedItem>,
+    /// This process switched off the desktop's own icons ("Show desktop icons") and must switch
+    /// them back on, also after a crash. Not set when the user had them off already.
+    #[serde(default)]
+    pub icons_hidden: bool,
 }
 
 impl Journal {
@@ -110,7 +127,7 @@ impl Journal {
 
     /// Writes atomically (temp file + rename). An empty journal removes the file.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if self.items.is_empty() {
+        if self.items.is_empty() && !self.icons_hidden {
             return match std::fs::remove_file(path) {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -143,17 +160,44 @@ impl Journal {
             id: id.to_string(),
             original,
             owners: vec![owner.to_string()],
+            by_attribute: false,
+            attr_was_set: false,
         });
         true
+    }
+
+    /// Records that `owner` wants the file `id` hidden with the hidden attribute. `original` is where
+    /// the desktop shows it, `attr_was_set` whether it already was hidden. Returns `true` when the
+    /// attribute must be set (nobody had hidden it yet).
+    pub fn claim_attr(&mut self, owner: &str, id: &str, original: Point, attr_was_set: bool) -> bool {
+        if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
+            if !item.owners.iter().any(|o| o == owner) {
+                item.owners.push(owner.to_string());
+            }
+            return false;
+        }
+        self.items.push(ParkedItem {
+            id: id.to_string(),
+            original,
+            owners: vec![owner.to_string()],
+            by_attribute: true,
+            attr_was_set,
+        });
+        !attr_was_set
     }
 
     /// `owner` no longer wants `id` hidden. Returns the position to restore when that was the
     /// last owner (the item must be physically moved back), else `None`.
     pub fn unpark(&mut self, owner: &str, id: &str) -> Option<Point> {
+        self.unpark_item(owner, id).map(|item| item.original)
+    }
+
+    /// Like [`Journal::unpark`], but returns the whole entry (to know how it was hidden).
+    pub fn unpark_item(&mut self, owner: &str, id: &str) -> Option<ParkedItem> {
         let pos = self.items.iter().position(|i| i.id == id)?;
         self.items[pos].owners.retain(|o| o != owner);
         if self.items[pos].owners.is_empty() {
-            Some(self.items.remove(pos).original)
+            Some(self.items.remove(pos))
         } else {
             None
         }
@@ -299,6 +343,28 @@ mod tests {
     }
 
     #[test]
+    fn hiding_by_attribute_is_shared_between_owners_and_remembers_a_preset_attribute() {
+        let mut j = Journal::default();
+        assert!(j.claim_attr("vials", "a", p(14, 2), false), "the first owner sets the attribute");
+        assert!(!j.claim_attr("workspaces", "a", p(14, 2), false), "a second owner only shares");
+        assert!(!j.claim_attr("vials", "b", p(14, 100), true), "already hidden by the user: nothing to set");
+        assert!(j.items.iter().all(|i| i.by_attribute));
+
+        assert!(j.unpark_item("vials", "a").is_none(), "still wanted by workspaces");
+        let last = j.unpark_item("workspaces", "a").unwrap();
+        assert!(last.by_attribute && !last.attr_was_set);
+        let preset = j.unpark_item("vials", "b").unwrap();
+        assert!(preset.attr_was_set, "the restore must leave a user's own hidden attribute alone");
+    }
+
+    #[test]
+    fn a_journal_from_the_parking_days_still_loads_as_parked() {
+        let old = r#"{"items":[{"id":"parked.lnk","original":{"x":242,"y":2},"owners":["vials"]}]}"#;
+        let j: Journal = serde_json::from_str(old).unwrap();
+        assert!(!j.items[0].by_attribute && !j.items[0].attr_was_set && !j.icons_hidden);
+    }
+
+    #[test]
     fn journal_round_trips_clears_the_file_when_empty_and_survives_corruption() {
         let dir = std::env::temp_dir().join(format!("desqu-desktop-journal-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -317,6 +383,14 @@ mod tests {
         j.unpark("vials", "a");
         j.save(&path).unwrap();
         assert!(!path.exists(), "an empty journal must not leave a file");
+
+        // Having switched the desktop's own icons off is worth a file even with nothing parked.
+        j.icons_hidden = true;
+        j.save(&path).unwrap();
+        assert!(Journal::load(&path).icons_hidden);
+        j.icons_hidden = false;
+        j.save(&path).unwrap();
+        assert!(!path.exists());
 
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&path, "{ nope").unwrap();
