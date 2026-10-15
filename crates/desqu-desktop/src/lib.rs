@@ -11,11 +11,15 @@
 
 pub mod layer;
 pub mod model;
+#[cfg(windows)]
+mod paste;
 mod platform;
 
 use std::path::Path;
 use std::sync::Arc;
 
+#[cfg(windows)]
+pub use paste::{watch_cut_paste, CutPasteWatcher};
 pub use layer::{ClaimSink, DesktopError, DesktopEvent, DesktopLayer, DesktopResult, EventSink, HideReport, Subscription};
 pub use model::{
     classify, is_parked, plan_recovery, DesktopItem, ItemKind, Journal, ParkedItem, Point, RecoveryPlan,
@@ -66,4 +70,9 @@ pub fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
 #[cfg(windows)]
 pub fn surface_probe() -> DesktopResult<(usize, usize, usize, bool)> {
     platform::surface_probe()
+}
+
+/// The folders the desktop shows (the user's Desktop, then the Public Desktop), as paths. Read-only.
+pub fn desktop_folders() -> Vec<std::path::PathBuf> {
+    platform::desktop_folders()
 }

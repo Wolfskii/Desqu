@@ -138,6 +138,10 @@ pub(crate) fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
 
 /// Whether the desktop currently shows its icons (right-click the desktop, View, "Show desktop
 /// icons"). Read-only, takes no lock.
+pub(crate) fn desktop_folders() -> Vec<PathBuf> {
+    shell::desktop_folders()
+}
+
 pub(crate) fn icons_visible() -> DesktopResult<bool> {
     // SAFETY: plain window lookup and visibility query.
     unsafe { shell::icons_visible() }

@@ -27,6 +27,7 @@ use tauri::{
     WindowEvent,
 };
 
+use crate::core::clip;
 use crate::core::gesture;
 use crate::core::layout::{self, MonitorRef};
 use crate::core::model::{GlassBlur, PixelRect, Vial, VialTheme, VialsConfig};
@@ -66,6 +67,10 @@ pub(crate) enum Job {
     IconsChanged,
     /// Another owner (Workspaces) hid or showed items: the vials only need to redraw.
     ClaimsChanged,
+    /// Ctrl+V on the desktop with these files cut: the ones that sit in a vial leave it.
+    CutPasted(Vec<String>),
+    /// A vial window lost the keyboard focus (named by its label).
+    VialBlurred(String),
     Stop,
 }
 
@@ -75,6 +80,7 @@ struct Running {
     _subscription: Subscription,
     _claims: Subscription,
     _mouse: Option<MouseWatcher>,
+    _paste: Option<platform::CutPasteWatcher>,
     _icons: Option<IconsWatcher>,
     worker: Option<JoinHandle<()>>,
     _lock: ModuleLock,
@@ -261,6 +267,16 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     };
 
     // When Vials draws the desktop itself its windows stay up whatever the icons' switch says.
+    // Not fatal: without the hook a vial's items still leave it when they are dragged out.
+    let paste = {
+        let sink = jobs.clone();
+        platform::watch_cut_paste(Box::new(move |paths| {
+            let _ = sink.send(Job::CutPasted(paths));
+        }))
+        .map_err(|e| tracing::warn!("could not watch Ctrl+V on the desktop: {e}"))
+        .ok()
+    };
+
     state
         .icons_visible
         .store(state.config().draw_desktop || desqu_desktop::icons_visible().unwrap_or(true), Ordering::Relaxed);
@@ -291,6 +307,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         _subscription: subscription,
         _claims: claims,
         _mouse: mouse,
+        _paste: paste,
         _icons: icons,
         worker: Some(worker),
         _lock: module_lock,
@@ -357,6 +374,8 @@ fn worker<R: Runtime>(app: AppHandle<R>, rx: Receiver<Job>, jobs: Sender<Job>, l
             Ok(Job::ClaimsChanged) => {
                 let _ = app.emit(EVENT_CHANGED, ());
             }
+            Ok(Job::CutPasted(paths)) => release_cut_files(&app, &paths),
+            Ok(Job::VialBlurred(label)) => release_focus_later(&app, label),
             Ok(Job::ButtonDown(at)) => {
                 let outside = app.try_state::<ModuleState>().is_some_and(|state| {
                     lock(&state.menu_rect).is_some_and(|r| at.0 < r.left || at.0 >= r.right || at.1 < r.top || at.1 >= r.bottom)
@@ -577,10 +596,15 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                 let _ = window.set_position(position);
                 let _ = window.set_size(size);
                 let jobs = jobs.clone();
-                window.on_window_event(move |event| {
-                    if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
+                let blurred = label.clone();
+                window.on_window_event(move |event| match event {
+                    WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
                         let _ = jobs.send(Job::WindowChanged);
                     }
+                    WindowEvent::Focused(false) => {
+                        let _ = jobs.send(Job::VialBlurred(blurred.clone()));
+                    }
+                    _ => {}
                 });
                 if cfg.theme == VialTheme::Glass {
                     apply_glass(&window, cfg.glass_blur, cfg.glass_tint);
@@ -840,6 +864,38 @@ pub fn begin_rename<R: Runtime>(app: &AppHandle<R>, vial_id: &str) -> Result<(),
     window.set_focus().map_err(|e| e.to_string())
 }
 
+/// A click inside a vial gives it the keyboard (for Ctrl+C, Ctrl+X, Ctrl+V), without raising it over
+/// the windows above the desktop. Once it loses the focus again it stops taking focus.
+pub fn focus_vial<R: Runtime>(app: &AppHandle<R>, vial_id: &str) -> Result<(), String> {
+    let window = app.get_webview_window(&label_for(vial_id)).ok_or("that vial has no window")?;
+    if window.is_focused().unwrap_or(false) {
+        return Ok(());
+    }
+    window.set_focusable(true).map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    if let Ok(hwnd) = window.hwnd() {
+        platform::send_to_bottom(hwnd.0 as isize);
+    }
+    Ok(())
+}
+
+/// A vial lost the focus: if it did not get it back within a moment (it can flicker while the window
+/// changes), it goes back to a window that never takes focus.
+fn release_focus_later<R: Runtime>(app: &AppHandle<R>, label: String) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(250));
+        let Some(window) = app.get_webview_window(&label) else { return };
+        if window.is_focused().unwrap_or(false) {
+            return;
+        }
+        let _ = window.set_focusable(false);
+        if let Ok(hwnd) = window.hwnd() {
+            let _ = platform::mark_as_tool_window(hwnd.0 as isize);
+        }
+    });
+}
+
 /// Back to a window that never takes focus, and back under every other window.
 pub fn end_rename<R: Runtime>(app: &AppHandle<R>, vial_id: &str) -> Result<(), String> {
     let window = app.get_webview_window(&label_for(vial_id)).ok_or("that vial has no window")?;
@@ -964,13 +1020,107 @@ pub async fn show_item_menu<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Re
 /// Only things Vials knows about may be dragged, opened or given a menu, so the UI cannot be used
 /// to act on arbitrary paths: items in a vial, or on the desktop.
 pub(crate) fn ensure_known_item(state: &ModuleState, id: &str) -> Result<(), String> {
-    if state.config().vial_of(id).is_some() {
+    ensure_known_items(state, std::slice::from_ref(&id.to_string()))
+}
+
+pub(crate) fn ensure_known_items(state: &ModuleState, ids: &[String]) -> Result<(), String> {
+    let cfg = state.config();
+    let unassigned: Vec<&String> = ids.iter().filter(|id| cfg.vial_of(id).is_none()).collect();
+    if unassigned.is_empty() {
         return Ok(());
     }
-    let on_desktop = state.layer()?.items().map_err(|e| e.to_string())?.iter().any(|i| i.id == id);
-    if on_desktop {
-        Ok(())
-    } else {
-        Err(format!("{id} is not an item on the desktop"))
+    let on_desktop: HashSet<String> = state.layer()?.items().map_err(|e| e.to_string())?.into_iter().map(|i| i.id).collect();
+    match unassigned.into_iter().find(|id| !on_desktop.contains(*id)) {
+        Some(id) => Err(format!("{id} is not an item on the desktop")),
+        None => Ok(()),
+    }
+}
+
+// -------------------------------------------------------------------- copy, cut and paste
+
+/// Ctrl+C / Ctrl+X on items in a vial: the real files go on the clipboard, so Explorer and any other
+/// program can paste them (a cut moves them there). System items (Recycle Bin) have no file.
+pub async fn copy_items<R: Runtime>(app: &AppHandle<R>, item_ids: Vec<String>, cut: bool) -> Result<(), String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    let paths: Vec<String> = item_ids.into_iter().filter(|id| !id.starts_with("::")).collect();
+    if paths.is_empty() {
+        return Err("System items such as the Recycle Bin have no file to copy".into());
+    }
+    ensure_known_items(&state, &paths)?;
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(platform::clipboard::put_files(&paths, cut));
+    })
+    .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv().map_err(|e| e.to_string())?)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Ctrl+V in a vial: the files on the clipboard come to the Desktop (moved when they were cut, copied
+/// otherwise, by Explorer's own file operation) and go into the vial. Files cut on the Desktop already
+/// are only moved between vials. Returns how many items the vial received.
+pub async fn paste_into_vial<R: Runtime>(app: &AppHandle<R>, vial_id: &str) -> Result<usize, String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    if state.config().vial(vial_id).is_none() {
+        return Err("that vial no longer exists".into());
+    }
+    let folders: Vec<String> = desqu_desktop::desktop_folders().iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let target = folders.first().cloned().ok_or("the Desktop folder was not found")?;
+    let ids: Vec<String> = state.layer()?.items().map_err(|e| e.to_string())?.into_iter().map(|i| i.id).collect();
+
+    // A thread of its own: the file operation runs until it is done and shows its own dialogs.
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("vials-paste".into())
+        .spawn(move || {
+            let _ = tx.send(paste_files(&folders, &target, &ids));
+        })
+        .map_err(|e| e.to_string())?;
+    let items = tauri::async_runtime::spawn_blocking(move || rx.recv().map_err(|e| e.to_string())?)
+        .await
+        .map_err(|e| e.to_string())??;
+
+    let count = items.len();
+    if count > 0 {
+        let vial = vial_id.to_string();
+        state.update_config(|cfg| {
+            for item in &items {
+                cfg.assign(item, Some(&vial));
+            }
+        })?;
+    }
+    Ok(count)
+}
+
+/// Brings the clipboard's files to the Desktop folder. Returns the ids of the items that now belong in
+/// the vial.
+fn paste_files(folders: &[String], target: &str, ids: &[String]) -> Result<Vec<String>, String> {
+    let clip = platform::clipboard::files()?.ok_or("There are no files on the clipboard")?;
+    let plan = clip::plan_paste(&clip.paths, clip.cut, folders);
+    let mut items = clip::matching_ids(&plan.adopt, ids);
+    items.extend(platform::clipboard::transfer(&plan.copy_here, false, target, true)?);
+    items.extend(platform::clipboard::transfer(&plan.transfer, clip.cut, target, false)?);
+    if clip.cut {
+        // As in Explorer, a pasted cut is used up.
+        platform::clipboard::clear();
+    }
+    Ok(items)
+}
+
+/// Ctrl+V on the desktop right after files were cut: Explorer does nothing when they are pasted into
+/// the folder they are in, so the ones that sit in a vial are taken out of it here.
+fn release_cut_files<R: Runtime>(app: &AppHandle<R>, paths: &[String]) {
+    let Some(state) = app.try_state::<ModuleState>() else { return };
+    let ids = clip::matching_ids(paths, &state.config().assigned_ids());
+    if ids.is_empty() {
+        return;
+    }
+    if let Err(e) = state.update_config(|cfg| {
+        for id in &ids {
+            cfg.assign(id, None);
+        }
+    }) {
+        tracing::warn!("could not take the pasted items out of their vial: {e}");
     }
 }

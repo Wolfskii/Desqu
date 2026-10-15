@@ -35,6 +35,21 @@ pub(crate) fn mark_as_tool_window(hwnd: isize) -> Result<(), String> {
     }
 }
 
+/// Puts a window back at the bottom of the z-order without activating it (used after a vial took the
+/// keyboard focus, which would otherwise leave it above other windows).
+pub(crate) fn send_to_bottom(hwnd: isize) {
+    let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+    // SAFETY: `hwnd` is a window of this process, owned by Tauri, that is still alive.
+    unsafe {
+        let _ = SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+}
+
+/// Calls the handler with the files that were cut when Ctrl+V is pressed on the desktop.
+pub(crate) fn watch_cut_paste(on_paste: Box<dyn Fn(Vec<String>) + Send>) -> Result<desqu_desktop::CutPasteWatcher, String> {
+    desqu_desktop::watch_cut_paste(on_paste).map_err(|e| e.to_string())
+}
+
 // ------------------------------------------------------------------------- the desktop marquee
 
 use std::cell::RefCell;

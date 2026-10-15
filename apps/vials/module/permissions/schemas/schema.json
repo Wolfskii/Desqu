@@ -319,6 +319,18 @@
           "markdownDescription": "Denies the begin_rename command without any pre-configured scope."
         },
         {
+          "description": "Enables the copy_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-copy-items",
+          "markdownDescription": "Enables the copy_items command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the copy_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-copy-items",
+          "markdownDescription": "Denies the copy_items command without any pre-configured scope."
+        },
+        {
           "description": "Enables the create_vial_from_menu command without any pre-configured scope.",
           "type": "string",
           "const": "allow-create-vial-from-menu",
@@ -389,6 +401,18 @@
           "type": "string",
           "const": "deny-end-rename",
           "markdownDescription": "Denies the end_rename command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the focus_vial command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-focus-vial",
+          "markdownDescription": "Enables the focus_vial command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the focus_vial command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-focus-vial",
+          "markdownDescription": "Denies the focus_vial command without any pre-configured scope."
         },
         {
           "description": "Enables the get_config command without any pre-configured scope.",
@@ -499,6 +523,18 @@
           "markdownDescription": "Denies the open_item command without any pre-configured scope."
         },
         {
+          "description": "Enables the paste_into_vial command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-paste-into-vial",
+          "markdownDescription": "Enables the paste_into_vial command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the paste_into_vial command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-paste-into-vial",
+          "markdownDescription": "Denies the paste_into_vial command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_config command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-config",
@@ -523,10 +559,10 @@
           "markdownDescription": "Denies the show_item_menu command without any pre-configured scope."
         },
         {
-          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
         }
       ]
     }

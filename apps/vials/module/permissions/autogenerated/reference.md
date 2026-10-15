@@ -18,6 +18,9 @@ Everything the Vials UI needs
 - `allow-drop-items`
 - `allow-drag-item-out`
 - `allow-show-item-menu`
+- `allow-copy-items`
+- `allow-paste-into-vial`
+- `allow-focus-vial`
 - `allow-get-monitors`
 - `allow-desktop-status`
 - `allow-module-start`
@@ -81,6 +84,32 @@ Enables the begin_rename command without any pre-configured scope.
 <td>
 
 Denies the begin_rename command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-copy-items`
+
+</td>
+<td>
+
+Enables the copy_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-copy-items`
+
+</td>
+<td>
+
+Denies the copy_items command without any pre-configured scope.
 
 </td>
 </tr>
@@ -237,6 +266,32 @@ Enables the end_rename command without any pre-configured scope.
 <td>
 
 Denies the end_rename command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-focus-vial`
+
+</td>
+<td>
+
+Enables the focus_vial command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-focus-vial`
+
+</td>
+<td>
+
+Denies the focus_vial command without any pre-configured scope.
 
 </td>
 </tr>
@@ -471,6 +526,32 @@ Enables the open_item command without any pre-configured scope.
 <td>
 
 Denies the open_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-paste-into-vial`
+
+</td>
+<td>
+
+Enables the paste_into_vial command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-paste-into-vial`
+
+</td>
+<td>
+
+Denies the paste_into_vial command without any pre-configured scope.
 
 </td>
 </tr>

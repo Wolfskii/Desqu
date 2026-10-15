@@ -29,3 +29,7 @@ pub(crate) fn icons_visible() -> DesktopResult<bool> {
 pub(crate) fn nudge_timing(_item_id: &str, _rounds: usize) -> DesktopResult<std::time::Duration> {
     Err(DesktopError::Unsupported)
 }
+
+pub(crate) fn desktop_folders() -> Vec<std::path::PathBuf> {
+    Vec::new()
+}

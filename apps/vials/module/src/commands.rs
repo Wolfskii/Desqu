@@ -193,6 +193,24 @@ pub async fn drag_item_out<R: Runtime>(app: AppHandle<R>, item_id: String) -> Cm
     engine::drag_item_out(&app, &item_id).await
 }
 
+/// Ctrl+C (`cut` false) or Ctrl+X on items in a vial.
+#[tauri::command]
+pub async fn copy_items<R: Runtime>(app: AppHandle<R>, item_ids: Vec<String>, cut: bool) -> CmdResult<()> {
+    engine::copy_items(&app, item_ids, cut).await
+}
+
+/// Ctrl+V in a vial: returns how many items the vial received.
+#[tauri::command]
+pub async fn paste_into_vial<R: Runtime>(app: AppHandle<R>, vial_id: String) -> CmdResult<usize> {
+    engine::paste_into_vial(&app, &vial_id).await
+}
+
+/// A click inside a vial: it takes the keyboard focus so the shortcuts work.
+#[tauri::command]
+pub async fn focus_vial<R: Runtime>(app: AppHandle<R>, vial_id: String) -> CmdResult<()> {
+    engine::focus_vial(&app, &vial_id)
+}
+
 /// Right click on an item in a vial: Explorer's own context menu for that file, folder or shortcut.
 #[tauri::command]
 pub async fn show_item_menu<R: Runtime>(app: AppHandle<R>, item_id: String) -> CmdResult<()> {

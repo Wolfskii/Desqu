@@ -37,12 +37,21 @@ pub struct SwitchWatcher {
 
 /// Keeps the Ctrl+V hook alive; dropping it removes the hook.
 pub struct CutPasteWatcher {
-    _inner: imp::PasteWatcher,
+    #[cfg(windows)]
+    _inner: desqu_desktop::CutPasteWatcher,
 }
 
 /// Calls `on_paste` with the paths that were cut when Ctrl+V is pressed on the desktop.
 pub fn watch_cut_paste(on_paste: Box<dyn Fn(Vec<String>) + Send + 'static>) -> Result<CutPasteWatcher, String> {
-    imp::PasteWatcher::start(on_paste).map(|w| CutPasteWatcher { _inner: w })
+    #[cfg(windows)]
+    {
+        desqu_desktop::watch_cut_paste(on_paste).map(|w| CutPasteWatcher { _inner: w }).map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = on_paste;
+        Err("not supported on this platform".into())
+    }
 }
 
 pub fn desktops() -> Result<Desktops, String> {
