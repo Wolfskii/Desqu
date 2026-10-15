@@ -47,6 +47,15 @@ impl ItemMatcher {
             }
             ItemMatcher::Kind(kind) => item.kind == *kind,
             ItemMatcher::NameGlob(pattern) => !pattern.is_empty() && glob_match(pattern, &item.name),
+            ItemMatcher::NameContains(text) => {
+                !text.is_empty() && item.name.to_lowercase().contains(&text.trim().to_lowercase())
+            }
+            ItemMatcher::NameStartsWith(text) => {
+                !text.is_empty() && item.name.to_lowercase().starts_with(&text.trim().to_lowercase())
+            }
+            ItemMatcher::NameEndsWith(text) => {
+                !text.is_empty() && item.name.to_lowercase().ends_with(&text.trim().to_lowercase())
+            }
             ItemMatcher::Any(ms) => ms.iter().any(|m| m.matches(item)),
             ItemMatcher::All(ms) => !ms.is_empty() && ms.iter().all(|m| m.matches(item)),
         }
@@ -100,6 +109,9 @@ mod tests {
             items: items.iter().map(|s| s.to_string()).collect(),
             collapsed: false,
             inbox: false,
+            sort_key: None,
+            sort_desc: false,
+            folders_first: false,
         }
     }
 
@@ -126,6 +138,17 @@ mod tests {
         assert!(ItemMatcher::Extension(".pdf".into()).matches(&pdf));
         assert!(!ItemMatcher::Extension("doc".into()).matches(&pdf));
         assert!(!ItemMatcher::Extension("".into()).matches(&pdf));
+    }
+
+    #[test]
+    fn name_text_matchers_ignore_case_and_say_what_they_mean() {
+        let app = item(r"C:\D\Android Studio.lnk", "Android Studio", ItemKind::Shortcut);
+        assert!(ItemMatcher::NameContains("android".into()).matches(&app));
+        assert!(ItemMatcher::NameStartsWith("ANDROID St".into()).matches(&app));
+        assert!(!ItemMatcher::NameStartsWith("Studio".into()).matches(&app));
+        assert!(ItemMatcher::NameEndsWith("studio".into()).matches(&app));
+        assert!(!ItemMatcher::NameContains("".into()).matches(&app), "an empty text matches nothing");
+        assert!(ItemMatcher::NameContains("roid".into()).matches(&app), "without any wildcard");
     }
 
     #[test]
@@ -171,4 +194,5 @@ mod tests {
         cfg.auto_sort = false;
         assert!(assign_new_items(&cfg, &items).is_empty());
     }
+
 }

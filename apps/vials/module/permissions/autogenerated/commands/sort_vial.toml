@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-sort-vial"
+description = "Enables the sort_vial command without any pre-configured scope."
+commands.allow = ["sort_vial"]
+
+[[permission]]
+identifier = "deny-sort-vial"
+description = "Denies the sort_vial command without any pre-configured scope."
+commands.deny = ["sort_vial"]

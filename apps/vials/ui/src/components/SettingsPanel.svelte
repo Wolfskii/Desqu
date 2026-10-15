@@ -1,6 +1,7 @@
 <script lang="ts">
   import { SettingsRow, ShellSettingsSection, Switch, UpdateCard } from "@desqu/ui";
   import { vials } from "../state.svelte";
+  import type { VialTheme } from "../types";
 
   let { showShellSettings = true }: { showShellSettings?: boolean } = $props();
 </script>
@@ -22,18 +23,20 @@
         }}
       />
     </SettingsRow>
-    <SettingsRow label="Look of vials" description="Glass blurs the desktop behind a vial with rounded corners and light edges. Classic is a plain dark panel.">
+    <SettingsRow label="Look of vials" description="Glass blurs the desktop behind a vial with rounded corners and light edges. Fluent is the Windows 11 look with solid, hairline-edged surfaces, dark or light. Classic is a plain dark panel.">
       <select
         value={vials.config?.theme ?? "glass"}
         disabled={!vials.config}
         aria-label="Look of vials"
         onchange={(e) => {
           if (!vials.config) return;
-          vials.config.theme = e.currentTarget.value === "classic" ? "classic" : "glass";
+          vials.config.theme = e.currentTarget.value as VialTheme;
           vials.scheduleSave(true);
         }}
       >
         <option value="glass">Glass</option>
+        <option value="fluent">Fluent (dark)</option>
+        <option value="fluentLight">Fluent (light)</option>
         <option value="classic">Classic</option>
       </select>
     </SettingsRow>

@@ -8,7 +8,7 @@ mod windows;
 pub(crate) use desqu_desktop::CutPasteWatcher;
 #[cfg(windows)]
 pub(crate) use self::windows::{send_to_bottom, watch_cut_paste, 
-    drag_item, mark_as_tool_window, round_corners, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
+    cursor_position, drag_items, mark_as_tool_window, round_corners, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
 };
 
 #[cfg(not(windows))]
@@ -47,11 +47,11 @@ pub(crate) fn set_context_menu(_exe: Option<&str>) -> Result<(), String> {
 pub(crate) enum DragEnd {
     Cancelled,
     OnDesktop((i32, i32)),
-    Dropped { at: (i32, i32), accepted: bool },
+    Dropped { at: (i32, i32), accepted: bool, moved: bool },
 }
 
 #[cfg(not(windows))]
-pub(crate) fn drag_item(_path: &str) -> Result<DragEnd, String> {
+pub(crate) fn drag_items(_paths: &[String]) -> Result<DragEnd, String> {
     Err("Vials is only available on Windows".into())
 }
 
@@ -81,6 +81,11 @@ pub(crate) struct CutPasteWatcher;
 #[cfg(not(windows))]
 pub(crate) fn watch_cut_paste(_on_paste: Box<dyn Fn(Vec<String>) + Send>) -> Result<CutPasteWatcher, String> {
     Err("Vials is only available on Windows".into())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn cursor_position() -> Option<(i32, i32)> {
+    None
 }
 
 #[cfg(not(windows))]

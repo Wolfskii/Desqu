@@ -6,3 +6,4 @@ pub mod gesture;
 pub mod layout;
 pub mod model;
 pub mod rules;
+pub mod sort;

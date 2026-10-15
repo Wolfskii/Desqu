@@ -189,8 +189,38 @@ pub async fn drop_items(state: State<'_, ModuleState>, vial_id: String, paths: V
 /// dropped on another vial, that vial's own drop handling takes it; dropped anywhere else the target
 /// does what Windows would do for the real file (move, copy or shortcut).
 #[tauri::command]
-pub async fn drag_item_out<R: Runtime>(app: AppHandle<R>, item_id: String) -> CmdResult<()> {
-    engine::drag_item_out(&app, &item_id).await
+pub async fn drag_items_out<R: Runtime>(app: AppHandle<R>, item_ids: Vec<String>) -> CmdResult<()> {
+    engine::drag_items_out(&app, item_ids).await
+}
+
+/// Turns "folders first" on or off for a vial (it overrides the sort field and direction).
+#[tauri::command]
+pub async fn set_vial_folders_first<R: Runtime>(app: AppHandle<R>, vial_id: String, on: bool) -> CmdResult<()> {
+    engine::set_vial_folders_first(&app, &vial_id, on)
+}
+
+/// Files dropped on a folder (one shown in a vial or on the desktop) move into it.
+#[tauri::command]
+pub async fn move_into_folder<R: Runtime>(app: AppHandle<R>, folder_id: String, paths: Vec<String>) -> CmdResult<usize> {
+    engine::move_into_folder(&app, &folder_id, paths).await
+}
+
+/// Opens the vial's own menu at the pointer (sorting, automatic rules).
+#[tauri::command]
+pub async fn open_vial_menu<R: Runtime>(app: AppHandle<R>, vial_id: String) -> CmdResult<()> {
+    engine::show_vial_menu(&app, &vial_id)
+}
+
+/// Opens the automatic rules window (a new rule for `vial_id`, when given).
+#[tauri::command]
+pub async fn open_rules<R: Runtime>(app: AppHandle<R>, vial_id: Option<String>) -> CmdResult<()> {
+    engine::open_rules(&app, vial_id.as_deref())
+}
+
+/// Orders the items of a vial by name, type, date modified or size (Explorer-style).
+#[tauri::command]
+pub async fn sort_vial_items<R: Runtime>(app: AppHandle<R>, vial_id: String, key: String, descending: bool) -> CmdResult<()> {
+    engine::sort_vial_items(&app, &vial_id, &key, descending)
 }
 
 /// Ctrl+C (`cut` false) or Ctrl+X on items in a vial.

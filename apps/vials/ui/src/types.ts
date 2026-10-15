@@ -21,6 +21,11 @@ export interface Vial {
     collapsed?: boolean;
     /** The built-in "Desktop" vial: it shows every item that is in no other vial. */
     inbox?: boolean;
+    /** The sort last chosen for the items ("name", "type", "modified", "size"). */
+    sortKey?: string | null;
+    sortDesc?: boolean;
+    /** Folders stay on top whatever the sort. */
+    foldersFirst?: boolean;
 }
 
 export type ItemKind = "shortcut" | "folder" | "app" | "file" | "special";
@@ -29,6 +34,9 @@ export type ItemMatcher =
     | { type: "extension"; value: string }
     | { type: "kind"; value: ItemKind }
     | { type: "nameGlob"; value: string }
+    | { type: "nameContains"; value: string }
+    | { type: "nameStartsWith"; value: string }
+    | { type: "nameEndsWith"; value: string }
     | { type: "any"; value: ItemMatcher[] }
     | { type: "all"; value: ItemMatcher[] };
 
@@ -41,7 +49,7 @@ export interface SortRule {
     targetVial: string;
 }
 
-export type VialTheme = "glass" | "classic";
+export type VialTheme = "glass" | "classic" | "fluent" | "fluentLight";
 export type GlassBlur = "frosted" | "clear";
 
 export interface VialsConfig {

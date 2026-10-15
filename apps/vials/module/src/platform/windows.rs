@@ -45,6 +45,14 @@ pub(crate) fn send_to_bottom(hwnd: isize) {
     }
 }
 
+/// Where the mouse pointer is, in screen pixels.
+pub(crate) fn cursor_position() -> Option<(i32, i32)> {
+    let mut at = POINT::default();
+    // SAFETY: plain cursor query into a local.
+    unsafe { GetCursorPos(&mut at) }.ok()?;
+    Some((at.x, at.y))
+}
+
 /// Calls the handler with the files that were cut when Ctrl+V is pressed on the desktop.
 pub(crate) fn watch_cut_paste(on_paste: Box<dyn Fn(Vec<String>) + Send>) -> Result<desqu_desktop::CutPasteWatcher, String> {
     desqu_desktop::watch_cut_paste(on_paste).map_err(|e| e.to_string())
@@ -327,6 +335,10 @@ impl IDropSource_Impl for DropSource_Impl {
             // SAFETY: plain cursor query into a local.
             let _ = unsafe { GetCursorPos(&mut at) };
             if on_desktop_view(at.x, at.y) {
+                // Over a desktop folder the drop goes to Explorer, which moves the file into it.
+                if desqu_desktop::folder_at(desqu_desktop::Point { x: at.x, y: at.y }).ok().flatten().is_some() {
+                    return DRAGDROP_S_DROP;
+                }
                 *self.released_on_desktop.lock().unwrap_or_else(|e| e.into_inner()) = Some((at.x, at.y));
                 DRAGDROP_S_CANCEL
             } else {
@@ -349,20 +361,24 @@ pub(crate) enum DragEnd {
     /// Let go over the empty desktop (nothing was handed to Explorer): place the icon here.
     OnDesktop((i32, i32)),
     /// Dropped at this screen position and `moved_or_copied` tells whether a target accepted it.
-    Dropped { at: (i32, i32), accepted: bool },
+    /// `moved`: the target took the files with a move (they left their place).
+    Dropped { at: (i32, i32), accepted: bool, moved: bool },
 }
 
 /// Starts the standard Windows drag of one file or folder (its icon follows the cursor, targets
 /// see a real shell item, Ctrl/Shift/Alt choose copy/move/link) and returns when it ends. Must run
 /// on the thread that owns the window the drag started from, because the drag runs a modal loop.
-pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
+pub(crate) fn drag_items(paths: &[String]) -> Result<DragEnd, String> {
+    let Some(first) = paths.first() else { return Err("there is nothing to drag".into()) };
     // SAFETY: COM/OLE calls on the calling (UI) thread; all interface pointers stay alive across
     // the drag, and the bitmap handle is released afterwards.
     unsafe {
         let _ = OleInitialize(None);
         let item: IShellItem =
-            SHCreateItemFromParsingName(&HSTRING::from(path), None).map_err(|e| e.to_string())?;
-        let data: IDataObject = item.BindToHandler(None, &BHID_DataObject).map_err(|e| e.to_string())?;
+            SHCreateItemFromParsingName(&HSTRING::from(first.as_str()), None).map_err(|e| e.to_string())?;
+        // One data object for all of them, so the target sees every file at once.
+        let array = super::clipboard::items_array(paths)?;
+        let data: IDataObject = array.BindToHandler(None, &BHID_DataObject).map_err(|e| e.to_string())?;
 
         // The ghost icon under the cursor, like Explorer shows. Optional: a drag without it still works.
         let helper = CoCreateInstance::<_, IDragSourceHelper>(&DRAG_DROP_HELPER, None, CLSCTX_INPROC_SERVER).ok();
@@ -398,7 +414,7 @@ pub(crate) fn drag_item(path: &str) -> Result<DragEnd, String> {
         if let Some(at) = on_desktop {
             Ok(DragEnd::OnDesktop(at))
         } else if result == DRAGDROP_S_DROP {
-            Ok(DragEnd::Dropped { at: (at.x, at.y), accepted: effect.0 != 0 })
+            Ok(DragEnd::Dropped { at: (at.x, at.y), accepted: effect.0 != 0, moved: effect.0 & DROPEFFECT_MOVE.0 != 0 })
         } else if result == DRAGDROP_S_CANCEL || result.is_ok() {
             Ok(DragEnd::Cancelled)
         } else {

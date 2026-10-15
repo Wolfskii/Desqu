@@ -96,6 +96,12 @@ class VialsState {
         }
     }
 
+    /** Saves now, dropping a pending debounced save. */
+    async flush() {
+        if (this.#saveTimer) clearTimeout(this.#saveTimer);
+        await this.#save();
+    }
+
     /** Call after mutating `config` in place; persists after a short debounce. */
     scheduleSave(immediate = false) {
         this.saveState = "pending";

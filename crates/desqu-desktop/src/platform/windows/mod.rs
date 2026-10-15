@@ -31,6 +31,7 @@ enum Command {
     Hide { owner: String, ids: Vec<String>, reply: Reply<HideReport> },
     Show { owner: String, ids: Vec<String>, reply: Reply<()> },
     ShowAt { owner: String, id: String, screen: Point, reply: Reply<()> },
+    ShowBlock { owner: String, ids: Vec<String>, screen: Point, reply: Reply<()> },
     ShowAll { owner: String, reply: Reply<()> },
     Hidden { owner: String, reply: Reply<Vec<String>> },
     SetSurface { owner: String, on: bool, reply: Reply<()> },
@@ -211,6 +212,32 @@ pub(crate) fn surface_probe() -> DesktopResult<(usize, usize, usize, bool)> {
         .map_err(|_| DesktopError::Native { op: "probe", message: "thread panicked".into() })?
 }
 
+/// The id of the desktop folder under `screen` (screen pixels), or `None` when the icon under it is not
+/// a folder or there is no icon there. Read-only.
+pub(crate) fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
+    std::thread::Builder::new()
+        .name("desqu-desktop-folder-at".into())
+        .spawn(move || {
+            with_com(|| {
+                // SAFETY: on a COM thread of its own.
+                unsafe {
+                    let view = shell::desktop_view()?;
+                    let lv = shell::listview()?;
+                    let p = shell::screen_to_client(lv, screen);
+                    let Some(index) = shell::hit_item(lv, p) else { return Ok(None) };
+                    let raw = shell::list(&view)?;
+                    Ok(raw
+                        .into_iter()
+                        .find(|r| r.index == index)
+                        .filter(|r| Path::new(&r.id).is_dir())
+                        .map(|r| r.id))
+                }
+            })
+        })?
+        .join()
+        .map_err(|_| DesktopError::Native { op: "folder at", message: "thread panicked".into() })?
+}
+
 /// How many desktop items are selected right now. Read-only, takes no lock.
 pub(crate) fn selection_count() -> DesktopResult<usize> {
     std::thread::Builder::new()
@@ -306,6 +333,9 @@ fn worker(rx: Receiver<Command>, path: PathBuf, notifier: Arc<Notifier>) {
             }
             Command::Show { owner, ids, reply } => {
                 let _ = reply.send(show(&mut state, &owner, &ids));
+            }
+            Command::ShowBlock { owner, ids, screen, reply } => {
+                let _ = reply.send(show_block(&mut state, &owner, &ids, screen));
             }
             Command::ShowAt { owner, id, screen, reply } => {
                 let _ = reply.send(show_at(&mut state, &owner, &id, screen));
@@ -429,13 +459,8 @@ fn hide_by_attribute(state: &mut State, owner: &str, ids: &[String]) -> DesktopR
             continue;
         };
         let at = raw.iter().find(|r| &r.id == id).map(|r| r.pos);
-        // Not in the view although the file exists: hidden already by someone (us or the user), or
-        // the view has not caught up with a new file yet.
-        let known = state.journal.contains(id);
-        if at.is_none() && !known && !was_hidden {
-            report.missing.push(id.clone());
-            continue;
-        }
+        // The file exists, which is all that is needed. The view may not have caught up with a new
+        // file yet; marking it now means it never shows on the desktop at all.
         if state.journal.claim_attr(owner, id, at.unwrap_or(FALLBACK_ORIGIN), was_hidden) {
             to_mark.push(id.clone());
         }
@@ -544,6 +569,53 @@ unsafe fn place_when_back(id: &str, screen: Point) {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
+}
+
+/// Gap between the icons of a block shown at once (screen pixels), and icons per row.
+const BLOCK_STEP: (i32, i32) = (80, 90);
+const BLOCK_PER_ROW: usize = 6;
+
+/// Shows several items for `owner` at once and lays them out as one block from `screen`. The files
+/// are restored in one pass, and the desktop view is waited for once, so the block appears together.
+fn show_block(state: &mut State, owner: &str, ids: &[String], screen: Point) -> DesktopResult<()> {
+    if state.surface.is_some() {
+        return show(state, owner, ids);
+    }
+    let mut next = state.journal.clone();
+    let restore: Vec<ParkedItem> = ids.iter().filter_map(|id| next.unpark_item(owner, id)).collect();
+    restore_items(&restore)?;
+    state.journal = next;
+    state.save()?;
+
+    let placed: Vec<String> = restore.iter().filter(|i| i.by_attribute).map(|i| i.id.clone()).collect();
+    if placed.is_empty() {
+        return Ok(());
+    }
+    // SAFETY: on the COM thread.
+    unsafe {
+        let lv = shell::listview()?;
+        let origin = shell::screen_to_client(lv, screen);
+        let started = std::time::Instant::now();
+        loop {
+            let raw = shell::list(&shell::desktop_view()?)?;
+            let all_back = placed.iter().all(|id| raw.iter().any(|r| &r.id == id));
+            if all_back || started.elapsed() >= Duration::from_secs(3) {
+                for (n, id) in placed.iter().enumerate() {
+                    let Some(item) = raw.iter().find(|r| &r.id == id) else { continue };
+                    let spot = Point {
+                        x: origin.x - ICON_HALF + (n % BLOCK_PER_ROW) as i32 * BLOCK_STEP.0,
+                        y: origin.y - ICON_HALF + (n / BLOCK_PER_ROW) as i32 * BLOCK_STEP.1,
+                    };
+                    if let Err(e) = shell::set_position(lv, item.index, spot) {
+                        tracing::warn!("could not place {id} in the block: {e}");
+                    }
+                }
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+    }
+    Ok(())
 }
 
 fn show_all(state: &mut State, owner: &str) -> DesktopResult<()> {
@@ -703,6 +775,10 @@ impl DesktopLayer for Handle {
 
     fn show_at(&self, id: &str, screen: Point) -> DesktopResult<()> {
         self.host.call(|reply| Command::ShowAt { owner: self.owner.clone(), id: id.to_string(), screen, reply })
+    }
+
+    fn show_block(&self, ids: &[String], screen: Point) -> DesktopResult<()> {
+        self.host.call(|reply| Command::ShowBlock { owner: self.owner.clone(), ids: ids.to_vec(), screen, reply })
     }
 
     fn show_all(&self) -> DesktopResult<()> {

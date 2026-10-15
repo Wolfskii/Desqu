@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-move-into-folder"
+description = "Enables the move_into_folder command without any pre-configured scope."
+commands.allow = ["move_into_folder"]
+
+[[permission]]
+identifier = "deny-move-into-folder"
+description = "Denies the move_into_folder command without any pre-configured scope."
+commands.deny = ["move_into_folder"]

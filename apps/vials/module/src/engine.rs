@@ -42,6 +42,9 @@ const LABEL_PREFIX: &str = "vial-";
 /// The small "create a vial" popup. Its label must not start with `vial-` (those are vials).
 pub const MENU_LABEL: &str = "vials-menu";
 const MENU_SIZE: (f64, f64) = (230.0, 46.0);
+/// The vial's own menu: its actions, and the "Sort by" box that opens to the right of them.
+pub const VIAL_MENU_LABEL: &str = "vials-vmenu";
+const VIAL_MENU_SIZE: (f64, f64) = (430.0, 300.0);
 /// Explorer updates its selection a moment after the button is released.
 const SELECTION_SETTLE: Duration = Duration::from_millis(220);
 /// The desktop view shows a new item several seconds after the file appears.
@@ -439,10 +442,12 @@ fn reconcile<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>, jobs
     {
         let mut cfg = lock(&state.config);
         let assignments = rules::assign_new_items(&cfg, &items);
-        if !assignments.is_empty() {
-            for (item, vial) in assignments {
-                cfg.assign(&item, Some(&vial));
-            }
+        for (item, vial) in &assignments {
+            cfg.assign(item, Some(vial));
+        }
+        // Vials with a sort keep it as their items change.
+        let reordered = apply_vial_orders(&mut cfg, &items);
+        if !assignments.is_empty() || reordered {
             if let Err(e) = cfg.save(&state.config_path) {
                 tracing::warn!("could not save vials config: {e}");
             }
@@ -469,7 +474,13 @@ fn reconcile<R: Runtime>(app: &AppHandle<R>, layer: &Arc<dyn DesktopLayer>, jobs
         }
         Err(e) => problem = Some(e.to_string()),
     }
-    let to_hide: Vec<String> = desired.iter().filter(|id| on_desktop.contains(id.as_str())).cloned().collect();
+    // Anything assigned that exists is hidden straight away, even when the view has not listed a new
+    // file yet (that used to wait for a retry several seconds later).
+    let to_hide: Vec<String> = desired
+        .iter()
+        .filter(|id| on_desktop.contains(id.as_str()) || std::path::Path::new(id.as_str()).exists())
+        .cloned()
+        .collect();
     // An assigned item that is not on the desktop (yet) may just be lagging in the view.
     if desired.iter().any(|id| !on_desktop.contains(id.as_str())) {
         missing = true;
@@ -587,7 +598,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
             .skip_taskbar(true)
             .always_on_bottom(true)
             .focusable(false)
-            .shadow(cfg.theme == VialTheme::Glass)
+            .shadow(cfg.theme != VialTheme::Classic)
             .transparent(true)
             .visible(false)
             .build();
@@ -606,9 +617,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                     }
                     _ => {}
                 });
-                if cfg.theme == VialTheme::Glass {
-                    apply_glass(&window, cfg.glass_blur, cfg.glass_tint);
-                }
+                apply_theme_effects(&window, cfg);
                 // With "Show desktop icons" off the vial stays hidden until the icons come back.
                 let icons_on = app.try_state::<ModuleState>().map(|s| s.icons_visible.load(Ordering::Relaxed));
                 if icons_on.unwrap_or(true) {
@@ -763,23 +772,57 @@ pub fn close_menu<R: Runtime>(app: &AppHandle<R>) {
     if let Some(state) = app.try_state::<ModuleState>() {
         *lock(&state.menu_rect) = None;
     }
-    if let Some(window) = app.get_webview_window(MENU_LABEL) {
-        let _ = window.destroy();
+    for label in [MENU_LABEL, VIAL_MENU_LABEL] {
+        if let Some(window) = app.get_webview_window(label) {
+            let _ = window.destroy();
+        }
     }
 }
 
 fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), String> {
+    open_popup(app, MENU_LABEL, "vials-menu", "Create a vial", MENU_SIZE, cursor)
+}
+
+/// The menu of a vial, opened where it was right-clicked.
+pub fn show_vial_menu<R: Runtime>(app: &AppHandle<R>, vial_id: &str) -> Result<(), String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    match state.config().vial(vial_id) {
+        None => return Err("that vial no longer exists".into()),
+        Some(vial) if vial.inbox => return Err("the Desktop vial has no menu of its own".into()),
+        Some(_) => {}
+    }
+    let cursor = platform::cursor_position().ok_or("the pointer position is not known")?;
+    open_popup(
+        app,
+        VIAL_MENU_LABEL,
+        &format!("vial-menu?vial={vial_id}"),
+        "Vial",
+        VIAL_MENU_SIZE,
+        cursor,
+    )
+}
+
+/// Opens a small popup window at `cursor` (screen pixels), kept on its monitor. It stays hidden until its
+/// page asks to be shown (`menu_ready`), and closes when the mouse is pressed outside it.
+fn open_popup<R: Runtime>(
+    app: &AppHandle<R>,
+    label: &str,
+    url: &str,
+    title: &str,
+    size: (f64, f64),
+    cursor: (i32, i32),
+) -> Result<(), String> {
     close_menu(app);
     let monitors = monitor_refs(app);
     let at = PixelRect { left: cursor.0, top: cursor.1, right: cursor.0 + 1, bottom: cursor.1 + 1 };
     let monitor = layout::monitor_containing(&at, &monitors).or(monitors.first()).ok_or("no monitor")?;
-    let size = ((MENU_SIZE.0 * monitor.scale).round() as i32, (MENU_SIZE.1 * monitor.scale).round() as i32);
+    let size = ((size.0 * monitor.scale).round() as i32, (size.1 * monitor.scale).round() as i32);
     let (x, y) = gesture::popup_position(cursor, size, &monitor.bounds);
 
     let look = app.try_state::<ModuleState>().map(|s| s.config());
-    let glass = look.as_ref().is_some_and(|c| c.theme == VialTheme::Glass);
-    let window = WebviewWindowBuilder::new(app, MENU_LABEL, WebviewUrl::App("vials-menu".into()))
-        .title("Create a vial")
+    let glass = look.as_ref().is_some_and(|c| c.theme != VialTheme::Classic);
+    let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+        .title(title)
         .decorations(false)
         .resizable(false)
         .skip_taskbar(true)
@@ -790,8 +833,8 @@ fn show_menu<R: Runtime>(app: &AppHandle<R>, cursor: (i32, i32)) -> Result<(), S
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
-    if let Some(cfg) = look.as_ref().filter(|c| c.theme == VialTheme::Glass) {
-        apply_glass(&window, cfg.glass_blur, cfg.glass_tint);
+    if let Some(cfg) = look.as_ref() {
+        apply_theme_effects(&window, cfg);
     }
     let _ = window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
     let _ = window.set_position(PhysicalPosition::new(x, y));
@@ -827,30 +870,52 @@ fn apply_glass<R: Runtime>(window: &tauri::WebviewWindow<R>, blur: GlassBlur, ti
 
 /// Gives an existing vial window the configured look (the same properties it is built with).
 fn style_window<R: Runtime>(window: &tauri::WebviewWindow<R>, cfg: &VialsConfig) {
+    if cfg.theme == VialTheme::Classic {
+        let _ = window.set_effects(None::<tauri::utils::config::WindowEffectsConfig>);
+        let _ = window.set_shadow(false);
+        if let Ok(hwnd) = window.hwnd() {
+            platform::round_corners(hwnd.0 as isize, false);
+        }
+        return;
+    }
+    apply_theme_effects(window, cfg);
+    let _ = window.set_shadow(true);
+}
+
+/// The window material of a theme: frosted glass, the Fluent acrylic, or none (Classic).
+fn apply_theme_effects<R: Runtime>(window: &tauri::WebviewWindow<R>, cfg: &VialsConfig) {
     match cfg.theme {
-        VialTheme::Glass => {
-            apply_glass(window, cfg.glass_blur, cfg.glass_tint);
-            let _ = window.set_shadow(true);
-        }
-        VialTheme::Classic => {
-            let _ = window.set_effects(None::<tauri::utils::config::WindowEffectsConfig>);
-            let _ = window.set_shadow(false);
-            if let Ok(hwnd) = window.hwnd() {
-                platform::round_corners(hwnd.0 as isize, false);
-            }
-        }
+        VialTheme::Glass => apply_glass(window, cfg.glass_blur, cfg.glass_tint),
+        VialTheme::Fluent => apply_fluent(window, true),
+        VialTheme::FluentLight => apply_fluent(window, false),
+        VialTheme::Classic => {}
+    }
+}
+
+/// The Fluent look: acrylic tinted with Fluent's surface colour (the fallback fill of its fences), with
+/// the 8 px corners of Windows 11 windows.
+fn apply_fluent<R: Runtime>(window: &tauri::WebviewWindow<R>, dark: bool) {
+    let tint = if dark { Color(0x1B, 0x25, 0x2C, 0xF2) } else { Color(0xF4, 0xF7, 0xF8, 0xF2) };
+    let effects = EffectsBuilder::new().effect(Effect::Acrylic).color(tint).build();
+    if let Err(e) = window.set_effects(effects) {
+        tracing::debug!("no acrylic on this system: {e}");
+    }
+    if let Ok(hwnd) = window.hwnd() {
+        platform::round_corners(hwnd.0 as isize, true);
     }
 }
 
 /// The popup's page has loaded: show it and give it the keyboard (for Esc). Dismissal by clicking
 /// elsewhere is done from the mouse hook, not from focus changes, which the web view causes itself.
 pub fn menu_ready<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window(MENU_LABEL) {
-        if window.is_visible().unwrap_or(false) {
-            return;
+    for label in [MENU_LABEL, VIAL_MENU_LABEL] {
+        if let Some(window) = app.get_webview_window(label) {
+            if window.is_visible().unwrap_or(false) {
+                continue;
+            }
+            let _ = window.show();
+            let _ = window.set_focus();
         }
-        let _ = window.show();
-        let _ = window.set_focus();
     }
 }
 
@@ -954,6 +1019,9 @@ fn create_vial_in<R: Runtime>(app: &AppHandle<R>, rect: PixelRect) -> Result<Str
         items: Vec::new(),
         collapsed: false,
         inbox: false,
+        sort_key: None,
+        sort_desc: false,
+        folders_first: false,
     });
     state.set_config(cfg)?;
     Ok(id)
@@ -972,13 +1040,14 @@ fn apply_context_menu(enabled: bool) {
 // --------------------------------------------------------------------- dragging an item out
 
 /// Runs the native drag on the main (UI) thread, waits for it to end and settles the result.
-pub async fn drag_item_out<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Result<(), String> {
+pub async fn drag_items_out<R: Runtime>(app: &AppHandle<R>, item_ids: Vec<String>) -> Result<(), String> {
     let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
-    ensure_known_item(&state, item_id)?;
-    let path = item_id.to_string();
+    ensure_known_items(&state, &item_ids)?;
+    let source = state.config().vial_of(&item_ids[0]).map(|v| v.id.clone());
+    let paths = item_ids.clone();
     let (tx, rx) = mpsc::channel();
     app.run_on_main_thread(move || {
-        let _ = tx.send(platform::drag_item(&path));
+        let _ = tx.send(platform::drag_items(&paths));
     })
     .map_err(|e| e.to_string())?;
     // The drag is modal on the main thread: wait for it without blocking this async worker's peers.
@@ -987,16 +1056,68 @@ pub async fn drag_item_out<R: Runtime>(app: &AppHandle<R>, item_id: &str) -> Res
         .map_err(|e| e.to_string())??;
 
     if let platform::DragEnd::OnDesktop(at) = end {
-        // Back on the desktop: it lands where it was dropped and stops belonging to the vial.
+        // Back on the desktop: they land where they were dropped, in a block, and stop belonging to
+        // the vial.
         let layer = state.layer()?;
-        if let Err(e) = layer.show_at(item_id, desqu_desktop::Point { x: at.0, y: at.1 }) {
-            tracing::warn!("could not place the item where it was dropped: {e}");
-        }
+        place_block(&layer, &item_ids, at);
         let mut cfg = state.config();
-        cfg.assign(item_id, None);
+        for id in &item_ids {
+            cfg.assign(id, None);
+        }
+        state.set_config(cfg)?;
+    } else if let platform::DragEnd::Dropped { moved: true, .. } = end {
+        // Moved by the target (a folder on the desktop, Explorer): they no longer exist where the vial
+        // had them. Only items still in the vial they were dragged from are taken out of it.
+        let mut cfg = state.config();
+        let still_there: Vec<String> = item_ids
+            .iter()
+            .filter(|id| cfg.vial_of(id).map(|v| v.id.as_str()) == source.as_deref() && source.is_some())
+            .cloned()
+            .collect();
+        for id in &still_there {
+            cfg.assign(id, None);
+        }
         state.set_config(cfg)?;
     }
     Ok(())
+}
+
+/// Moves files into a folder (of the desktop, or one shown in a vial) as Explorer does: they are taken
+/// out of the vials and the desktop, and land in the folder. Only desktop items are moved, so a drop from
+/// elsewhere cannot move arbitrary files. Returns how many moved.
+pub async fn move_into_folder<R: Runtime>(app: &AppHandle<R>, folder_id: &str, paths: Vec<String>) -> Result<usize, String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    let layer = state.layer()?;
+    let folder = std::path::Path::new(folder_id);
+    if !folder.is_dir() {
+        return Err("only a folder can take the files".into());
+    }
+    let on_desktop: HashSet<String> = layer.items().map_err(|e| e.to_string())?.into_iter().map(|i| i.id).collect();
+    let items: Vec<String> = paths.into_iter().filter(|p| on_desktop.contains(p) && p.as_str() != folder_id).collect();
+    if items.is_empty() {
+        return Ok(0);
+    }
+    // A hidden file would arrive hidden in the folder: show it first (its vial keeps the reference
+    // until the move is done).
+    layer.show(&items).map_err(|e| e.to_string())?;
+    let target = folder_id.to_string();
+    let moving = items.clone();
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("vials-move".into())
+        .spawn(move || {
+            let _ = tx.send(platform::clipboard::transfer(&moving, true, &target, true));
+        })
+        .map_err(|e| e.to_string())?;
+    let made = tauri::async_runtime::spawn_blocking(move || rx.recv().map_err(|e| e.to_string())?)
+        .await
+        .map_err(|e| e.to_string())??;
+    let mut cfg = state.config();
+    for id in &items {
+        cfg.assign(id, None);
+    }
+    state.set_config(cfg)?;
+    Ok(made.len())
 }
 
 // ------------------------------------------------------------------- the item's right-click menu
@@ -1037,6 +1158,14 @@ pub(crate) fn ensure_known_items(state: &ModuleState, ids: &[String]) -> Result<
 }
 
 // -------------------------------------------------------------------- copy, cut and paste
+
+/// Puts `ids` on the desktop as one block that starts at `at` (screen pixels), six to a row, so they
+/// land together instead of wherever Explorer finds room.
+fn place_block(layer: &Arc<dyn DesktopLayer>, ids: &[String], at: (i32, i32)) {
+    if let Err(e) = layer.show_block(ids, desqu_desktop::Point { x: at.0, y: at.1 }) {
+        tracing::warn!("could not place {} items on the desktop: {e}", ids.len());
+    }
+}
 
 /// Ctrl+C / Ctrl+X on items in a vial: the real files go on the clipboard, so Explorer and any other
 /// program can paste them (a cut moves them there). System items (Recycle Bin) have no file.
@@ -1113,8 +1242,13 @@ fn paste_files(folders: &[String], target: &str, ids: &[String]) -> Result<Vec<S
 fn release_cut_files<R: Runtime>(app: &AppHandle<R>, paths: &[String]) {
     let Some(state) = app.try_state::<ModuleState>() else { return };
     let ids = clip::matching_ids(paths, &state.config().assigned_ids());
+    tracing::info!(pasted = paths.len(), matched = ids.len(), "cut paste on the desktop");
     if ids.is_empty() {
         return;
+    }
+    // They appear together where the pointer is, as a pasted block would on the desktop.
+    if let (Ok(layer), Some(at)) = (state.layer(), platform::cursor_position()) {
+        place_block(&layer, &ids, at);
     }
     if let Err(e) = state.update_config(|cfg| {
         for id in &ids {
@@ -1123,4 +1257,130 @@ fn release_cut_files<R: Runtime>(app: &AppHandle<R>, paths: &[String]) {
     }) {
         tracing::warn!("could not take the pasted items out of their vial: {e}");
     }
+    // The cut is used up: the clipboard no longer offers those files (done here, not in the keyboard
+    // hook, which must return quickly).
+    platform::clipboard::clear();
+    tracing::info!(items = ids.len(), "pasted cut items left their vial");
+}
+
+// ------------------------------------------------------------------------ sorting inside a vial
+
+/// What the sort needs to know about an item, read from the file (and the desktop's name for it).
+fn facts_of(id: &str, name: Option<&String>) -> crate::core::sort::ItemFacts {
+    let path = std::path::Path::new(id);
+    let meta = std::fs::metadata(path).ok();
+    let is_dir = meta.as_ref().is_some_and(|m| m.is_dir());
+    let ext = if is_dir {
+        String::new()
+    } else {
+        path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default()
+    };
+    let fallback = id.rsplit(['\\', '/']).next().unwrap_or(id);
+    crate::core::sort::ItemFacts {
+        id: id.to_string(),
+        name: name.cloned().unwrap_or_else(|| fallback.to_string()),
+        ext,
+        is_dir,
+        modified: meta
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs()),
+        size: meta.as_ref().filter(|m| !m.is_dir()).map(|m| m.len()),
+        present: meta.is_some(),
+    }
+}
+
+/// Puts the items of a vial in the order of `key` (name, type, modified, size), as Explorer sorts a
+/// folder. The order is kept with the vial.
+pub fn sort_vial_items<R: Runtime>(app: &AppHandle<R>, vial_id: &str, key: &str, descending: bool) -> Result<(), String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    let key_name = key;
+    let key = crate::core::sort::SortKey::parse(key).ok_or("unknown sort order")?;
+    let mut cfg = state.config();
+    let vial = cfg.vial(vial_id).ok_or("that vial no longer exists")?;
+    if vial.inbox {
+        return Err("the Desktop vial lists items in the desktop's own order".into());
+    }
+    let names: std::collections::HashMap<String, String> = state
+        .layer()?
+        .items()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|i| (i.id, i.name))
+        .collect();
+    let facts: Vec<_> = vial.items.iter().map(|id| facts_of(id, names.get(id))).collect();
+    let folders_first = vial.folders_first;
+    let order = crate::core::sort::sorted_with(&facts, key, descending, folders_first);
+    if let Some(v) = cfg.vials.iter_mut().find(|v| v.id == vial_id) {
+        v.items = order;
+        v.sort_key = Some(key_name.to_string());
+        v.sort_desc = descending;
+    }
+    state.set_config(cfg)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------- the rules window
+
+/// The window where automatic rules are edited. One window; asking again brings it up.
+pub const RULES_LABEL: &str = "vials-rules";
+/// Tells an open rules window which vial a new rule should go to (`null`: none).
+pub const RULES_OPEN_EVENT: &str = "vials://rules-open";
+
+/// Opens the rules window. `vial` preselects the vial a new rule goes to.
+pub fn open_rules<R: Runtime>(app: &AppHandle<R>, vial: Option<&str>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(RULES_LABEL) {
+        app.emit_to(RULES_LABEL, RULES_OPEN_EVENT, vial.map(str::to_string)).map_err(|e| e.to_string())?;
+        let _ = window.unminimize();
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    let url = match vial {
+        Some(id) => format!("rules?vial={id}"),
+        None => "rules".to_string(),
+    };
+    WebviewWindowBuilder::new(app, RULES_LABEL, WebviewUrl::App(url.into()))
+        .title("Vial rules")
+        .inner_size(620.0, 680.0)
+        .min_inner_size(460.0, 420.0)
+        .resizable(true)
+        .center()
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The order a vial keeps for its items: the sort last chosen for it, with its folders-first setting.
+/// Re-applied whenever the vial's items change, so new items land where the sort puts them. Returns
+/// whether any vial's order changed.
+fn apply_vial_orders(cfg: &mut VialsConfig, items: &[desqu_desktop::DesktopItem]) -> bool {
+    let names: std::collections::HashMap<&str, &String> = items.iter().map(|i| (i.id.as_str(), &i.name)).collect();
+    let mut changed = false;
+    for vial in cfg.vials.iter_mut().filter(|v| !v.inbox) {
+        let Some(key) = vial.sort_key.as_deref().and_then(crate::core::sort::SortKey::parse) else { continue };
+        let facts: Vec<_> = vial.items.iter().map(|id| facts_of(id, names.get(id.as_str()).copied())).collect();
+        let order = crate::core::sort::sorted_with(&facts, key, vial.sort_desc, vial.folders_first);
+        if order != vial.items {
+            vial.items = order;
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Turns "folders first" on or off for a vial. The current order is re-applied at once.
+pub fn set_vial_folders_first<R: Runtime>(app: &AppHandle<R>, vial_id: &str, on: bool) -> Result<(), String> {
+    let state = app.try_state::<ModuleState>().ok_or("the Vials plugin is not registered")?;
+    let mut cfg = state.config();
+    let vial = cfg.vials.iter_mut().find(|v| v.id == vial_id).ok_or("that vial no longer exists")?;
+    if vial.inbox {
+        return Err("the Desktop vial lists items in the desktop's own order".into());
+    }
+    vial.folders_first = on;
+    let items = state.layer()?.items().map_err(|e| e.to_string())?;
+    apply_vial_orders(&mut cfg, &items);
+    state.set_config(cfg)?;
+    Ok(())
 }

@@ -48,7 +48,7 @@ fn format_etc(format: u16) -> FORMATETC {
 }
 
 /// An item array for absolute paths (they may be in different folders).
-unsafe fn items_array(paths: &[String]) -> Result<IShellItemArray, String> {
+pub(crate) unsafe fn items_array(paths: &[String]) -> Result<IShellItemArray, String> {
     let mut pidls: Vec<*mut ITEMIDLIST> = Vec::new();
     let mut failure = None;
     for path in paths {

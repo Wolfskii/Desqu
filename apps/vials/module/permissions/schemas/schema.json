@@ -379,6 +379,18 @@
           "markdownDescription": "Denies the drag_item_out command without any pre-configured scope."
         },
         {
+          "description": "Enables the drag_items_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-drag-items-out",
+          "markdownDescription": "Enables the drag_items_out command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the drag_items_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-drag-items-out",
+          "markdownDescription": "Denies the drag_items_out command without any pre-configured scope."
+        },
+        {
           "description": "Enables the drop_items command without any pre-configured scope.",
           "type": "string",
           "const": "allow-drop-items",
@@ -511,6 +523,18 @@
           "markdownDescription": "Denies the module_stop command without any pre-configured scope."
         },
         {
+          "description": "Enables the move_into_folder command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-move-into-folder",
+          "markdownDescription": "Enables the move_into_folder command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the move_into_folder command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-move-into-folder",
+          "markdownDescription": "Denies the move_into_folder command without any pre-configured scope."
+        },
+        {
           "description": "Enables the open_item command without any pre-configured scope.",
           "type": "string",
           "const": "allow-open-item",
@@ -521,6 +545,30 @@
           "type": "string",
           "const": "deny-open-item",
           "markdownDescription": "Denies the open_item command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_rules command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-rules",
+          "markdownDescription": "Enables the open_rules command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_rules command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-rules",
+          "markdownDescription": "Denies the open_rules command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_vial_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-vial-menu",
+          "markdownDescription": "Enables the open_vial_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_vial_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-vial-menu",
+          "markdownDescription": "Denies the open_vial_menu command without any pre-configured scope."
         },
         {
           "description": "Enables the paste_into_vial command without any pre-configured scope.",
@@ -547,6 +595,18 @@
           "markdownDescription": "Denies the set_config command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_vial_folders_first command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-vial-folders-first",
+          "markdownDescription": "Enables the set_vial_folders_first command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_vial_folders_first command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-vial-folders-first",
+          "markdownDescription": "Denies the set_vial_folders_first command without any pre-configured scope."
+        },
+        {
           "description": "Enables the show_item_menu command without any pre-configured scope.",
           "type": "string",
           "const": "allow-show-item-menu",
@@ -559,10 +619,34 @@
           "markdownDescription": "Denies the show_item_menu command without any pre-configured scope."
         },
         {
-          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Enables the sort_vial command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sort-vial",
+          "markdownDescription": "Enables the sort_vial command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sort_vial command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sort-vial",
+          "markdownDescription": "Denies the sort_vial command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the sort_vial_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sort-vial-items",
+          "markdownDescription": "Enables the sort_vial_items command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sort_vial_items command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sort-vial-items",
+          "markdownDescription": "Denies the sort_vial_items command without any pre-configured scope."
+        },
+        {
+          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-items-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-open-rules`\n- `allow-open-vial-menu`\n- `allow-set-vial-folders-first`\n- `allow-move-into-folder`\n- `allow-sort-vial-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-item-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-items-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-open-rules`\n- `allow-open-vial-menu`\n- `allow-set-vial-folders-first`\n- `allow-move-into-folder`\n- `allow-sort-vial-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
         }
       ]
     }

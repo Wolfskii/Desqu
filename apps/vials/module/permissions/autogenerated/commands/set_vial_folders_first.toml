@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-vial-folders-first"
+description = "Enables the set_vial_folders_first command without any pre-configured scope."
+commands.allow = ["set_vial_folders_first"]
+
+[[permission]]
+identifier = "deny-set-vial-folders-first"
+description = "Denies the set_vial_folders_first command without any pre-configured scope."
+commands.deny = ["set_vial_folders_first"]

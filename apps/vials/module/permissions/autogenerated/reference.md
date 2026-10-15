@@ -16,9 +16,14 @@ Everything the Vials UI needs
 - `allow-begin-rename`
 - `allow-end-rename`
 - `allow-drop-items`
-- `allow-drag-item-out`
+- `allow-drag-items-out`
 - `allow-show-item-menu`
 - `allow-copy-items`
+- `allow-open-rules`
+- `allow-open-vial-menu`
+- `allow-set-vial-folders-first`
+- `allow-move-into-folder`
+- `allow-sort-vial-items`
 - `allow-paste-into-vial`
 - `allow-focus-vial`
 - `allow-get-monitors`
@@ -214,6 +219,32 @@ Enables the drag_item_out command without any pre-configured scope.
 <td>
 
 Denies the drag_item_out command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-drag-items-out`
+
+</td>
+<td>
+
+Enables the drag_items_out command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-drag-items-out`
+
+</td>
+<td>
+
+Denies the drag_items_out command without any pre-configured scope.
 
 </td>
 </tr>
@@ -507,6 +538,32 @@ Denies the module_stop command without any pre-configured scope.
 <tr>
 <td>
 
+`vials-module:allow-move-into-folder`
+
+</td>
+<td>
+
+Enables the move_into_folder command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-move-into-folder`
+
+</td>
+<td>
+
+Denies the move_into_folder command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `vials-module:allow-open-item`
 
 </td>
@@ -526,6 +583,58 @@ Enables the open_item command without any pre-configured scope.
 <td>
 
 Denies the open_item command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-open-rules`
+
+</td>
+<td>
+
+Enables the open_rules command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-open-rules`
+
+</td>
+<td>
+
+Denies the open_rules command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-open-vial-menu`
+
+</td>
+<td>
+
+Enables the open_vial_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-open-vial-menu`
+
+</td>
+<td>
+
+Denies the open_vial_menu command without any pre-configured scope.
 
 </td>
 </tr>
@@ -585,6 +694,32 @@ Denies the set_config command without any pre-configured scope.
 <tr>
 <td>
 
+`vials-module:allow-set-vial-folders-first`
+
+</td>
+<td>
+
+Enables the set_vial_folders_first command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-set-vial-folders-first`
+
+</td>
+<td>
+
+Denies the set_vial_folders_first command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `vials-module:allow-show-item-menu`
 
 </td>
@@ -604,6 +739,58 @@ Enables the show_item_menu command without any pre-configured scope.
 <td>
 
 Denies the show_item_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-sort-vial`
+
+</td>
+<td>
+
+Enables the sort_vial command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-sort-vial`
+
+</td>
+<td>
+
+Denies the sort_vial command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-sort-vial-items`
+
+</td>
+<td>
+
+Enables the sort_vial_items command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-sort-vial-items`
+
+</td>
+<td>
+
+Denies the sort_vial_items command without any pre-configured scope.
 
 </td>
 </tr>

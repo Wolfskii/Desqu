@@ -30,6 +30,10 @@ pub(crate) fn nudge_timing(_item_id: &str, _rounds: usize) -> DesktopResult<std:
     Err(DesktopError::Unsupported)
 }
 
+pub(crate) fn folder_at(_screen: crate::model::Point) -> DesktopResult<Option<String>> {
+    Ok(None)
+}
+
 pub(crate) fn desktop_folders() -> Vec<std::path::PathBuf> {
     Vec::new()
 }

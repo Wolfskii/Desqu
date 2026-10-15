@@ -1,9 +1,13 @@
 //! Ctrl+V on the desktop after Ctrl+X: Explorer does nothing when files that were cut are pasted into
-//! the folder they already are in, so a module that groups desktop items (Vials, Workspaces) has to
-//! notice the paste itself. Event-driven: a low-level keyboard hook that only looks at the V key.
+//! the folder they already are in (it asks "source and destination have the same name"), so a module
+//! that groups desktop items (Vials, Workspaces) has to notice the paste itself.
+//!
+//! One keyboard hook serves the whole process and calls every listener. A hook that swallows a key
+//! must not be followed by a second hook for the same key (Windows would not pass it on), so the hook
+//! is shared and makes the swallow decision once, after all listeners were told.
 
-use std::cell::RefCell;
-use std::thread::JoinHandle;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use windows::Win32::Foundation::{HGLOBAL, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::DataExchange::{
@@ -12,21 +16,42 @@ use windows::Win32::System::DataExchange::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 use windows::Win32::System::Ole::{CF_HDROP, DROPEFFECT_MOVE};
-use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
 use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetClassNameW, GetForegroundWindow, GetMessageW, PostThreadMessageW, SetWindowsHookExW,
-    UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT,
+    CallNextHookEx, GetClassNameW, GetForegroundWindow, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
+    KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN,
 };
 
 use crate::layer::{DesktopError, DesktopResult};
 
 type PasteHandler = Box<dyn Fn(Vec<String>) + Send>;
 
-thread_local! {
-    // The low-level hook procedure runs on the thread that installed it.
-    static PASTE: RefCell<Option<PasteHandler>> = const { RefCell::new(None) };
+/// Everyone who asked to hear about cut pastes, by watcher id.
+static LISTENERS: Mutex<Vec<(u64, PasteHandler)>> = Mutex::new(Vec::new());
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+/// The desktop folders, lower case and without a trailing backslash (filled once, by the hook thread).
+static FOLDERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// The hook thread's start result, kept for every later call.
+static HOOK: OnceLock<Result<(), String>> = OnceLock::new();
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn path_key(path: &str) -> String {
+    path.trim().replace('/', "\\").trim_end_matches('\\').to_lowercase()
+}
+
+/// True when every path sits directly in one of `folders`: pasting such files into one of those
+/// folders is what Explorer refuses with "source and destination have the same name".
+pub fn all_in_folders(paths: &[String], folders: &[String]) -> bool {
+    let folders: Vec<String> = folders.iter().map(|f| path_key(f)).collect();
+    !paths.is_empty()
+        && paths.iter().all(|p| {
+            let key = path_key(p);
+            key.rsplit_once('\\').is_some_and(|(parent, _)| folders.iter().any(|f| f == parent))
+        })
 }
 
 fn foreground_is_desktop() -> bool {
@@ -92,11 +117,17 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                 // Read the clipboard now, before Explorer handles the same key press (a finished
                 // cut-and-paste clears it).
                 if let Some(paths) = cut_files_on_clipboard() {
-                    PASTE.with(|p| {
-                        if let Some(handler) = p.borrow().as_ref() {
-                            handler(paths);
-                        }
-                    });
+                    // When every file already sits on the desktop, Explorer's paste would only raise its
+                    // "same name" dialog: the key is taken here instead, after the listeners were told.
+                    let folders = lock(&FOLDERS).clone();
+                    let swallow = all_in_folders(&paths, &folders);
+                    tracing::info!(items = paths.len(), swallow, "Ctrl+V on the desktop after a cut");
+                    for (_, handler) in lock(&LISTENERS).iter() {
+                        handler(paths.clone());
+                    }
+                    if swallow {
+                        return LRESULT(1);
+                    }
                 }
             }
         }
@@ -105,50 +136,75 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
-/// Keeps the Ctrl+V hook alive; dropping it removes the hook.
-pub struct CutPasteWatcher {
-    thread_id: u32,
-    thread: Option<JoinHandle<()>>,
+/// Installs the process-wide hook on a thread of its own; it lives as long as the process.
+fn start_hook_thread() -> Result<(), String> {
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    std::thread::Builder::new()
+        .name("desqu-paste-hook".into())
+        .spawn(move || {
+            let folders: Vec<String> = crate::platform::desktop_folders()
+                .iter()
+                .map(|p| path_key(&p.to_string_lossy()))
+                .collect();
+            tracing::info!(?folders, "watching Ctrl+V on the desktop");
+            *lock(&FOLDERS) = folders;
+            // SAFETY: the hook lives on this thread, whose message loop below keeps it working.
+            unsafe {
+                let module = GetModuleHandleW(None).unwrap_or_default();
+                let hook = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), Some(module.into()), 0) {
+                    Ok(hook) => hook,
+                    Err(e) => {
+                        let _ = ready_tx.send(Err(e.to_string()));
+                        return;
+                    }
+                };
+                let _ = ready_tx.send(Ok(()));
+                let mut msg = MSG::default();
+                while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+                let _ = UnhookWindowsHookEx(hook);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    ready_rx.recv().map_err(|e| e.to_string())?
 }
 
-/// Calls `on_paste` (inside the hook, so only hand the paths over) with the files that were cut when
-/// Ctrl+V is pressed on the desktop.
+/// Keeps one listener of the Ctrl+V hook; dropping it stops the listener.
+pub struct CutPasteWatcher {
+    id: u64,
+}
+
+/// Calls `on_paste` with the files that were cut when Ctrl+V is pressed on the desktop. The hook is
+/// shared by every caller in the process, and each listener gets the paths.
 pub fn watch_cut_paste(on_paste: Box<dyn Fn(Vec<String>) + Send + 'static>) -> DesktopResult<CutPasteWatcher> {
-    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<u32, String>>();
-    let thread = std::thread::Builder::new().name("desqu-paste-hook".into()).spawn(move || {
-        PASTE.with(|p| *p.borrow_mut() = Some(on_paste));
-        // SAFETY: the hook is removed below on this same thread, before it ends.
-        unsafe {
-            let module = GetModuleHandleW(None).unwrap_or_default();
-            let hook = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), Some(module.into()), 0) {
-                Ok(hook) => hook,
-                Err(e) => {
-                    let _ = ready_tx.send(Err(e.to_string()));
-                    return;
-                }
-            };
-            let _ = ready_tx.send(Ok(GetCurrentThreadId()));
-            let mut msg = MSG::default();
-            while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
-            let _ = UnhookWindowsHookEx(hook);
-        }
-        PASTE.with(|p| *p.borrow_mut() = None);
-    })?;
-    let thread_id = ready_rx
-        .recv()
-        .map_err(|e| DesktopError::Native { op: "paste hook", message: e.to_string() })?
+    HOOK.get_or_init(start_hook_thread)
+        .clone()
         .map_err(|message| DesktopError::Native { op: "paste hook", message })?;
-    Ok(CutPasteWatcher { thread_id, thread: Some(thread) })
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    lock(&LISTENERS).push((id, on_paste));
+    Ok(CutPasteWatcher { id })
 }
 
 impl Drop for CutPasteWatcher {
     fn drop(&mut self) {
-        // SAFETY: posts WM_QUIT to the hook thread so its message loop ends.
-        unsafe {
-            let _ = PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
-        }
-        if let Some(t) = self.thread.take() {
-            let _ = t.join();
-        }
+        lock(&LISTENERS).retain(|(id, _)| *id != self.id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::all_in_folders;
+
+    fn v(xs: &[&str]) -> Vec<String> {
+        xs.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn only_files_already_in_a_desktop_folder_count() {
+        let folders = v(&[r"C:\Users\me\Desktop", r"C:\Users\Public\Desktop\"]);
+        assert!(all_in_folders(&v(&[r"c:/users/ME/desktop/a.txt"]), &folders));
+        assert!(all_in_folders(&v(&[r"C:\Users\Public\Desktop\b.lnk", r"C:\Users\me\Desktop\c.url"]), &folders));
+        assert!(!all_in_folders(&v(&[r"C:\Users\me\Desktop\Games\x.txt"]), &folders), "a subfolder is not the desktop");
+        assert!(!all_in_folders(&v(&[r"C:\Users\me\Desktop\a.txt", r"D:\docs\b.txt"]), &folders), "mixed: Explorer decides");
+        assert!(!all_in_folders(&[], &folders));
     }
 }

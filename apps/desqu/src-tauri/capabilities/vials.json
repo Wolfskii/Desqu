@@ -4,7 +4,9 @@
   "description": "Capability for the vial windows on the desktop (drag by the title bar, open items)",
   "windows": [
     "vial-*",
-    "vials-menu"
+    "vials-menu",
+    "vials-rules",
+    "vials-vmenu"
   ],
   "permissions": [
     "core:default",

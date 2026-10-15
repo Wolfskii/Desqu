@@ -92,6 +92,11 @@ pub trait DesktopLayer: Send + Sync {
     /// owner still hides the item it stays hidden and nothing moves.
     fn show_at(&self, id: &str, screen: Point) -> DesktopResult<()>;
 
+    /// Like `show_at` for several items at once: they are shown together and laid out as one block,
+    /// six to a row, from `screen` (where the first icon's centre should be). Much faster than one
+    /// `show_at` after another.
+    fn show_block(&self, ids: &[String], screen: Point) -> DesktopResult<()>;
+
     /// Stops hiding everything this owner hid.
     fn show_all(&self) -> DesktopResult<()>;
 

@@ -72,6 +72,11 @@ pub fn surface_probe() -> DesktopResult<(usize, usize, usize, bool)> {
     platform::surface_probe()
 }
 
+/// The id of the desktop folder under `screen` (screen pixels), or `None`. Read-only.
+pub fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
+    platform::folder_at(screen)
+}
+
 /// The folders the desktop shows (the user's Desktop, then the Public Desktop), as paths. Read-only.
 pub fn desktop_folders() -> Vec<std::path::PathBuf> {
     platform::desktop_folders()

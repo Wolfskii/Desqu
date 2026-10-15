@@ -16,7 +16,7 @@ use windows::Win32::Storage::FileSystem::{
     GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_FLAGS_AND_ATTRIBUTES, INVALID_FILE_ATTRIBUTES,
 };
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
-use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ATTRIBUTES, SHCNF_FLUSH, SHCNF_PATHW};
+use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ATTRIBUTES, SHCNF_PATHW};
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemImageFactory,
     IShellWindows, SHCreateItemFromIDList, SHCreateItemFromParsingName, SHGetKnownFolderPath, ShellWindows,
@@ -24,7 +24,8 @@ use windows::Win32::UI::Shell::{
     SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, GetParent, IsWindowVisible, SendMessageTimeoutW, SMTO_ABORTIFHUNG, SMTO_NORMAL,
+    EnumWindows, FindWindowExW, GetParent, IsWindowVisible, SendMessageTimeoutW, SendMessageW, SMTO_ABORTIFHUNG,
+    SMTO_NORMAL,
 };
 
 use crate::layer::{DesktopError, DesktopResult};
@@ -33,6 +34,18 @@ use crate::model::Point;
 /// `LVM_SETITEMPOSITION`: x and y are packed as signed 16-bit values in `lParam`, so the message
 /// carries no pointer and works across processes.
 const LVM_SETITEMPOSITION: u32 = 0x1000 + 15;
+/// `LVM_HITTEST`: which item of a list view is at a point (client coordinates).
+const LVM_HITTEST: u32 = 0x1000 + 18;
+
+/// `LVHITTESTINFO`
+#[repr(C)]
+struct HitTestInfo {
+    pt: windows::Win32::Foundation::POINT,
+    flags: u32,
+    item: i32,
+    sub_item: i32,
+    group: i32,
+}
 const WM_COMMAND: u32 = 0x0111;
 /// The command Explorer's own "View, Show desktop icons" sends to `SHELLDLL_DefView`.
 const CMD_TOGGLE_DESKTOP_ICONS: usize = 0x7402;
@@ -110,7 +123,7 @@ pub(super) fn set_hidden_attribute(path: &str, hidden: bool) -> DesktopResult<()
         if next != attrs {
             SetFileAttributesW(&wide, FILE_FLAGS_AND_ATTRIBUTES(next)).map_err(|e| native("SetFileAttributes", e))?;
         }
-        SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW | SHCNF_FLUSH, Some(wide.as_ptr().cast()), None);
+        SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW, Some(wide.as_ptr().cast()), None);
     }
     Ok(())
 }
@@ -223,6 +236,19 @@ pub(super) unsafe fn screen_to_client(lv: HWND, p: Point) -> Point {
     let mut pt = windows::Win32::Foundation::POINT { x: p.x, y: p.y };
     let _ = ScreenToClient(lv, &mut pt);
     Point { x: pt.x, y: pt.y }
+}
+
+/// The index of the icon at `p` (client coordinates of the list view `lv`), or `None` over empty space.
+pub(super) unsafe fn hit_item(lv: HWND, p: Point) -> Option<i32> {
+    let mut info = HitTestInfo {
+        pt: windows::Win32::Foundation::POINT { x: p.x, y: p.y },
+        flags: 0,
+        item: -1,
+        sub_item: 0,
+        group: 0,
+    };
+    let index = SendMessageW(lv, LVM_HITTEST, Some(WPARAM(0)), Some(LPARAM(&mut info as *mut HitTestInfo as isize))).0;
+    (index >= 0).then_some(index as i32)
 }
 
 /// Moves one item (by its index in the view). Negative coordinates park it off-screen.

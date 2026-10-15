@@ -73,6 +73,14 @@ pub struct Vial {
     /// It exists while Vials draws the desktop (`draw_desktop`) and cannot be deleted.
     #[serde(default)]
     pub inbox: bool,
+    /// The sort last chosen for the vial's items ("name", "type", "modified", "size"), if any.
+    #[serde(default)]
+    pub sort_key: Option<String>,
+    #[serde(default)]
+    pub sort_desc: bool,
+    /// Folders stay on top whatever the sort (also re-applied when items change).
+    #[serde(default)]
+    pub folders_first: bool,
 }
 
 /// A predicate over a desktop item.
@@ -84,6 +92,10 @@ pub enum ItemMatcher {
     Kind(ItemKind),
     /// `*` and `?` wildcards against the label shown on the desktop, case-insensitive.
     NameGlob(String),
+    /// The label shown on the desktop contains / starts with / ends with this text, case-insensitive.
+    NameContains(String),
+    NameStartsWith(String),
+    NameEndsWith(String),
     Any(Vec<ItemMatcher>),
     All(Vec<ItemMatcher>),
 }
@@ -113,6 +125,11 @@ pub enum VialTheme {
     Glass,
     /// The plain dark panel: a flat, mostly opaque box with no blur.
     Classic,
+    /// The Fluent look (Windows 11 surfaces): acrylic tinted with the Fluent dark surface, 8 px corners,
+    /// hairline edges and Fluent's text and selection colours.
+    Fluent,
+    /// Fluent with its light surface and colours.
+    FluentLight,
 }
 
 /// What the Glass look blurs the desktop with.
@@ -235,6 +252,9 @@ impl VialsConfig {
                 items: Vec::new(),
                 collapsed: false,
                 inbox: true,
+                sort_key: None,
+                sort_desc: false,
+                folders_first: false,
             },
         );
         true
@@ -382,6 +402,9 @@ mod tests {
             items: items.iter().map(|s| s.to_string()).collect(),
             collapsed: false,
             inbox: false,
+            sort_key: None,
+            sort_desc: false,
+            folders_first: false,
         }
     }
 
@@ -455,6 +478,15 @@ mod tests {
         format!(
             r#"{{"version":1,"vials":[{{"id":"vial-1","name":"Vial 1","rect":{{"x":0.02,"y":0.05,"width":0.2,"height":0.35}},"items":[{extra}]}}],"rules":[]}}"#
         )
+    }
+
+    #[test]
+    fn fluent_themes_round_trip_by_name() {
+        let cfg: VialsConfig = serde_json::from_str(r#"{"theme":"fluentLight"}"#).unwrap();
+        assert_eq!(cfg.theme, VialTheme::FluentLight);
+        let cfg: VialsConfig = serde_json::from_str(r#"{"theme":"fluent"}"#).unwrap();
+        assert_eq!(cfg.theme, VialTheme::Fluent);
+        assert!(serde_json::to_string(&cfg).unwrap().contains("\"theme\":\"fluent\""));
     }
 
     #[test]

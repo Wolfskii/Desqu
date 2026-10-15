@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-drag-items-out"
+description = "Enables the drag_items_out command without any pre-configured scope."
+commands.allow = ["drag_items_out"]
+
+[[permission]]
+identifier = "deny-drag-items-out"
+description = "Denies the drag_items_out command without any pre-configured scope."
+commands.deny = ["drag_items_out"]

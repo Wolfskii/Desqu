@@ -24,12 +24,30 @@
         else if (p.type === "leave") dropping = false;
         else if (p.type === "drop") {
           dropping = false;
-          api.dropItems(vialId, p.paths).then(() => vials.refresh()).catch((e) => (vials.error = String(e)));
+          void dropOn(p.paths, p.position);
         }
       })
       .then((un) => (unlistenDrop = un))
       .catch(() => {});
   });
+  /** Files dropped on a folder shown in this vial move into it, as Explorer does; anywhere else they join the vial. */
+  async function dropOn(paths: string[], position: { x: number; y: number }) {
+    try {
+      const scale = window.devicePixelRatio || 1;
+      const under = document.elementFromPoint(position.x / scale, position.y / scale);
+      const folder = under?.closest<HTMLElement>("[data-dir]");
+      if (folder?.dataset.id) {
+        const n = await api.moveIntoFolder(folder.dataset.id, paths);
+        say(n > 0 ? `Moved ${n} ${n === 1 ? "item" : "items"} into the folder` : "Nothing was moved");
+      } else {
+        await api.dropItems(vialId, paths);
+      }
+      await vials.refresh();
+    } catch (e) {
+      vials.error = String(e);
+    }
+  }
+
   onDestroy(() => {
     vials.dispose();
     unlistenDrop?.();
@@ -53,8 +71,12 @@
     const id = press.id;
     press = null;
     dragging = true;
+    // Pulling one icon of a selection pulls the whole selection, as on the desktop.
+    const ids = (selected.includes(id) ? selected : [id]).filter(
+      (x) => !items.find((i) => i.id === x)?.missing,
+    );
     api
-      .dragItemOut(id)
+      .dragItemsOut(ids)
       .catch((err) => (vials.error = String(err)))
       .finally(() => {
         dragging = false;
@@ -64,6 +86,46 @@
 
   function endPress() {
     press = null;
+  }
+
+  // Dragging on empty space draws a box; every icon it touches is selected (Ctrl adds to the selection).
+  let box = $state<{ x0: number; y0: number; x1: number; y1: number; base: string[] } | null>(null);
+  let boxing = $state(false);
+
+  function startBox(e: PointerEvent) {
+    if (e.button !== 0) return;
+    const additive = e.ctrlKey || e.metaKey;
+    box = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, base: additive ? [...selected] : [] };
+    boxing = false;
+    if (!additive) selected = [];
+  }
+
+  function moveBox(e: PointerEvent) {
+    if (!box) return;
+    if (!(e.buttons & 1)) {
+      box = null;
+      return;
+    }
+    box.x1 = e.clientX;
+    box.y1 = e.clientY;
+    if (!boxing && Math.hypot(box.x1 - box.x0, box.y1 - box.y0) < DRAG_THRESHOLD) return;
+    boxing = true;
+    const left = Math.min(box.x0, box.x1);
+    const right = Math.max(box.x0, box.x1);
+    const top = Math.min(box.y0, box.y1);
+    const bottom = Math.max(box.y0, box.y1);
+    const hit: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>("[data-id]")) {
+      if (el.hasAttribute("data-missing")) continue;
+      const r = el.getBoundingClientRect();
+      if (r.left < right && r.right > left && r.top < bottom && r.bottom > top) hit.push(el.dataset.id ?? "");
+    }
+    selected = [...new Set([...box.base, ...hit])];
+  }
+
+  function endBox() {
+    box = null;
+    boxing = false;
   }
 
   // Right click on an icon shows Explorer's own menu for the file; nowhere in a vial may the web
@@ -96,6 +158,14 @@
 
   function takeKeyboard() {
     void api.focusVial(vialId).catch(() => {});
+  }
+
+  // A click anywhere else (the desktop, another vial, another window) takes the keyboard away from
+  // this vial; the selection goes with it. A cut stays dimmed until it is pasted.
+  function onBlur() {
+    selected = [];
+    box = null;
+    boxing = false;
   }
 
   function select(e: MouseEvent, id: string) {
@@ -167,6 +237,13 @@
     }
   }
 
+  // Right click on the vial (not on an icon) opens the vial's menu in its own popup window.
+  function openVialMenu(e: MouseEvent) {
+    e.preventDefault();
+    if (!vial || vial.inbox) return;
+    void api.openVialMenu(vialId).catch((err) => say(String(err)));
+  }
+
   // Clicking the name edits it right on the desktop.
   let editing = $state(false);
   let draft = $state("");
@@ -209,14 +286,21 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onpointermove={moveBox} onpointerup={endBox} onblur={onBlur} />
 
 <div
   class="vial"
   class:dropping
-  class:glass={vials.config?.theme !== "classic"}
+  class:glass={vials.config?.theme === "glass"}
+  class:fluent={vials.config?.theme === "fluent"}
+  class:fluentLight={vials.config?.theme === "fluentLight"}
   role="presentation"
-  oncontextmenu={(e) => e.preventDefault()}
+  oncontextmenu={(e) => {
+    // Items have their own menu; the rest of the vial (title, empty space) opens the vial's menu.
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-id]")) e.preventDefault();
+    else openVialMenu(e);
+  }}
   onpointerup={takeKeyboard}
 >
   <header data-tauri-drag-region>
@@ -250,9 +334,9 @@
       class="body"
       role="presentation"
       onpointerdown={(e) => {
-        // A click on empty space clears the selection.
+        // Empty space starts a box (a plain click on it clears the selection).
         const target = e.target as HTMLElement;
-        if (target === e.currentTarget || target.classList.contains("grid")) selected = [];
+        if (target === e.currentTarget || target.classList.contains("grid")) startBox(e);
       }}
     >
       {#if !vial}
@@ -264,6 +348,9 @@
               <button
                 class="open"
                 class:selected={selected.includes(item.id)}
+                data-id={item.id}
+                data-dir={item.kind === "folder" ? "" : undefined}
+                data-missing={item.missing ? "" : undefined}
                 ondblclick={() => !item.missing && vials.open(item.id)}
                 onpointerdown={(e) => beginPress(e, item.id, item.missing)}
                 onpointermove={(e) => movePress(e)}
@@ -280,6 +367,12 @@
         </div>
       {/if}
     </div>
+  {/if}
+  {#if box && boxing}
+    <div
+      class="box"
+      style="left: {Math.min(box.x0, box.x1)}px; top: {Math.min(box.y0, box.y1)}px; width: {Math.abs(box.x1 - box.x0)}px; height: {Math.abs(box.y1 - box.y0)}px;"
+    ></div>
   {/if}
   {#if notice}
     <div class="notice" role="status">{notice}</div>
@@ -403,12 +496,92 @@
   .item.cut {
     opacity: 0.45;
   }
+  .box {
+    position: fixed;
+    pointer-events: none;
+    border: 1px solid var(--accent);
+    background: rgba(120, 175, 255, 0.18);
+    z-index: 5;
+  }
   .notice {
     flex: none;
     padding: 4px 12px;
     font-size: 12px;
     border-top: 1px solid var(--border);
     background: rgba(34, 38, 45, 0.85);
+  }
+
+  /* Fluent (PecoFence's look): solid Fluent surfaces over the window's acrylic, hairline edges, Fluent's
+     text and selection colours (dark, then light). */
+  .vial.fluent {
+    color: #ffffff;
+    border: 1px solid rgba(217, 236, 245, 0.125);
+    border-radius: 8px;
+    background: rgba(27, 37, 44, 0.95);
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  .vial.fluent.dropping {
+    background: linear-gradient(rgba(96, 205, 255, 0.08), rgba(96, 205, 255, 0.08)), rgba(27, 37, 44, 0.95);
+    border-color: rgba(96, 205, 255, 0.5);
+  }
+  .fluent header {
+    background: transparent;
+    border-bottom: none;
+  }
+  .fluent .title:hover {
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.0588);
+  }
+  .fluent .open:hover {
+    background: rgba(255, 255, 255, 0.0588);
+    border-color: transparent;
+  }
+  .fluent .open.selected {
+    background: rgba(96, 205, 255, 0.2);
+    border-color: rgba(96, 205, 255, 0.4);
+  }
+  .fluent .label {
+    color: #ffffff;
+    text-shadow: none;
+  }
+  .fluent .notice {
+    background: rgba(255, 255, 255, 0.05);
+    border-top-color: transparent;
+  }
+  .vial.fluentLight {
+    color: rgba(0, 0, 0, 0.894);
+    border: 1px solid rgba(35, 66, 83, 0.102);
+    border-radius: 8px;
+    background: rgba(244, 247, 248, 0.95);
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  .vial.fluentLight.dropping {
+    background: linear-gradient(rgba(0, 95, 184, 0.08), rgba(0, 95, 184, 0.08)), rgba(244, 247, 248, 0.95);
+    border-color: rgba(0, 95, 184, 0.5);
+  }
+  .fluentLight header {
+    background: transparent;
+    border-bottom: none;
+  }
+  .fluentLight .title:hover {
+    border-color: transparent;
+    background: rgba(0, 0, 0, 0.035);
+  }
+  .fluentLight .open:hover {
+    background: rgba(0, 0, 0, 0.035);
+    border-color: transparent;
+  }
+  .fluentLight .open.selected {
+    background: rgba(0, 95, 184, 0.16);
+    border-color: rgba(0, 95, 184, 0.4);
+  }
+  .fluentLight .label {
+    color: rgba(0, 0, 0, 0.894);
+    text-shadow: none;
+  }
+  .fluentLight .notice {
+    background: rgba(0, 0, 0, 0.03);
+    border-top-color: transparent;
   }
 
   /* Glass theme: the blur comes from the window itself; this is the light on top of it. */
