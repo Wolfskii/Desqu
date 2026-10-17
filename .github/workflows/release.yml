@@ -92,7 +92,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets[format('{0}_UPDATER_KEY_PASSWORD', steps.meta.outputs.prefix)] }}
         run: |
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw "Secret ${{ steps.meta.outputs.prefix }}_UPDATER_KEY is not set" }
-          task ${{ steps.meta.outputs.app }}:release
+          task ${{ steps.meta.outputs.app }}:release:signed
 
       - name: Write update feed and release notes
         shell: pwsh

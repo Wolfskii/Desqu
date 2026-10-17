@@ -55,7 +55,7 @@ These cannot be done from the repo. Do them once.
 The workflow then:
 
 1. checks that every version file matches the tag (`scripts/check-versions.ps1`),
-2. runs `task <app>:release`, which builds the NSIS installer, the MSI and the portable exe and signs
+2. runs `task <app>:release:signed`, which builds the NSIS installer, the MSI and the portable exe and signs
    the installers (`*.sig`),
 3. writes `SHA256SUMS.txt`, `latest.json` and the release notes (`scripts/write-update-feed.ps1`),
 4. creates the GitHub release with all of those attached (only **Desqu** is marked *Latest*, because
@@ -73,8 +73,9 @@ hand; nobody's updater moves. The version files must say `0.2.0-rc.1` for the ch
 ## Building locally without CI
 
 ```powershell
-task screenbound:release      # build, sign (key from ~/.tauri/screenbound.key) and collect into dist/screenbound/
-task screenbound:deploy       # the same, then install it for the current user
+task screenbound:release         # local unsigned build: installers + portable exe in dist/screenbound/
+task screenbound:release:signed  # the same, signed with ~/.tauri/screenbound.key (press Enter at the password prompt)
+task screenbound:deploy          # build (unsigned) then install it for the current user
 pwsh scripts/write-update-feed.ps1 -App screenbound   # optional: dist/screenbound/feed/latest.json
 ```
 
