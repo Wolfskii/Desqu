@@ -5,6 +5,8 @@ being released as the release notes and as the in-app update description.
 
 ## Unreleased
 
+## 0.2.0
+
 - Hosts Vials and Workspaces alongside Screenbound.
 
 ## 0.1.0
