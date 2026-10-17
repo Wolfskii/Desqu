@@ -961,14 +961,14 @@ fighting over windows.
 - **Done when:**
   - [ ] Secrets exist; public keys available.
 
-#### P5.2 Update feed hosting — Status: 🧪
+#### P5.2 Update feed hosting — Status: ✅
 - **Depends on:** Q5
 - **Do (proposal = gh-pages):** create an orphan `gh-pages` branch with `updates/.keep`; enable GitHub
   Pages from `gh-pages` / root. Feed URL per product:
   `https://wolfskii.github.io/Desqu/updates/<product>/latest.json`.
   Reason: GitHub's `releases/latest` is repo-wide, so one "latest" release cannot serve four products.
 - **Done when:**
-  - [ ] `https://wolfskii.github.io/Desqu/updates/.keep` returns 200.
+  - [x] `https://wolfskii.github.io/Desqu/updates/.keep` returns 200.
 
 #### P5.3 Updater in `desqu-shell` — Status: 🧪
 - **Depends on:** P3.9, P5.1, P5.2, Q7
@@ -1029,7 +1029,7 @@ fighting over windows.
 - **Done when:**
   - [ ] CI green on a PR.
 
-#### P5.6 Release workflow — Status: 🧪
+#### P5.6 Release workflow — Status: ✅
 - **Depends on:** P5.3, P5.4, P5.5
 - **Files:** `.github/workflows/release.yml`, `scripts/write-update-feed.ps1`, `docs/releasing.md`
 - **Do:** Trigger: `push` tags matching `desqu-v*`, `screenbound-v*`, `vials-v*`, `workspaces-v*`, plus
@@ -1037,8 +1037,9 @@ fighting over windows.
   1. Parse `<app>` and `<version>` from the tag (`screenbound-v0.2.0` → `screenbound`, `0.2.0`).
   2. `pwsh scripts/check-versions.ps1 -App <app> -Tag <tag>`.
   3. Env `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` from the product's secrets.
-  4. `task <app>:release` → `dist/<app>/` contains setup.exe, setup.exe.sig, .msi, .msi.sig,
-     portable.exe (update `publish-artifacts.ps1` to also copy the `.sig` files).
+  4. `task <app>:release:signed` (not `release`, which builds unsigned since 2026-10-10) →
+     `dist/<app>/` contains setup.exe, setup.exe.sig, .msi, .msi.sig,
+     portable.exe (`publish-artifacts.ps1` also copies the `.sig` files).
   5. Create `SHA256SUMS.txt`.
   6. `pwsh scripts/write-update-feed.ps1 -App <app>` → `dist/<app>/latest.json`:
      ```json
@@ -1054,7 +1055,10 @@ fighting over windows.
      `keep_files: true` (keeps the other products' feeds).
   9. `docs/releasing.md`: how to bump (`bump-version.ps1`), update CHANGELOG, tag (`git tag screenbound-v0.2.0; git push origin screenbound-v0.2.0`), what the workflow does, how to build locally without CI.
 - **Done when:**
-  - [ ] A test pre-release (e.g. `screenbound-v0.2.0-rc.1`, marked prerelease) publishes assets and feed.
+  - [x] A test pre-release (e.g. `screenbound-v0.2.0-rc.1`, marked prerelease) publishes assets and feed.
+    Verified for real on 2026-10-17 by `desqu-v0.2.0` (run 39043500529): 6 assets on the release,
+    feed at `updates/desqu/latest.json` (200). The `-rc.1` pre-release path is the same code minus
+    the `--latest` flag; not separately exercised.
 
 #### P5.7 First update-enabled Screenbound release — Status: 🧪
 - **Depends on:** P4.4, P5.6
@@ -1413,3 +1417,4 @@ Format: `YYYY-MM-DD — <step id> — <status> — <what was done / where you st
 - 2026-10-11 — FIX theme change hid the vials — Changing the look closed all vial windows and rebuilt them under the same labels in the same pass; the old window was still being destroyed, so get_webview_window still found it, the 'existing window' branch ran and no new window was built: the vials vanished. Now a look change restyles the open windows in place (style_window: acrylic/blur and tint via set_effects, shadow via set_shadow, DWM corner preference round or do-not-round; Classic clears the effects). Settings texts and docs say 'restyles in place'. Clippy clean; not verified on the real desktop (case 0l).
 - 2026-10-11 — WORKSPACES: ITEMS STILL VISIBLE ON OTHER DESKTOPS (investigation) — 🧪 — Owner: items tied to Arbete are still visible on every desktop. Checked read-only against the owner's real files and desktop: (1) the config is right (Arbete owns 395 items, Normal 0); (2) visibility::plan run on the real config with the real virtual desktops and the real Desktop folder gives hide 393 / show 0 for Normal and 0/0 for Arbete, so the decision logic is correct; (3) switch detection works: vdwatch (about 50 minutes, many switches) shows the registry notification firing exactly once per switch about 0.3 s after the foreground becomes Progman, with CurrentVirtualDesktop already updated, and the installed build (02:36) contains the earlier park fix; (4) a position write costs 14.9 ms on the real desktop (new example layer_timing: 100 writes of a temp file onto its own position, no move) versus 1.3 ms in a plain list view, so hiding 393 items takes about 6 s per pass, well under the 30 s reply timeout; (5) a plain Win32 list view parks 395 items off-screen fine, stacked or at distinct cells (private test window). The failing step is therefore inside the real Explorer desktop and could not be reproduced without taking the layer lock from the owner's running Desqu (not authorised) or polluting the owner's config with temp files (autoAssignNew would tie them to a desktop). Changes to find and survive it: hide() now parks, reads the positions back and retries up to 3 passes (150 ms apart) for items Explorer left on screen, logging each outcome (`parked N items in X ms (P passes, M missing, F failed)`); every app now writes %APPDATA%\<identifier>\logs\app.log (2 MB, one .old kept; info level for desqu_desktop and the modules); Workspaces logs each desktop pass (current desktop, item counts, planned hides/shows), catches a panic inside a pass instead of silently ending the engine thread, and the Settings tab shows 'Last check HH:MM:SS: on <desktop>, X of Y desktop items hidden, Z could not be hidden, Problem: ...'. NEXT: the owner installs this build, switches to the desktop that should hide items, and the log plus the Last check line show where it fails; then fix that cause.
 - 2026-10-11 — NO ITEMS TABS, CTRL+X / CTRL+V, START WITH SYSTEM RULE — 🧪 — Owner: remove the Items tab from Vials and Workspaces (items are dragged in, not listed), keep a count per workspace, move items between workspaces with Ctrl+X / Ctrl+V, and do not allow 'start with system' on an app that is off. (1) Items tabs and their components removed in both UIs; Workspaces cards now show only the item count plus 'Show on every desktop' (releases the workspace's items); the first-run question stays. (2) Ctrl+X/Ctrl+V: a low-level keyboard hook (event-driven, looks only at the V key with Ctrl held, no Shift/Alt, and only when the foreground window is the desktop: class Progman or WorkerW) reads the clipboard INSIDE the hook, before Explorer handles the key (a finished cut clears it): it needs CF_HDROP and the 'Preferred DropEffect' format with the MOVE bit (so copy never counts). The paths are matched against the real desktop items (pure core::paste::desktop_items_in, case and slash insensitive, 2 tests) so nothing else can be tied to a desktop, then assigned to the CURRENT virtual desktop and saved; reconcile hides them on the others. Explorer's own handling of a cut-and-paste into the same folder is expected to be a silent no-op (not yet seen on the real desktop). Not tested for real: the clipboard parsing (a test would overwrite the owner's clipboard) and the hook. (3) Desqu: the per-app 'Start with system' switch is disabled while the app is off and shows off; the master switch only counts apps that are on and is disabled when none is; backend refuses 'start with system' on an app that is off ('Turn X on first'), set_enabled(false) clears it, set_all only applies to apps that are on, and old modules.json files are normalized on load (3 new tests). Clippy and svelte-check clean.
+- 2026-10-17 — P5.1/P5.2/P5.6 — ✅ — First release published and the updater feed is live. Owner setup done for Desqu: `DESQU_UPDATER_KEY` repo secret set from `~/.tauri/desqu.key`; `gh-pages` orphan branch created with `updates/.keep`; Pages enabled (gh-pages / root, `https://wolfskii.github.io/Desqu/`) — the POST returned 409 "already enabled" because pushing the `gh-pages` branch auto-enabled it. Two real bugs found on the way: (1) the Release workflow called `task <app>:release`, which became the *unsigned* local build (-NoSign, 2026-10-10), so no `.sig` files existed and `write-update-feed.ps1` aborted with "Missing signature" — the workflow now calls `<app>:release:signed` (docs/releasing.md corrected to match); (2) nothing had ever been released, so `latest.json` 404'd and Settings showed the raw plugin error "Could not fetch a valid release JSON from the remote" — expected per P5.2 until a release existed. Result: `desqu-v0.2.0` (run 39043500529, workflow_dispatch) released 6 assets (setup.exe + .sig, msi + .sig, portable.exe, SHA256SUMS.txt) marked Latest, and `updates/desqu/latest.json` returns 200 with the 0.2.0 signature. Remaining: secrets for screenbound/vials/workspaces (P5.1) and the first update-enabled Screenbound release (P5.7); the installed Desqu 0.1.0 on the owner's machine should now offer 0.2.0.
