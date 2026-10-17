@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "notes": "- Hosts Vials and Workspaces alongside Screenbound.",
+  "pub_date": "2026-10-17T15:15:59Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSY3o0ek5WcTRoT3F4QWdTYWNGMVRqQ0dyS1RqRUVQMUJKVm4yc1ZwTkZ0eklVTi9wODNyY25OTzFTd0lTZkV4QnM3QlR2UzJONWpkVU1JbzQ1MEt3SlFUbTJnajQ3M1FzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMjUwMTU3CWZpbGU6RGVzcXVfMC4yLjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4wCkFGS1E5NTNXN1dlUW1xS1BCWFRyTU9XZ1p2cjN0dE90ZGlTK3JvLzE2Zk8vNGpUN1VKV3F2Sm9QV3FMeWxVdjlKY1c2bkVhZ2hLQnRFSE9NZi92Z0JBPT0K",
+      "url": "https://github.com/Wolfskii/Desqu/releases/download/desqu-v0.2.0/Desqu_0.2.0_x64-setup.exe"
+    }
+  }
+}
