@@ -1,0 +1,22 @@
+import { defineConfig } from "wxt";
+
+// Public half of the dev signing key. It pins the Chromium id for unpacked dev builds only.
+// The private key lives outside the repo (never commit it).
+const DEV_KEY =
+  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt/+NXpFKShHtSL7xU+EEHN+zG6RZjVwO7FDztoEhVDEfMako2D2n0WwOClpF2a3EuTbS7wgSg91BXUahfOZeiWE6J8viV5k+rOki6v0vtZWtx/G7/1N3OMJSMWl67IcXTlTRLzMOOaPokzDPM6TDV4ZhnU/pj3zjE6GLPiz8ZQUhAR5wCXVnbWA+AwOM+zaM6gzxnnr5j+8FaFERg0N/Dna9mi99/SI7hsb9pDEmztC/BX5q4WPRIYlMmEdmRpHclt3RttZdoM5fYhhX6onDhtzPQRApc1CgETcGs4resn8fQUhjvxKNi2DiRuYeI4ZT8tHJfeR/Lks/2pZMBsP4AQIDAQAB";
+
+export default defineConfig({
+  srcDir: "src",
+  modules: ["@wxt-dev/module-svelte"],
+  manifest: ({ mode }) => ({
+    name: "Desqu Fullscreen",
+    description:
+      "Fullscreen for websites: keep videos inside the window, or place them in a Desqu zone.",
+    permissions: ["storage", "tabs", "nativeMessaging"],
+    host_permissions: ["<all_urls>"],
+    browser_specific_settings: {
+      gecko: { id: "desqu-fullscreen@wolfskii.github.io", strict_min_version: "128.0" },
+    },
+    ...(mode === "development" ? { key: DEV_KEY } : {}),
+  }),
+});

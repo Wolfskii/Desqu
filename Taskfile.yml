@@ -15,6 +15,9 @@ includes:
   screenbound:
     taskfile: ./apps/screenbound/Taskfile.yml
     dir: ./apps/screenbound
+  browser:
+    taskfile: ./apps/browser-extension/Taskfile.yml
+    dir: ./apps/browser-extension
 
 tasks:
   default:
@@ -48,3 +51,4 @@ tasks:
       - task: desqu:ci
       - task: vials:ci
       - task: workspaces:ci
+      - task: browser:ci

@@ -1,0 +1,73 @@
+version: "3"
+
+# Desqu Fullscreen browser extension. Run from here or from the repo root as `task browser:<name>`.
+# Dependencies are installed once at the repo root (npm workspace).
+
+tasks:
+  default:
+    desc: List tasks
+    silent: true
+    cmds:
+      - task --list
+
+  install:
+    desc: Install npm dependencies (repo root workspace)
+    dir: ../..
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/.package-lock.json
+    cmds:
+      - npm install
+
+  dev:
+    desc: Run the extension in Chrome with live reload (unpacked, dev key)
+    deps: [install]
+    interactive: true
+    cmds:
+      - npm run dev
+
+  dev:firefox:
+    desc: Run the extension in Firefox (MV3) with live reload
+    deps: [install]
+    interactive: true
+    cmds:
+      - npm run dev:firefox
+
+  build:
+    desc: Build the Chrome (MV3) extension into .output/
+    deps: [install]
+    cmds:
+      - npm run build
+
+  build:all:
+    desc: Build Chrome, Edge, Opera and Firefox (MV3) into .output/
+    deps: [install]
+    cmds:
+      - npm run build:all
+
+  zip:
+    desc: Zip every store build into .output/ for upload
+    deps: [install]
+    cmds:
+      - npm run zip:all
+
+  check:
+    desc: Type check (wxt prepare + svelte-check)
+    deps: [install]
+    cmds:
+      - npm run check
+
+  test:
+    desc: Unit tests (vitest)
+    deps: [install]
+    cmds:
+      - npm test
+
+  ci:
+    desc: Typecheck, unit tests and all builds
+    cmds:
+      - task: check
+      - task: test
+      - task: build:all

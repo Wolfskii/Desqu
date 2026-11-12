@@ -56,6 +56,7 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | 7 | Screenbound borderless gaming | 🧪 | 2 |
 | 8 | Desktop layer spike + Vials | 🧪 | 3 |
 | 9 | Virtual desktop spike + Workspaces | 🧪 | 8 |
+| 10 | Browser extension (Desqu Fullscreen) + Screenbound bridge | 🟡 | 2, 6, 7 |
 
 ---
 
@@ -1280,6 +1281,37 @@ fighting over windows.
 - **Done when:**
   - [x] Manual test doc `apps/workspaces/docs/manual-testing.md` written.
   - [ ] Passed by a human on at least two Windows builds (only build 26300 is available to the agent).
+
+---
+
+### Phase 10 — Browser extension (Desqu Fullscreen) + Screenbound bridge
+
+Full step-by-step plan: [apps/browser-extension/PLAN.md](apps/browser-extension/PLAN.md). It is the
+source of truth for this phase; update the statuses here as steps finish.
+
+| Step | Name | Status |
+| --- | --- | --- |
+| P10.A1 | Scaffold `apps/browser-extension` (WXT + Svelte 5) | ✅ |
+| P10.A2 | Site rules model + storage | ⬜ |
+| P10.A3 | MAIN-world Fullscreen API patch | ⬜ |
+| P10.A4 | Isolated bridge script + mode resolution | ⬜ |
+| P10.A5 | Popup + options UI | ⬜ |
+| P10.A6 | Test pages + manual test doc | ⬜ |
+| P10.B1 | Core types (`core/browser.rs`) | ⬜ |
+| P10.B2 | Wire protocol + `crates/desqu-ipc` framing | ⬜ |
+| P10.B3 | Named pipe server in the module | ⬜ |
+| P10.B4 | Engine side: hello, rule sync, exemption | ⬜ |
+| P10.B5 | Native host exe `desqu-browser-host` | ⬜ |
+| P10.B6 | Native host registration (HKCU) | ⬜ |
+| P10.B7 | Bundle host with Desqu + Screenbound | ⬜ |
+| P10.B8 | Extension bridge client | ⬜ |
+| P10.B9 | Browsers tab in the Screenbound UI | ⬜ |
+| P10.C1 | Spike: window region + viewport measurement | ⬜ |
+| P10.C2 | Platform additions (region, child rect, foreground) | ⬜ |
+| P10.C3 | Engine zone flow | ⬜ |
+| P10.C4 | Extension zone orchestration | ⬜ |
+| P10.C5 | Manual verification + docs | ⬜ |
+| P10.D | Store publishing prep | ⬜ |
 
 ---
 
