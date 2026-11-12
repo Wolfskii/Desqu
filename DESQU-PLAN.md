@@ -1304,7 +1304,7 @@ source of truth for this phase; update the statuses here as steps finish.
 | P10.B5 | Native host exe `desqu-browser-host` | ✅ |
 | P10.B6 | Native host registration (HKCU) | ✅ |
 | P10.B7 | Bundle host with Desqu + Screenbound | ⬜ |
-| P10.B8 | Extension bridge client | ⬜ |
+| P10.B8 | Extension bridge client | 🧪 |
 | P10.B9 | Browsers tab in the Screenbound UI | ⬜ |
 | P10.C1 | Spike: window region + viewport measurement | ⬜ |
 | P10.C2 | Platform additions (region, child rect, foreground) | ⬜ |

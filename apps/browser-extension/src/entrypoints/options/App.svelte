@@ -11,11 +11,19 @@
     type SiteRules,
   } from "../../shared/rules";
   import { getRules, saveRules } from "../../shared/storage";
+  import { describeStatus } from "../../shared/bridge-state";
+  import { getStatus, onStatusChanged, type DesquStatus } from "../../shared/status";
 
   let doc = $state<SiteRules | null>(null);
+  let status = $state<DesquStatus>({ state: "unknown" });
 
   onMount(async () => {
     doc = await getRules();
+  });
+
+  onMount(() => {
+    void getStatus().then((s) => (status = s));
+    return onStatusChanged((s) => (status = s));
   });
 
   async function persist(next: SiteRules) {
@@ -144,7 +152,7 @@
 
   <section>
     <h2>Desqu</h2>
-    <p>Not connected. Desqu enables the Desqu zone mode. It is optional: everything else works without it.</p>
+    <p>{describeStatus(status)} Desqu is optional: everything else works without it.</p>
     <p><a href="https://github.com/Wolfskii/Desqu/releases" target="_blank" rel="noreferrer">Get Desqu</a></p>
   </section>
 

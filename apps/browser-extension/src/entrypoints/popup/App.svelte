@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { describeStatus } from "../../shared/bridge-state";
+  import { getStatus, onStatusChanged, type DesquStatus } from "../../shared/status";
   import { browser } from "wxt/browser";
   import { MODE_LABELS } from "../../shared/labels";
   import { resolveMode, MODES, type FullscreenMode, type SiteRules } from "../../shared/rules";
@@ -8,11 +10,17 @@
   let url = $state<string | null>(null);
   let host = $state<string | null>(null);
   let rules = $state<SiteRules | null>(null);
+  let status = $state<DesquStatus>({ state: "unknown" });
 
   const hostRule = $derived(
     rules?.rules.find((r) => r.pattern.type === "host" && r.pattern.value === host) ?? null,
   );
   const resolved = $derived(rules && url ? resolveMode(rules, url) : null);
+
+  onMount(() => {
+    void getStatus().then((s) => (status = s));
+    return onStatusChanged((s) => (status = s));
+  });
 
   onMount(async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -87,7 +95,7 @@
     {/if}
   {/if}
 
-  <p class="desqu">Desqu: not connected. Installing Desqu enables the Desqu zone mode.</p>
+  <p class="desqu">{describeStatus(status)}</p>
   <button type="button" class="link" onclick={openOptions}>Options</button>
 </main>
 

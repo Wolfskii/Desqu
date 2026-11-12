@@ -2,7 +2,12 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "strict": true,
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*", "wxt.config.ts", "test-pages/**/*.ts"]
+  "include": [
+    "src/**/*",
+    "wxt.config.ts",
+    "test-pages/**/*.ts"
+  ]
 }
