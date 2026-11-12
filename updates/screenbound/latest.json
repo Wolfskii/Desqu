@@ -1,0 +1,11 @@
+{
+  "version": "0.3.0",
+  "notes": "- Browser integration (optional): a Browsers tab for the Desqu Fullscreen browser extension, with per-site\n  fullscreen rules, install links, and the connection status. Off by default until the extension is installed.\n- Zone mode for browsers (experimental until verified on real browsers): a browser's page can be placed in\n  a zone, with the tabs and toolbar clipped away.\n\n### Added\n\n- **Borderless windows**: a rule can make a windowed app (for example a game running in a window)\n  borderless and fit it to a monitor or zone, then put everything back on release, exit or crash.\n- In-app updates: Settings shows the current version, checks for updates (shortly after start and\n  daily) and installs them. Portable builds link to the download page instead.\n- **Start with system**, **Start minimized to tray** and **Close to tray** settings.\n- Tray menu item to check for and install updates.\n\n### Changed\n\n- Renamed from ScreenBound to Screenbound with a new settings location\n  (`%APPDATA%\\io.github.wolfskii.screenbound`). Existing settings are copied automatically; see the\n  [migration guide](../../docs/migration-screenbound.md).\n- Only one copy can control windows at a time; an older running copy is detected and never fought.",
+  "pub_date": "2026-11-12T21:31:12Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRUjlBVEZMcWZSUkt0RHdORXpZaFZ0YmduVG1YMmVsenV5TW02VExIRFMxNHNKRDZaY0ppRFFlN1B6N1BoZEg4SzRvTFM5WHBnT1JYdk5oSWFmaVZjdEs1dC8va0lmZ2drPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTE5MDY5CWZpbGU6U2NyZWVuYm91bmRfMC4zLjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMy4wCkdiYndGay9qV0FaMjVHZFQxNldCaUcreVRTUWxXMXRvMDBsdzlaQmNjWitBU2ZkWHhDODZ2dFhQWWswSzdqb3AvRktIaWIyUHp2MWVJZ0lwaW9ucENnPT0K",
+      "url": "https://github.com/Wolfskii/Desqu/releases/download/screenbound-v0.3.0/Screenbound_0.3.0_x64-setup.exe"
+    }
+  }
+}
