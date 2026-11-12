@@ -53,6 +53,8 @@ fn init_screenbound(roaming: &Path) -> TauriPlugin<Wry> {
         legacy_dir: Some(screenbound_module::migrate::legacy_dir(roaming)),
         // Desqu starts modules itself, according to its own settings.
         start_immediately: false,
+        product: screenbound_module::bridge::protocol::Product::Desqu,
+        app_version: env!("CARGO_PKG_VERSION").into(),
     })
 }
 

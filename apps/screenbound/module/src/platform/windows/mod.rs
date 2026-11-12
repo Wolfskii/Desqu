@@ -84,6 +84,10 @@ impl PlatformWindowManager for WindowsPlatform {
         window::process_id(id)
     }
 
+    fn foreground_window(&self) -> Option<WindowId> {
+        window::foreground()
+    }
+
     fn owner(&self, id: WindowId) -> Option<WindowId> {
         window::owner(id)
     }

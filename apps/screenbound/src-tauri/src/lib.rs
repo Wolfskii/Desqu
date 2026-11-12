@@ -69,6 +69,8 @@ pub fn run() {
                 data_dir,
                 legacy_dir: Some(legacy_dir),
                 start_immediately: true,
+                product: screenbound_module::bridge::protocol::Product::Screenbound,
+                app_version: env!("CARGO_PKG_VERSION").into(),
             }))?;
             module::register(app.handle(), screenbound_module::ScreenboundModule);
 

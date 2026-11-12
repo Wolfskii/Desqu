@@ -14,6 +14,8 @@ const COMMANDS: &[&str] = &[
     "legacy_status",
     "legacy_uninstall_old",
     "legacy_delete_settings_backup",
+    "get_browser_status",
+    "set_browser_integration",
 ];
 
 fn main() {

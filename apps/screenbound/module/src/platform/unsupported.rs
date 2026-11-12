@@ -18,6 +18,9 @@ impl PlatformWindowManager for UnsupportedPlatform {
     fn process_id(&self, _: WindowId) -> Option<u32> {
         None
     }
+    fn foreground_window(&self) -> Option<WindowId> {
+        None
+    }
     fn owner(&self, _: WindowId) -> Option<WindowId> {
         None
     }

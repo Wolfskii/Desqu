@@ -111,6 +111,9 @@ pub trait PlatformWindowManager: Send + Sync {
     /// while it is active. `hide == false` clears that mark.
     fn set_hides_taskbar(&self, window: WindowId, hide: bool) -> PlatformResult<()>;
 
+    /// The window the user is working in, if any. A browser asks for fullscreen from the foreground.
+    fn foreground_window(&self) -> Option<WindowId>;
+
     fn subscribe(&self, sink: EventSink) -> PlatformResult<EventSubscription>;
 }
 

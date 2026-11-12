@@ -16,4 +16,6 @@ permissions = [
     "allow-legacy-status",
     "allow-legacy-uninstall-old",
     "allow-legacy-delete-settings-backup",
+    "allow-get-browser-status",
+    "allow-set-browser-integration",
 ]

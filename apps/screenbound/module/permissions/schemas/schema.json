@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the get_activity command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_browser_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-browser-status",
+          "markdownDescription": "Enables the get_browser_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_browser_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-browser-status",
+          "markdownDescription": "Denies the get_browser_status command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_config command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-config",
@@ -451,6 +463,18 @@
           "markdownDescription": "Denies the release_window command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_browser_integration command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-browser-integration",
+          "markdownDescription": "Enables the set_browser_integration command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_browser_integration command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-browser-integration",
+          "markdownDescription": "Denies the set_browser_integration command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_config command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-config",
@@ -475,10 +499,10 @@
           "markdownDescription": "Denies the set_enabled command without any pre-configured scope."
         },
         {
-          "description": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`\n- `allow-legacy-status`\n- `allow-legacy-uninstall-old`\n- `allow-legacy-delete-settings-backup`",
+          "description": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`\n- `allow-legacy-status`\n- `allow-legacy-uninstall-old`\n- `allow-legacy-delete-settings-backup`\n- `allow-get-browser-status`\n- `allow-set-browser-integration`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`\n- `allow-legacy-status`\n- `allow-legacy-uninstall-old`\n- `allow-legacy-delete-settings-backup`"
+          "markdownDescription": "Everything the Screenbound UI needs\n#### This default permission set includes:\n\n- `allow-get-monitors`\n- `allow-get-config`\n- `allow-set-config`\n- `allow-set-enabled`\n- `allow-get-status`\n- `allow-list-windows`\n- `allow-get-activity`\n- `allow-release-window`\n- `allow-release-all`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`\n- `allow-legacy-status`\n- `allow-legacy-uninstall-old`\n- `allow-legacy-delete-settings-backup`\n- `allow-get-browser-status`\n- `allow-set-browser-integration`"
         }
       ]
     }

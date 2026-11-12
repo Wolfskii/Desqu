@@ -59,6 +59,11 @@ impl EngineHandle {
         Ok(Self { tx })
     }
 
+    /// Runs `f` on the engine thread without waiting for the result.
+    pub fn post(&self, f: impl FnOnce(&mut Engine) + Send + 'static) {
+        let _ = self.tx.send(EngineMessage::Call(Box::new(move |engine| f(engine))));
+    }
+
     pub fn sender(&self) -> Sender<EngineMessage> {
         self.tx.clone()
     }

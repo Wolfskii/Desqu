@@ -19,6 +19,8 @@ Everything the Screenbound UI needs
 - `allow-legacy-status`
 - `allow-legacy-uninstall-old`
 - `allow-legacy-delete-settings-backup`
+- `allow-get-browser-status`
+- `allow-set-browser-integration`
 
 ## Permission Table
 
@@ -51,6 +53,32 @@ Enables the get_activity command without any pre-configured scope.
 <td>
 
 Denies the get_activity command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:allow-get-browser-status`
+
+</td>
+<td>
+
+Enables the get_browser_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:deny-get-browser-status`
+
+</td>
+<td>
+
+Denies the get_browser_status command without any pre-configured scope.
 
 </td>
 </tr>
@@ -363,6 +391,32 @@ Enables the release_window command without any pre-configured scope.
 <td>
 
 Denies the release_window command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:allow-set-browser-integration`
+
+</td>
+<td>
+
+Enables the set_browser_integration command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`screenbound-module:deny-set-browser-integration`
+
+</td>
+<td>
+
+Denies the set_browser_integration command without any pre-configured scope.
 
 </td>
 </tr>

@@ -14,7 +14,11 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 use crate::core::config::AppConfig;
 use crate::legacy;
 use crate::migrate;
-use crate::engine::{Engine, EngineHandle, EngineMessage, EnginePaths, Notification, Notifier};
+use crate::bridge::protocol::Product;
+use crate::bridge::server::BridgeServer;
+use crate::engine::{
+    Engine, EngineHandle, EngineMessage, EnginePaths, EngineSink, HostIdentity, Notification, Notifier,
+};
 use crate::platform::{self, EventSubscription};
 
 /// Must equal the Cargo package name: tauri-plugin derives the permission namespace from it.
@@ -28,6 +32,7 @@ pub mod events {
     pub const MANAGED_CHANGED: &str = "sb://managed-changed";
     pub const MONITORS_CHANGED: &str = "sb://monitors-changed";
     pub const CONFIG_CHANGED: &str = "sb://config-changed";
+    pub const BROWSER_CHANGED: &str = "sb://browser-changed";
 }
 
 /// Folders are passed in so a standalone app and Desqu read and write the same files.
@@ -38,6 +43,9 @@ pub struct ModuleOptions {
     /// Settings folder of the pre-rebrand install (`migrate::legacy_dir`), if any.
     pub legacy_dir: Option<PathBuf>,
     pub start_immediately: bool,
+    /// Shown to the browser extension in the handshake.
+    pub product: Product,
+    pub app_version: String,
 }
 
 pub struct ModuleState {
@@ -48,6 +56,9 @@ pub struct ModuleState {
     subscription: Mutex<Option<EventSubscription>>,
     module_lock: Mutex<Option<ModuleLock>>,
     owned_elsewhere: AtomicBool,
+    /// Browser bridge: runs only while this process owns the module.
+    bridge: Mutex<Option<BridgeServer>>,
+    identity: HostIdentity,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -64,6 +75,11 @@ impl ModuleState {
             subscription: Mutex::new(None),
             module_lock: Mutex::new(None),
             owned_elsewhere: AtomicBool::new(false),
+            bridge: Mutex::new(None),
+            identity: HostIdentity {
+                product: options.product,
+                app_version: options.app_version.clone(),
+            },
         }
     }
 
@@ -127,6 +143,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let emitter = app.clone();
     let notify: Notifier = Arc::new(move |n| {
         let _ = match n {
+            Notification::BrowserChanged => emitter.emit(events::BROWSER_CHANGED, ()),
             Notification::Activity(entry) => emitter.emit(events::ACTIVITY, entry),
             Notification::ManagedChanged => emitter.emit(events::MANAGED_CHANGED, ()),
             Notification::MonitorsChanged(m) => emitter.emit(events::MONITORS_CHANGED, m),
@@ -141,6 +158,7 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             .legacy_dir
             .as_ref()
             .map(|d| d.join(migrate::LEGACY_JOURNAL_FILE)),
+        identity: state.identity.clone(),
     };
     let platform = platform::create();
     let handle = EngineHandle::spawn(Engine::new(platform.clone(), paths, notify))
@@ -160,10 +178,54 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         }
     };
 
+    let bridge_handle = handle.clone();
     *lock(&state.subscription) = subscription;
     *lock(&state.module_lock) = Some(module_lock);
     *handle_slot = Some(handle);
+    drop(handle_slot);
+    start_bridge(&state, bridge_handle);
     Ok(())
+}
+
+/// Starts the browser bridge when integration is on. A failure is logged, not fatal: the fullscreen
+/// limiter works without browsers.
+fn start_bridge(state: &ModuleState, handle: EngineHandle) {
+    let enabled = handle
+        .call(|e| e.config().browser.integration_enabled)
+        .unwrap_or(false);
+    if !enabled {
+        return;
+    }
+    let mut slot = lock(&state.bridge);
+    if slot.is_some() {
+        return;
+    }
+    match BridgeServer::start(Arc::new(EngineSink(handle))) {
+        Ok(server) => *slot = Some(server),
+        Err(e) => tracing::warn!("browser bridge did not start: {e}"),
+    }
+}
+
+/// Brings the bridge in line with the saved setting: starts it when on, stops it when off.
+pub fn sync_bridge(state: &ModuleState) {
+    let handle = lock(&state.handle).clone();
+    match handle {
+        Some(handle) => start_bridge_if_enabled(state, handle),
+        None => {
+            lock(&state.bridge).take();
+        }
+    }
+}
+
+fn start_bridge_if_enabled(state: &ModuleState, handle: EngineHandle) {
+    let enabled = handle
+        .call(|e| e.config().browser.integration_enabled)
+        .unwrap_or(false);
+    if enabled {
+        start_bridge(state, handle);
+    } else {
+        lock(&state.bridge).take();
+    }
 }
 
 /// Pauses or resumes Screenbound (`enabled = false` in its config) without stopping the engine.
@@ -192,6 +254,8 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>, timeout: Duration) {
     let Some(state) = app.try_state::<ModuleState>() else {
         return;
     };
+    // The bridge goes first: its connections post to the engine.
+    lock(&state.bridge).take();
     let handle = lock(&state.handle).take();
     if let Some(handle) = handle {
         handle.stop(timeout);
@@ -220,6 +284,8 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             crate::commands::legacy_status,
             crate::commands::legacy_uninstall_old,
             crate::commands::legacy_delete_settings_backup,
+            crate::commands::get_browser_status,
+            crate::commands::set_browser_integration,
         ])
         .setup(move |app, _api| {
             // Before the engine reads its config, so the first run after the rebrand sees the old settings.

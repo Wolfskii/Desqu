@@ -55,6 +55,10 @@ impl Fixture {
             config: self.dir.join("config.json"),
             journal: self.dir.join("journal.json"),
             legacy_journal: None,
+            identity: crate::engine::HostIdentity {
+                product: crate::bridge::protocol::Product::Screenbound,
+                app_version: "test".into(),
+            },
         };
         let notify: Notifier = Arc::new(|_| {});
         Engine::new(self.platform.clone(), paths, notify)

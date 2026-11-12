@@ -7,7 +7,7 @@ use crate::core::config::AppConfig;
 use crate::core::monitor::MonitorInfo;
 use crate::core::window::{WindowId, WindowInfo};
 use crate::engine::activity::ActivityEntry;
-use crate::engine::EngineStatus;
+use crate::engine::{BrowserStatus, EngineStatus};
 use crate::legacy::{self, LegacyStatus};
 use crate::plugin::{self, ModuleState};
 
@@ -25,7 +25,9 @@ pub async fn get_config(state: State<'_, ModuleState>) -> CmdResult<AppConfig> {
 
 #[tauri::command]
 pub async fn set_config(state: State<'_, ModuleState>, config: AppConfig) -> CmdResult<AppConfig> {
-    state.with_engine(move |e| e.set_config(config))?
+    let saved = state.with_engine(move |e| e.set_config(config))??;
+    plugin::sync_bridge(&state);
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -93,4 +95,20 @@ pub async fn legacy_uninstall_old() -> CmdResult<()> {
 pub async fn legacy_delete_settings_backup(state: State<'_, ModuleState>) -> CmdResult<()> {
     let dir = state.legacy_dir().ok_or("no legacy settings folder configured")?;
     legacy::delete_settings_backup(dir)
+}
+
+#[tauri::command]
+pub async fn get_browser_status(state: State<'_, ModuleState>) -> CmdResult<BrowserStatus> {
+    state.with_engine(|e| e.browser_status())
+}
+
+#[tauri::command]
+pub async fn set_browser_integration(state: State<'_, ModuleState>, enabled: bool) -> CmdResult<()> {
+    state.with_engine(move |e| {
+        let mut config = e.config();
+        config.browser.integration_enabled = enabled;
+        e.set_config(config)
+    })??;
+    plugin::sync_bridge(&state);
+    Ok(())
 }

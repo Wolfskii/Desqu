@@ -529,3 +529,9 @@ pub(super) fn restore_state(id: WindowId, state: &WindowState) -> PlatformResult
     }
     set_topmost(id, state.topmost)
 }
+
+/// The foreground window (the one the user is working in), if any.
+pub(super) fn foreground() -> Option<WindowId> {
+    let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+    (!hwnd.0.is_null()).then_some(WindowId(hwnd.0 as usize as u64))
+}

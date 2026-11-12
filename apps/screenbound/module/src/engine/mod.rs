@@ -3,6 +3,7 @@
 //! Runs on a single thread (see `handle.rs`), so it owns its state without locks.
 
 pub mod activity;
+pub mod browser;
 mod handle;
 pub mod journal;
 #[cfg(all(test, windows))]
@@ -32,6 +33,7 @@ use crate::platform::{PlatformError, PlatformEvent, PlatformWindowManager};
 use activity::{ActivityEntry, ActivityLevel, ActivityLog};
 use journal::{JournalEntry, JournalKind};
 
+pub use browser::{BrowserStatus, EngineSink, HostIdentity};
 pub use handle::{EngineHandle, EngineMessage};
 
 /// Collapses bursts of native events (e.g. restore → restyle → resize during a fullscreen
@@ -63,6 +65,8 @@ pub enum Notification {
     ManagedChanged,
     MonitorsChanged(Vec<MonitorInfo>),
     ConfigChanged(AppConfig),
+    /// A browser connected, disconnected, or changed its rules.
+    BrowserChanged,
 }
 
 pub type Notifier = Arc<dyn Fn(Notification) + Send + Sync>;
@@ -72,6 +76,8 @@ pub struct EnginePaths {
     pub journal: PathBuf,
     /// Journal left by a pre-rebrand install: recovered first, then deleted.
     pub legacy_journal: Option<PathBuf>,
+    /// Who this process is, for the browser handshake.
+    pub identity: HostIdentity,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +235,9 @@ pub struct Engine {
     panels: HashMap<WindowId, PanelState>,
     activity: ActivityLog,
     events_active: bool,
+    browser_conns: HashMap<crate::bridge::server::ConnId, browser::BrowserConn>,
+    exempt: HashMap<WindowId, browser::Exemption>,
+    identity: HostIdentity,
 }
 
 fn label(identity: &WindowIdentity, id: WindowId) -> String {
@@ -265,6 +274,7 @@ impl Engine {
                 AppConfig::default()
             }
         };
+        let identity = paths.identity.clone();
         let mut engine = Self {
             platform,
             paths,
@@ -284,6 +294,9 @@ impl Engine {
             panels: HashMap::new(),
             activity,
             events_active: false,
+            browser_conns: HashMap::new(),
+            exempt: HashMap::new(),
+            identity,
         };
         engine.refresh_monitors();
         engine
@@ -455,6 +468,7 @@ impl Engine {
     }
 
     pub fn process_due(&mut self, now: Instant) {
+        self.prune_exemptions(now);
         let steps: Vec<WindowId> = self
             .animations
             .iter()
@@ -529,6 +543,8 @@ impl Engine {
             Err(_) => return,
         };
         match fullscreen_monitor(&state, &self.monitors).map(|m| m.id.clone()) {
+            // The browser asked for real fullscreen: leave the window to the browser.
+            Some(_) if self.is_exempt(id, Instant::now()) => {}
             Some(monitor) if !self.rejected.contains(&id) => {
                 self.manage(
                     id,
@@ -544,6 +560,7 @@ impl Engine {
             Some(_) => {}
             None => {
                 self.rejected.remove(&id);
+                self.forget_stale_exemption(id, Instant::now());
                 // Skip borderless frames seen while entering fullscreen; those are smaller than
                 // the window the user had, and Firefox restores whatever it last observed.
                 if is_resting_layout(&state) {
