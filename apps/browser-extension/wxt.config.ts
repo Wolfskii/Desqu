@@ -7,6 +7,10 @@ const DEV_KEY =
 
 export default defineConfig({
   srcDir: "src",
+  zip: {
+    artifactTemplate: "desqu-fullscreen-{{version}}-{{browser}}.zip",
+    sourcesTemplate: "desqu-fullscreen-{{version}}-sources.zip",
+  },
   modules: ["@wxt-dev/module-svelte"],
   manifest: ({ mode }) => ({
     name: "Desqu Fullscreen",

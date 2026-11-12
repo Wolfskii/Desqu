@@ -3,6 +3,13 @@
 Written for the owner, who creates the store accounts and uploads. The build side is done:
 `task browser:zip` (or `npm run zip:all` in this folder) writes one zip per store into `.output/`.
 
+## GitHub release (optional)
+
+Pushing a tag `browser-v<version>` runs `.github/workflows/browser-extension.yml`: it checks the version
+against `package.json`, runs `task browser:ci`, and attaches the zips to a GitHub release (not marked as
+latest). The zips install in developer mode (Chromium) or only after Mozilla signs them (Firefox), so this
+release is for testing until the store listings exist.
+
 ## Before the first upload
 
 1. Run `task browser:ci` (type check, unit tests, all builds) and the manual checklist in
