@@ -16,6 +16,8 @@ pub enum JournalKind {
     #[default]
     Fullscreen,
     Borderless,
+    /// A browser page moved into a zone and clipped (see browser_zone.rs).
+    BrowserZone,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

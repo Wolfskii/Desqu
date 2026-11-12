@@ -4,8 +4,11 @@
 
 pub mod activity;
 pub mod browser;
+mod browser_zone;
 mod handle;
 pub mod journal;
+#[cfg(test)]
+mod test_support;
 #[cfg(all(test, windows))]
 mod real_tests;
 
@@ -183,6 +186,7 @@ struct Animation {
 pub enum ManagedKind {
     Fullscreen,
     Borderless,
+    BrowserZone,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -238,6 +242,8 @@ pub struct Engine {
     browser_conns: HashMap<crate::bridge::server::ConnId, browser::BrowserConn>,
     exempt: HashMap<WindowId, browser::Exemption>,
     identity: HostIdentity,
+    /// Browser pages placed in zones (window moved and clipped), by window.
+    browser_zone: BTreeMap<WindowId, browser_zone::BrowserZoneWindow>,
 }
 
 fn label(identity: &WindowIdentity, id: WindowId) -> String {
@@ -297,6 +303,7 @@ impl Engine {
             browser_conns: HashMap::new(),
             exempt: HashMap::new(),
             identity,
+            browser_zone: BTreeMap::new(),
         };
         engine.refresh_monitors();
         engine
@@ -365,6 +372,9 @@ impl Engine {
             if !(same_process && in_place) {
                 continue;
             }
+            if entry.kind == JournalKind::BrowserZone {
+                let _ = self.platform.set_region(entry.window, None);
+            }
             match self.platform.restore_state(entry.window, &entry.detected) {
                 Ok(()) => {
                     // Only fullscreen windows were marked for the taskbar.
@@ -376,6 +386,7 @@ impl Engine {
                     let what = match entry.kind {
                         JournalKind::Fullscreen => "window left constrained by a previous session",
                         JournalKind::Borderless => "borderless window left by a previous session",
+                        JournalKind::BrowserZone => "browser page left in a zone by a previous session",
                     };
                     self.log(ActivityLevel::Info, who, format!("Restored {what}"));
                 }
@@ -500,6 +511,10 @@ impl Engine {
         self.fullscreen_since.remove(&id);
         if !self.platform.exists(id) {
             self.forget(id);
+            return;
+        }
+        if self.browser_zone.contains_key(&id) {
+            self.evaluate_browser_zone(id);
             return;
         }
         if self.moving.contains(&id) || self.animations.contains_key(&id) {
@@ -1456,6 +1471,7 @@ impl Engine {
     }
 
     fn release_all_with(&mut self, reason: ReleaseReason) {
+        self.release_all_browser_zones();
         let ids: Vec<WindowId> = self.managed.keys().copied().collect();
         for id in ids {
             self.release(id, reason);
@@ -1468,6 +1484,10 @@ impl Engine {
     }
 
     fn on_user_moved(&mut self, id: WindowId) {
+        if self.browser_zone.contains_key(&id) {
+            self.user_moved_browser_zone(id);
+            return;
+        }
         if let Some(b) = self.borderless.get_mut(&id) {
             if let Ok(state) = self.platform.state(id) {
                 // Respect manual placement while still considering the window managed.
@@ -1493,6 +1513,7 @@ impl Engine {
     }
 
     fn forget(&mut self, id: WindowId) {
+        self.forget_browser_zone(id);
         self.pending.remove(&id);
         self.fullscreen_since.remove(&id);
         self.moving.remove(&id);
@@ -1615,7 +1636,10 @@ impl Engine {
             detected: b.detected.clone(),
             applied: b.applied.clone(),
         });
-        let entries: Vec<JournalEntry> = fullscreen.chain(borderless).collect();
+        let entries: Vec<JournalEntry> = fullscreen
+            .chain(borderless)
+            .chain(self.browser_zone_journal())
+            .collect();
         journal::save(&self.paths.journal, &entries);
     }
 
@@ -1681,6 +1705,22 @@ impl Engine {
                     gave_up: b.gave_up,
                     since_ms: b.since_ms,
                 }))
+                .chain(self.browser_zone.values().map(|z| ManagedSummary {
+                    kind: ManagedKind::BrowserZone,
+                    id: z.id,
+                    id_hex: z.id.to_string(),
+                    process_name: z.identity.process_name.clone(),
+                    title: z.identity.title.clone(),
+                    rule_id: "browser".into(),
+                    zone_id: z.zone_id.clone(),
+                    chrome: ChromeMode::Keep,
+                    monitor: None,
+                    target: z.target,
+                    detected_bounds: z.detected.bounds,
+                    pre_fullscreen_bounds: None,
+                    gave_up: false,
+                    since_ms: 0,
+                }))
                 .collect(),
         }
     }
@@ -1723,6 +1763,9 @@ impl Engine {
         self.config = config;
         if self.config.browser.site_rules != rules_before {
             self.broadcast_rules_to_browsers();
+        }
+        if !self.config.enabled {
+            self.release_all_browser_zones();
         }
         self.reconcile_managed();
         self.reconcile_borderless();

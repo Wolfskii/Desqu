@@ -131,18 +131,17 @@ impl Engine {
             } => self.on_hello(conn, id, protocol, extension_version, browser, rules),
             ClientMessage::SetRules { id, rules } => self.on_set_rules(conn, id, rules),
             ClientMessage::ExemptNext { id, tab_title } => self.on_exempt_next(conn, id, &tab_title),
-            ClientMessage::ZoneEnter { id, .. } => self.reply(
-                conn,
-                ServerMessage::ZoneApplied {
-                    reply_to: id,
-                    ok: false,
-                    zone_name: None,
-                    error: Some("Zone mode is not available in this version".into()),
-                },
-            ),
-            ClientMessage::ViewportReport { id, .. } | ClientMessage::ZoneExit { id, .. } => {
-                self.reply(conn, ServerMessage::Ack { reply_to: id })
+            ClientMessage::ZoneEnter {
+                id,
+                tab_id,
+                tab_title,
+                zone_id,
+                viewport,
+            } => self.on_zone_enter(conn, id, tab_id, &tab_title, zone_id, viewport),
+            ClientMessage::ViewportReport { id, tab_id, viewport } => {
+                self.on_viewport_report(conn, id, tab_id, viewport)
             }
+            ClientMessage::ZoneExit { id, tab_id } => self.on_zone_exit(conn, id, tab_id),
             ClientMessage::FullscreenNative { host, .. } => {
                 self.log(
                     ActivityLevel::Info,
@@ -155,6 +154,7 @@ impl Engine {
     }
 
     pub fn on_browser_disconnected(&mut self, conn: ConnId) {
+        self.release_zones_of(conn);
         if self.browser_conns.remove(&conn).is_some() {
             self.notify_browser_changed();
         }
@@ -249,7 +249,7 @@ impl Engine {
     }
 
     /// The foreground window, if it belongs to this browser and (when given) shows the tab's title.
-    fn find_browser_window(&self, conn: ConnId, tab_title: &str) -> Option<WindowId> {
+    pub(super) fn find_browser_window(&self, conn: ConnId, tab_title: &str) -> Option<WindowId> {
         let host = self.browser_conns.get(&conn)?.host.clone()?;
         let window = self.platform.foreground_window()?;
         let identity = self.platform.identity(window).ok()?;
@@ -317,13 +317,13 @@ impl Engine {
             .collect()
     }
 
-    fn reply(&self, conn: ConnId, message: ServerMessage) {
+    pub(super) fn reply(&self, conn: ConnId, message: ServerMessage) {
         if let Some(c) = self.browser_conns.get(&conn) {
             let _ = c.outbox.send(message);
         }
     }
 
-    fn error(&self, conn: ConnId, request: String, code: ErrorCode, message: String) {
+    pub(super) fn error(&self, conn: ConnId, request: String, code: ErrorCode, message: String) {
         self.reply(
             conn,
             ServerMessage::Error {
@@ -351,144 +351,17 @@ impl Engine {
 mod tests {
     use super::*;
     use crate::core::browser::{FullscreenMode, SitePattern, SiteRule};
-    use crate::core::geometry::Rect;
-    use crate::core::monitor::MonitorInfo;
-    use crate::core::window::{ProcessRef, WindowIdentity, WindowState};
-    use crate::engine::EnginePaths;
-    use crate::platform::{EventSubscription, EventSink, PlatformError, PlatformResult, PlatformWindowManager};
-    use std::collections::HashMap as Map;
-    use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::{mpsc, Arc, Mutex};
-
-    static COUNTER: AtomicU32 = AtomicU32::new(0);
-
-    /// Just enough of a platform for the browser handlers: foreground window and identities.
-    #[derive(Default)]
-    struct FakePlatform {
-        foreground: Mutex<Option<WindowId>>,
-        identities: Map<WindowId, WindowIdentity>,
-        pids: Map<WindowId, u32>,
-    }
-
-    impl PlatformWindowManager for FakePlatform {
-        fn monitors(&self) -> PlatformResult<Vec<MonitorInfo>> {
-            Ok(Vec::new())
-        }
-        fn enumerate_windows(&self) -> PlatformResult<Vec<WindowId>> {
-            Ok(Vec::new())
-        }
-        fn exists(&self, id: WindowId) -> bool {
-            self.identities.contains_key(&id)
-        }
-        fn process_id(&self, id: WindowId) -> Option<u32> {
-            self.pids.get(&id).copied()
-        }
-        fn owner(&self, _: WindowId) -> Option<WindowId> {
-            None
-        }
-        fn process_windows(&self, _: u32) -> PlatformResult<Vec<WindowId>> {
-            Ok(Vec::new())
-        }
-        fn set_position(&self, _: WindowId, _: i32, _: i32) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn identity(&self, id: WindowId) -> PlatformResult<WindowIdentity> {
-            self.identities.get(&id).cloned().ok_or(PlatformError::WindowGone(id))
-        }
-        fn state(&self, id: WindowId) -> PlatformResult<WindowState> {
-            Err(PlatformError::WindowGone(id))
-        }
-        fn is_hung(&self, _: WindowId) -> bool {
-            false
-        }
-        fn set_bounds(&self, _: WindowId, _: Rect) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn set_borderless(&self, _: WindowId) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn set_style(&self, _: WindowId, _: crate::core::window::NativeStyle) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn restore_state(&self, _: WindowId, _: &WindowState) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn set_topmost(&self, _: WindowId, _: bool) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn set_hides_taskbar(&self, _: WindowId, _: bool) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn foreground_window(&self) -> Option<WindowId> {
-            *self.foreground.lock().unwrap()
-        }
-        fn set_region(&self, _: WindowId, _: Option<Rect>) -> PlatformResult<()> {
-            Ok(())
-        }
-        fn largest_child_rect(&self, _: WindowId) -> Option<Rect> {
-            None
-        }
-        fn subscribe(&self, _: EventSink) -> PlatformResult<EventSubscription> {
-            Ok(EventSubscription::new(|| {}))
-        }
-    }
-
-    const CHROME_PID: u32 = 4242;
-    const CHROME_WINDOW: WindowId = WindowId(7);
+    use crate::engine::test_support::*;
+    use std::sync::mpsc;
 
     fn chrome_platform(foreground: Option<WindowId>) -> FakePlatform {
-        let mut identities = Map::new();
-        identities.insert(
-            CHROME_WINDOW,
-            WindowIdentity {
-                process: ProcessRef { pid: CHROME_PID, start_time: 1 },
-                process_name: "chrome.exe".into(),
-                executable_path: r"C:\Chrome\chrome.exe".into(),
-                class_name: "Chrome_WidgetWin_1".into(),
-                title: "Big Buck Bunny - Google Chrome".into(),
-            },
-        );
-        let mut pids = Map::new();
-        pids.insert(CHROME_WINDOW, CHROME_PID);
-        FakePlatform {
-            foreground: Mutex::new(foreground),
-            identities,
-            pids,
-        }
+        let mut platform = FakePlatform::chrome(None);
+        platform.foreground = std::sync::Mutex::new(foreground);
+        platform
     }
 
-    struct Harness {
-        engine: Engine,
-        notes: Arc<Mutex<Vec<Notification>>>,
-        config_path: std::path::PathBuf,
-    }
-
-    fn harness(platform: FakePlatform) -> Harness {
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("desqu-browser-test-{}-{n}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let config_path = dir.join("config.json");
-        let paths = EnginePaths {
-            config: config_path.clone(),
-            journal: dir.join("managed-windows.json"),
-            legacy_journal: None,
-            identity: HostIdentity {
-                product: Product::Desqu,
-                app_version: "9.9.9".into(),
-            },
-        };
-        let notes = Arc::new(Mutex::new(Vec::new()));
-        let sink = notes.clone();
-        let engine = Engine::new(
-            Arc::new(platform),
-            paths,
-            Arc::new(move |n| sink.lock().unwrap().push(n)),
-        );
-        Harness {
-            engine,
-            notes,
-            config_path,
-        }
+    fn harness_for(platform: FakePlatform) -> Harness {
+        harness(std::sync::Arc::new(platform))
     }
 
     fn connect(h: &mut Harness, conn: u64, pid: u32, process: &str) -> mpsc::Receiver<ServerMessage> {
@@ -540,7 +413,7 @@ mod tests {
 
     #[test]
     fn a_newer_extension_copy_is_saved_and_acked_with_the_merged_rules() {
-        let mut h = harness(chrome_platform(None));
+        let mut h = harness_for(chrome_platform(None));
         let rx = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         h.engine.on_browser_message(ConnId(1), hello(rules_at(500, FullscreenMode::Window)));
 
@@ -568,7 +441,7 @@ mod tests {
 
     #[test]
     fn an_older_extension_copy_is_replaced_by_screenbounds_rules() {
-        let mut h = harness(chrome_platform(None));
+        let mut h = harness_for(chrome_platform(None));
         // Screenbound already holds newer rules, saved from its own UI.
         let _setup = connect(&mut h, 0, 1, "setup.exe");
         h.engine.on_browser_message(
@@ -586,7 +459,7 @@ mod tests {
 
     #[test]
     fn a_different_protocol_version_is_refused() {
-        let mut h = harness(chrome_platform(None));
+        let mut h = harness_for(chrome_platform(None));
         let rx = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         h.engine.on_browser_message(
             ConnId(1),
@@ -609,7 +482,7 @@ mod tests {
 
     #[test]
     fn rules_saved_from_screenbounds_own_ui_reach_every_connected_browser() {
-        let mut h = harness(chrome_platform(None));
+        let mut h = harness_for(chrome_platform(None));
         let a = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         let b = connect(&mut h, 2, 5555, "brave.exe");
         let mut config = h.engine.config();
@@ -625,7 +498,7 @@ mod tests {
 
     #[test]
     fn saved_rules_reach_the_other_browsers_but_not_the_sender() {
-        let mut h = harness(chrome_platform(None));
+        let mut h = harness_for(chrome_platform(None));
         let sender = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         let other = connect(&mut h, 2, 5555, "brave.exe");
         h.engine.on_browser_message(
@@ -644,7 +517,7 @@ mod tests {
 
     #[test]
     fn exempt_next_marks_the_browser_window_in_the_foreground() {
-        let mut h = harness(chrome_platform(Some(CHROME_WINDOW)));
+        let mut h = harness_for(chrome_platform(Some(CHROME_WINDOW)));
         let rx = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         h.engine.on_browser_message(
             ConnId(1),
@@ -657,7 +530,7 @@ mod tests {
 
     #[test]
     fn exempt_next_is_refused_when_no_browser_window_is_in_front() {
-        let mut h = harness(chrome_platform(None));
+        let mut h = harness_for(chrome_platform(None));
         let rx = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         h.engine.on_browser_message(
             ConnId(1),
@@ -675,7 +548,7 @@ mod tests {
         let mut platform = chrome_platform(Some(CHROME_WINDOW));
         // Same window, but the connected host is some other browser.
         platform.pids.insert(CHROME_WINDOW, 1);
-        let mut h = harness(platform);
+        let mut h = harness_for(platform);
         let rx = connect(&mut h, 1, 9999, "msedge.exe");
         h.engine.on_browser_message(
             ConnId(1),
@@ -686,7 +559,7 @@ mod tests {
 
     #[test]
     fn a_disconnect_forgets_the_browser_and_says_so() {
-        let mut h = harness(chrome_platform(None));
+        let mut h = harness_for(chrome_platform(None));
         let rx = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         h.engine.on_browser_message(ConnId(1), hello(SiteRules::default()));
         assert!(matches!(next(&rx), ServerMessage::HelloAck { .. }));
@@ -700,7 +573,7 @@ mod tests {
 
     #[test]
     fn a_stale_exemption_is_dropped_once_the_window_is_not_fullscreen() {
-        let mut h = harness(chrome_platform(Some(CHROME_WINDOW)));
+        let mut h = harness_for(chrome_platform(Some(CHROME_WINDOW)));
         let _rx = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         h.engine.on_browser_message(
             ConnId(1),
