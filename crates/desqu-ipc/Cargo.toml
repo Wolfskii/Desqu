@@ -1,0 +1,12 @@
+[package]
+name = "desqu-ipc"
+version = "0.1.0"
+description = "Length-prefixed frames for Desqu's browser bridge (stdio and named pipe). No Tauri, no UI."
+authors = ["ScreenBound contributors"]
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "desqu_ipc"
+
+[dependencies]

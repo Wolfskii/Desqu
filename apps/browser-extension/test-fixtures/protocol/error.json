@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "replyTo": "7",
+  "code": "desquUnavailable",
+  "message": "Desqu is not running"
+}

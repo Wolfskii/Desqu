@@ -2,6 +2,7 @@
 //! and a Tauri plugin that exposes it to a UI.
 
 mod commands;
+pub mod bridge;
 pub mod core;
 pub mod engine;
 pub mod legacy;

@@ -1,0 +1,7 @@
+{
+  "type": "hostHello",
+  "browserPid": 1234,
+  "browserProcessName": "chrome.exe",
+  "browserExePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "hostVersion": "0.1.0"
+}

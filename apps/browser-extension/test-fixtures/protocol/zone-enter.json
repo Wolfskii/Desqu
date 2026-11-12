@@ -1,0 +1,13 @@
+{
+  "type": "zoneEnter",
+  "id": "7",
+  "tabId": 42,
+  "tabTitle": "Video",
+  "zoneId": null,
+  "viewport": {
+    "left": 0,
+    "top": 80,
+    "right": 1440,
+    "bottom": 1000
+  }
+}

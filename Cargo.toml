@@ -9,6 +9,7 @@ members = [
     "apps/workspaces/module",
     "apps/workspaces/src-tauri",
     "crates/desqu-desktop",
+    "crates/desqu-ipc",
     "crates/desqu-shell",
 ]
 
