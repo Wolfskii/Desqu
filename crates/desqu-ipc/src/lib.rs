@@ -3,3 +3,6 @@
 //! Only byte framing lives here. Message shapes belong to the apps that speak them.
 
 pub mod frame;
+
+#[cfg(windows)]
+pub mod pipe;

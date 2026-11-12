@@ -32,10 +32,10 @@ tasks:
       - npm install
 
   crates:
-    desc: Unit tests and clippy for the shared crates (desqu-shell, desqu-desktop)
+    desc: Unit tests and clippy for the shared crates (desqu-shell, desqu-desktop, desqu-ipc)
     cmds:
-      - cargo test -p desqu-shell -p desqu-desktop
-      - cargo clippy -p desqu-shell -p desqu-desktop --all-targets
+      - cargo test -p desqu-shell -p desqu-desktop -p desqu-ipc
+      - cargo clippy -p desqu-shell -p desqu-desktop -p desqu-ipc --all-targets -- -D warnings
 
   probe:
     desc: Real-desktop tests (touch only temporary files and windows they create themselves)
