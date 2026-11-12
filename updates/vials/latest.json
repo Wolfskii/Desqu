@@ -1,0 +1,11 @@
+{
+  "version": "0.3.0",
+  "notes": "- Right-click an icon in a vial: Explorer's own context menu for that file, folder or shortcut\n  (Shift for the extended one) instead of the web view's browser menu.\n- Windows 11 build 26300 (October 2026 updates) pulls icons that were moved off-screen back onto the\n  desktop, so items in a vial stayed visible next to it. Items in a vial are now hidden by giving the\n  file the hidden attribute instead (nothing else about it changes; Windows' \"Show hidden files\" must\n  be off): the desktop stays Windows' own, with its own menus, drag and drop and icon placement. The\n  mark is removed when an item leaves its vial, when Vials stops, and after a crash at the next start.\n- New setting \"Draw the whole desktop in Vials\" (off by default): Windows' own desktop icons are\n  switched off, as \"View, Show desktop icons\" does, and a built-in \"Desktop\" vial shows every item in\n  no other vial. For people who have hidden files shown.",
+  "pub_date": "2026-11-12T21:30:10Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROE8zN0dwcEZtbU10Ymg5aS9FOW1DS2RZYlFtYUY0d2ZnM3Z3RHVYZDB1Z3F5TlhJTTJxa1FNS010dEFIUDBIbEFNRkw3NWVpaDM2ZjN5ckdvM3Q1Vlh4dUZhelhySmdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTE5MDA3CWZpbGU6VmlhbHNfMC4zLjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMy4wCk5CM21tUDhjK01NdG14SEthMFowWmhSaFBPd1dwMnlkbTVXVnVFRTV6M0tlcHhTZEsyZlFGLzB3NXpZU1kybTc2dWFvWlBvMXA5SzNuUlFVRTRqbUNnPT0K",
+      "url": "https://github.com/Wolfskii/Desqu/releases/download/vials-v0.3.0/Vials_0.3.0_x64-setup.exe"
+    }
+  }
+}
