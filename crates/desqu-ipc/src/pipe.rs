@@ -2,26 +2,32 @@
 //!
 //! The server creates the first instance with `FILE_FLAG_FIRST_PIPE_INSTANCE`, so another process
 //! cannot take the name first. The DACL allows only SYSTEM and the owner (the current user).
+//!
+//! Handles are overlapped, and each operation waits on its own event. That lets one thread block in
+//! `read` while another writes on a clone of the same pipe, which the bridge needs to push
+//! unsolicited messages to the browser.
 
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 
 use windows::core::{HRESULT, PCWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, ERROR_BROKEN_PIPE, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, GENERIC_READ,
-    GENERIC_WRITE, HANDLE, HLOCAL, LocalFree,
+    CloseHandle, ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_BUSY,
+    ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL, LocalFree,
 };
-use windows::Win32::Security::Authorization::{
-    ConvertStringSecurityDescriptorToSecurityDescriptorW,
-};
+use windows::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED,
-    FILE_SHARE_MODE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile,
+    FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_MODE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
+    ReadFile, WriteFile,
 };
+use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
     PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
 };
+use windows::Win32::System::Threading::CreateEventW;
 
 /// The name the extension's native host connects to.
 pub const BRIDGE_PIPE_NAME: &str = r"\\.\pipe\desqu-browser-bridge";
@@ -38,15 +44,80 @@ fn to_wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// A connected pipe end. Reads and writes are blocking byte streams.
-pub struct Pipe {
+fn is_code(e: &windows::core::Error, code: windows::Win32::Foundation::WIN32_ERROR) -> bool {
+    e.code() == HRESULT::from_win32(code.0)
+}
+
+struct Inner {
     handle: HANDLE,
     /// Server ends disconnect the client on drop; client ends only close.
     server: bool,
 }
 
-// The handle is only used through `&mut self`, so moving it to another thread is fine.
-unsafe impl Send for Pipe {}
+// Overlapped operations on one handle may run from several threads; each carries its own event.
+unsafe impl Send for Inner {}
+unsafe impl Sync for Inner {}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        unsafe {
+            if self.server {
+                let _ = DisconnectNamedPipe(self.handle);
+            }
+            let _ = CloseHandle(self.handle);
+        }
+    }
+}
+
+/// A connected pipe end. Clones share the connection: one can read while another writes.
+#[derive(Clone)]
+pub struct Pipe {
+    inner: Arc<Inner>,
+}
+
+impl Pipe {
+    fn new(handle: HANDLE, server: bool) -> Self {
+        Self {
+            inner: Arc::new(Inner { handle, server }),
+        }
+    }
+
+    /// Breaks any read or write blocked on this pipe, on any clone. The peer sees the pipe close.
+    pub fn close(&self) {
+        unsafe {
+            let _ = CancelIoEx(self.inner.handle, None);
+            if self.inner.server {
+                let _ = DisconnectNamedPipe(self.inner.handle);
+            }
+        }
+    }
+}
+
+/// Runs one overlapped operation to completion, with its own event.
+fn overlapped(
+    handle: HANDLE,
+    start: impl FnOnce(*mut OVERLAPPED) -> windows::core::Result<()>,
+) -> windows::core::Result<u32> {
+    let event = unsafe { CreateEventW(None, true, false, PCWSTR::null())? };
+    let mut ov = OVERLAPPED {
+        hEvent: event,
+        ..Default::default()
+    };
+    let result = match start(&mut ov) {
+        Ok(()) => Ok(()),
+        Err(e) if is_code(&e, ERROR_IO_PENDING) => Ok(()),
+        Err(e) => Err(e),
+    };
+    let outcome = result.and_then(|()| {
+        let mut transferred = 0u32;
+        unsafe { GetOverlappedResult(handle, &ov, &mut transferred, true) }
+            .map(|()| transferred)
+    });
+    unsafe {
+        let _ = CloseHandle(event);
+    }
+    outcome
+}
 
 impl Read for Pipe {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -54,11 +125,12 @@ impl Read for Pipe {
         if len == 0 {
             return Ok(0);
         }
-        let mut read = 0u32;
-        match unsafe { ReadFile(self.handle, Some(&mut buf[..len]), Some(&mut read as *mut u32), None) } {
-            Ok(()) => Ok(read as usize),
+        let handle = self.inner.handle;
+        let slice = &mut buf[..len];
+        match overlapped(handle, |ov| unsafe { ReadFile(handle, Some(slice), None, Some(ov)) }) {
+            Ok(n) => Ok(n as usize),
             // The other end closed: that is end of stream, not an error.
-            Err(e) if e.code() == HRESULT::from_win32(ERROR_BROKEN_PIPE.0) => Ok(0),
+            Err(e) if is_code(&e, ERROR_BROKEN_PIPE) => Ok(0),
             Err(e) => Err(io::Error::other(e)),
         }
     }
@@ -67,27 +139,21 @@ impl Read for Pipe {
 impl Write for Pipe {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let len = buf.len().min(BUFFER_SIZE as usize);
-        let mut written = 0u32;
-        unsafe { WriteFile(self.handle, Some(&buf[..len]), Some(&mut written as *mut u32), None) }
-            .map_err(io::Error::other)?;
-        Ok(written as usize)
+        let handle = self.inner.handle;
+        let slice = &buf[..len];
+        match overlapped(handle, |ov| unsafe { WriteFile(handle, Some(slice), None, Some(ov)) }) {
+            Ok(n) => Ok(n as usize),
+            Err(e) if is_code(&e, ERROR_NO_DATA) || is_code(&e, ERROR_BROKEN_PIPE) => {
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, e))
+            }
+            Err(e) => Err(io::Error::other(e)),
+        }
     }
 
     /// Waits until the other end has read everything written. Needed before a server disconnects:
     /// `DisconnectNamedPipe` throws away unread data.
     fn flush(&mut self) -> io::Result<()> {
-        unsafe { FlushFileBuffers(self.handle) }.map_err(io::Error::other)
-    }
-}
-
-impl Drop for Pipe {
-    fn drop(&mut self) {
-        unsafe {
-            if self.server {
-                let _ = DisconnectNamedPipe(self.handle);
-            }
-            let _ = CloseHandle(self.handle);
-        }
+        unsafe { FlushFileBuffers(self.inner.handle) }.map_err(io::Error::other)
     }
 }
 
@@ -152,16 +218,18 @@ impl PipeListener {
         })
     }
 
-    /// Blocks until a client connects. Also used to wake a server that is shutting down (see `wake`).
+    /// Blocks until a client connects. Also used to wake a server that is shutting down: a
+    /// throwaway `connect` makes this return.
     pub fn accept(&mut self) -> io::Result<Pipe> {
         let handle = match self.next.take() {
             Some(h) => h,
             None => create_instance(&self.name, &self.attributes, false)?,
         };
-        match unsafe { ConnectNamedPipe(handle, None) } {
-            Ok(()) => {}
+        let connected = overlapped(handle, |ov| unsafe { ConnectNamedPipe(handle, Some(ov)) });
+        match connected {
+            Ok(_) => {}
             // The client connected between create and connect: that is success.
-            Err(e) if e.code() == HRESULT::from_win32(ERROR_PIPE_CONNECTED.0) => {}
+            Err(e) if is_code(&e, ERROR_PIPE_CONNECTED) => {}
             Err(e) => {
                 unsafe {
                     let _ = CloseHandle(handle);
@@ -171,10 +239,7 @@ impl PipeListener {
         }
         // Ready the next instance before handing this one out.
         self.next = Some(create_instance(&self.name, &self.attributes, false)?);
-        Ok(Pipe {
-            handle,
-            server: true,
-        })
+        Ok(Pipe::new(handle, true))
     }
 }
 
@@ -196,7 +261,7 @@ fn create_instance(name: &[u16], attributes: &SECURITY_ATTRIBUTES, first: bool) 
     let handle = unsafe {
         CreateNamedPipeW(
             PCWSTR(name.as_ptr()),
-            windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES(open_mode),
+            FILE_FLAGS_AND_ATTRIBUTES(open_mode),
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
             PIPE_UNLIMITED_INSTANCES,
             BUFFER_SIZE,
@@ -223,13 +288,13 @@ pub fn connect(name: &str) -> io::Result<Pipe> {
                 FILE_SHARE_MODE(0),
                 None,
                 OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL,
+                FILE_FLAGS_AND_ATTRIBUTES(FILE_ATTRIBUTE_NORMAL.0 | FILE_FLAG_OVERLAPPED.0),
                 None,
             )
         };
         match opened {
-            Ok(handle) => return Ok(Pipe { handle, server: false }),
-            Err(e) if e.code() == HRESULT::from_win32(ERROR_PIPE_BUSY.0) => {
+            Ok(handle) => return Ok(Pipe::new(handle, false)),
+            Err(e) if is_code(&e, ERROR_PIPE_BUSY) => {
                 unsafe {
                     let _ = WaitNamedPipeW(PCWSTR(wide.as_ptr()), BUSY_WAIT_MS);
                 }
@@ -246,6 +311,7 @@ mod tests {
     use super::*;
     use crate::frame::{read_frame, write_frame};
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
 
     static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -276,6 +342,56 @@ mod tests {
         assert_eq!(echoed, b"{\"type\":\"bridgeStatus\",\"connected\":true}");
         drop(client);
         drop(server.join().unwrap());
+    }
+
+    #[test]
+    fn the_server_can_push_while_its_reader_is_blocked() {
+        // The bridge pushes rule changes to the browser while a reader waits for the next request.
+        let name = unique_name();
+        let mut listener = PipeListener::bind(&name).unwrap();
+        let server = std::thread::spawn(move || {
+            let pipe = listener.accept().unwrap();
+            let mut reader = pipe.clone();
+            let mut writer = pipe.clone();
+            let reading = std::thread::spawn(move || read_frame(&mut reader));
+            // Give the reader time to block, then push while it still waits.
+            std::thread::sleep(Duration::from_millis(200));
+            write_frame(&mut writer, b"pushed").unwrap();
+            let request = reading.join().unwrap().unwrap().unwrap();
+            (listener, request)
+        });
+
+        let mut client = connect(&name).unwrap();
+        let client_reader = client.clone();
+        let mut client_reader = client_reader;
+        let pushed = std::thread::spawn(move || read_frame(&mut client_reader).unwrap().unwrap());
+        // The client sends a request only after the push has arrived, so the server's reader
+        // blocked the whole time.
+        assert_eq!(pushed.join().unwrap(), b"pushed");
+        write_frame(&mut client, b"request").unwrap();
+
+        let (listener, request) = server.join().unwrap();
+        assert_eq!(request, b"request");
+        drop(listener);
+    }
+
+    #[test]
+    fn close_releases_a_blocked_reader() {
+        let name = unique_name();
+        let mut listener = PipeListener::bind(&name).unwrap();
+        let server = std::thread::spawn(move || {
+            let pipe = listener.accept().unwrap();
+            let mut reader = pipe.clone();
+            let blocked = std::thread::spawn(move || read_frame(&mut reader));
+            std::thread::sleep(Duration::from_millis(100));
+            pipe.close();
+            let outcome = blocked.join().unwrap();
+            (listener, outcome.is_err() || matches!(outcome, Ok(None)))
+        });
+        let _client = connect(&name).unwrap();
+        let (listener, released) = server.join().unwrap();
+        assert!(released, "a closed pipe must end the blocked read");
+        drop(listener);
     }
 
     #[test]
