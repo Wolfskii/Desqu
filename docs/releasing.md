@@ -50,21 +50,16 @@ that version: every product gets its own tag at the same number (`desqu-v0.3.0`,
 
 2. Review each `apps/<app>/CHANGELOG.md`. Write the real notes under `## 0.3.0`; a product with nothing
    new still gets its one line. Those sections become the release notes and the in-app update text.
-3. Commit and merge to `develop`, then tag each product and push:
+3. Commit and merge to `develop`, then tag the release and push:
 
    ```powershell
-   git tag desqu-v0.3.0
-   git tag screenbound-v0.3.0
-   git tag vials-v0.3.0
-   git tag workspaces-v0.3.0
-   git tag browser-v0.3.0
-   git push origin desqu-v0.3.0 screenbound-v0.3.0 vials-v0.3.0 workspaces-v0.3.0 browser-v0.3.0
+   git tag v0.3.0
+   git push origin v0.3.0
    ```
 
-   Or run the **Release** workflow manually (Actions → Release → *Run workflow*) with the app and
-   version, and the **Browser extension release** workflow for `browser-v`.
+   Or run the **Release** workflow by hand (Actions → Release → *Run workflow*) with the version.
 
-The workflow then:
+The one release workflow then:
 
 1. checks that every version file matches the tag (`scripts/check-versions.ps1`),
 2. runs `task <app>:release:signed`, which builds the NSIS installer, the MSI and the portable build and

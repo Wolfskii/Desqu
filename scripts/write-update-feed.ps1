@@ -5,7 +5,9 @@
 param(
     [Parameter(Mandatory)][string]$App,
     [string]$NotesFile,
-    [string]$Repo = 'Wolfskii/Desqu'
+    [string]$Repo = 'Wolfskii/Desqu',
+    # The release the installers live in. Defaults to the product's own tag; the family release uses v<version>.
+    [string]$Tag
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,7 +46,8 @@ if ($NotesFile) {
     if (-not $notes) { throw "No '## $version' section in apps/$App/CHANGELOG.md (or pass -NotesFile)" }
 }
 
-$tag = "$App-v$version"
+if (-not $Tag) { $Tag = "$App-v$version" }
+$tag = $Tag
 $feed = [ordered]@{
     version   = $version
     notes     = $notes

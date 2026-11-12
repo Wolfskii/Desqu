@@ -25,10 +25,10 @@ foreach ($f in $files) {
 }
 
 if ($Tag) {
-    if ($Tag -notmatch '^(desqu|screenbound|vials|workspaces|browser)-v(.+)$') {
+    if ($Tag -notmatch '^(?:(?:desqu|screenbound|vials|workspaces|browser)-)?v(?<version>.+)$') {
         $bad += "tag:$Tag"
         Write-Host "FAIL tag '$Tag' is not <product>-v<version>"
-    } elseif ($Matches[2] -ne $truth) {
+    } elseif ($Matches['version'] -ne $truth) {
         $bad += "tag:$Tag"
         Write-Host "FAIL tag '$Tag' does not match the shared version $truth"
     } else {
