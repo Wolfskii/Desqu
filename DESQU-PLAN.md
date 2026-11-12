@@ -1297,7 +1297,7 @@ source of truth for this phase; update the statuses here as steps finish.
 | P10.A4 | Isolated bridge script + mode resolution | 🧪 |
 | P10.A5 | Popup + options UI | 🧪 |
 | P10.A6 | Test pages + manual test doc | 🧪 |
-| P10.B1 | Core types (`core/browser.rs`) | ⬜ |
+| P10.B1 | Core types (`core/browser.rs`) | ✅ |
 | P10.B2 | Wire protocol + `crates/desqu-ipc` framing | ⬜ |
 | P10.B3 | Named pipe server in the module | ⬜ |
 | P10.B4 | Engine side: hello, rule sync, exemption | ⬜ |

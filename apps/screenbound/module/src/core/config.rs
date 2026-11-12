@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use super::browser::BrowserSettings;
 use super::rules::{Action, BorderlessAction, BorderlessTarget, Matcher, RuleScope, WindowRule};
 use super::transition::TransitionSpeed;
 use super::window::ChromeMode;
@@ -33,6 +34,9 @@ pub struct AppConfig {
     /// reinstalls; the uninstaller deletes it only when "Delete app data" is checked.
     #[serde(default)]
     pub known_apps: Vec<KnownApp>,
+    /// Browser integration: per-site fullscreen rules. Missing in older configs.
+    #[serde(default)]
+    pub browser: BrowserSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +105,7 @@ impl Default for AppConfig {
             }],
             groups: Vec::new(),
             known_apps: Vec::new(),
+            browser: BrowserSettings::default(),
         }
     }
 }
@@ -233,6 +238,8 @@ impl AppConfig {
                 group_ids.retain(|id| seen_groups.contains(id));
             }
         }
+        let zone_ids: Vec<String> = self.zones.iter().map(|z| z.id.clone()).collect();
+        self.browser.site_rules.sanitize(&zone_ids);
         self.version = CONFIG_VERSION;
         Ok(self)
     }

@@ -115,6 +115,39 @@ export interface AppConfig {
     groups?: AppGroup[];
     /** Apps seen on this PC. Omitted in configs written before this field existed. */
     knownApps?: KnownApp[];
+    /** Browser integration. Omitted in configs written before this field existed. */
+    browser?: BrowserSettings;
+}
+
+// Browser integration (mirrors core/browser.rs and apps/browser-extension/src/shared/rules.ts).
+export type FullscreenMode = "native" | "fullscreen" | "window" | "zone";
+
+export type SitePattern =
+    | { type: "host"; value: string }
+    | { type: "domain"; value: string }
+    | { type: "urlPrefix"; value: string };
+
+export interface SiteRule {
+    id: string;
+    enabled?: boolean;
+    pattern: SitePattern;
+    mode: FullscreenMode;
+    /** Zone mode only. null = the document's default zone. */
+    zoneId?: string | null;
+}
+
+export interface SiteRules {
+    version: number;
+    /** ms since the Unix epoch; set by whoever last edited the document. */
+    updatedAt: number;
+    defaultMode: FullscreenMode;
+    defaultZoneId?: string | null;
+    rules: SiteRule[];
+}
+
+export interface BrowserSettings {
+    integrationEnabled?: boolean;
+    siteRules?: SiteRules;
 }
 
 export type ShowState = "normal" | "minimized" | "maximized";
