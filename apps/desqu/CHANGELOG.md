@@ -5,6 +5,12 @@ being released as the release notes and as the in-app update description.
 
 ## Unreleased
 
+## 0.2.1
+
+- Groundwork for browser fullscreen support: Screenbound's settings can now store per-site fullscreen
+  rules. Nothing changes on screen yet; the browser extension and its connection come in a later release.
+- Update check and install: this release is also the first update to test the in-app update path.
+
 ## 0.2.0
 
 - Hosts Vials and Workspaces alongside Screenbound.
