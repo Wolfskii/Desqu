@@ -187,6 +187,29 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     Ok(())
 }
 
+/// The native host that ships next to this app.
+pub fn host_exe_path() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let host = exe.with_file_name("desqu-browser-host.exe");
+    if host.is_file() {
+        Ok(host)
+    } else {
+        Err("desqu-browser-host.exe is not next to this app".into())
+    }
+}
+
+/// Writes the browser manifests and registry entries so browsers can start the host.
+/// Idempotent: safe on every start.
+pub fn register_host() -> Result<std::path::PathBuf, String> {
+    use crate::bridge::manifest::{chromium_manifest, chromium_origins, firefox_manifest};
+    let host = host_exe_path()?;
+    let host_text = host.to_string_lossy().into_owned();
+    let chromium = chromium_manifest(&host_text, &chromium_origins());
+    let firefox = firefox_manifest(&host_text);
+    crate::platform::native_host::install(&chromium, &firefox).map_err(|e| e.to_string())?;
+    Ok(host)
+}
+
 /// Starts the browser bridge when integration is on. A failure is logged, not fatal: the fullscreen
 /// limiter works without browsers.
 fn start_bridge(state: &ModuleState, handle: EngineHandle) {
@@ -200,6 +223,9 @@ fn start_bridge(state: &ModuleState, handle: EngineHandle) {
     if slot.is_some() {
         return;
     }
+    if let Err(e) = register_host() {
+        tracing::warn!("browser host is not registered: {e}");
+    }
     match BridgeServer::start(Arc::new(EngineSink(handle))) {
         Ok(server) => *slot = Some(server),
         Err(e) => tracing::warn!("browser bridge did not start: {e}"),
@@ -209,22 +235,19 @@ fn start_bridge(state: &ModuleState, handle: EngineHandle) {
 /// Brings the bridge in line with the saved setting: starts it when on, stops it when off.
 pub fn sync_bridge(state: &ModuleState) {
     let handle = lock(&state.handle).clone();
-    match handle {
-        Some(handle) => start_bridge_if_enabled(state, handle),
-        None => {
-            lock(&state.bridge).take();
-        }
-    }
-}
-
-fn start_bridge_if_enabled(state: &ModuleState, handle: EngineHandle) {
     let enabled = handle
-        .call(|e| e.config().browser.integration_enabled)
+        .as_ref()
+        .and_then(|h| h.call(|e| e.config().browser.integration_enabled).ok())
         .unwrap_or(false);
-    if enabled {
-        start_bridge(state, handle);
-    } else {
-        lock(&state.bridge).take();
+    match handle {
+        Some(handle) if enabled => start_bridge(state, handle),
+        _ => {
+            // Off: stop serving, and remove the browser entries so no browser can find us.
+            lock(&state.bridge).take();
+            if let Err(e) = crate::platform::native_host::uninstall() {
+                tracing::warn!("could not remove the browser host entries: {e}");
+            }
+        }
     }
 }
 

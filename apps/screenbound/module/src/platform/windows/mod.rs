@@ -1,6 +1,7 @@
 //! Win32 implementation of the platform boundary.
 
 mod events;
+pub mod native_host;
 mod monitors;
 mod window;
 

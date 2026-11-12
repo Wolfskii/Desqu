@@ -117,6 +117,37 @@ pub trait PlatformWindowManager: Send + Sync {
     fn subscribe(&self, sink: EventSink) -> PlatformResult<EventSubscription>;
 }
 
+/// Browser bridge registration for this OS: manifests and per-browser entries (see bridge/manifest.rs).
+pub mod native_host {
+    #[cfg(not(windows))]
+    use std::io;
+    #[cfg(not(windows))]
+    use std::path::{Path, PathBuf};
+
+    #[cfg(windows)]
+    pub use super::windows::native_host::{install, is_installed, uninstall};
+
+    #[cfg(not(windows))]
+    fn unsupported() -> io::Error {
+        io::Error::new(io::ErrorKind::Unsupported, "browser integration is Windows only")
+    }
+
+    #[cfg(not(windows))]
+    pub fn install(_chromium: &str, _firefox: &str) -> io::Result<PathBuf> {
+        Err(unsupported())
+    }
+
+    #[cfg(not(windows))]
+    pub fn uninstall() -> io::Result<()> {
+        Err(unsupported())
+    }
+
+    #[cfg(not(windows))]
+    pub fn is_installed(_host_exe: &Path) -> bool {
+        false
+    }
+}
+
 pub fn create() -> std::sync::Arc<dyn PlatformWindowManager> {
     #[cfg(windows)]
     {

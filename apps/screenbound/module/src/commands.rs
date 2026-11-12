@@ -97,9 +97,35 @@ pub async fn legacy_delete_settings_backup(state: State<'_, ModuleState>) -> Cmd
     legacy::delete_settings_backup(dir)
 }
 
+/// What the Browsers tab shows: the engine's view plus whether the host is registered.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserIntegrationStatus {
+    #[serde(flatten)]
+    pub browsers: BrowserStatus,
+    pub host_registered: bool,
+    pub host_path: Option<String>,
+    /// Why the host is not ready, when it is not.
+    pub host_problem: Option<String>,
+}
+
 #[tauri::command]
-pub async fn get_browser_status(state: State<'_, ModuleState>) -> CmdResult<BrowserStatus> {
-    state.with_engine(|e| e.browser_status())
+pub async fn get_browser_status(state: State<'_, ModuleState>) -> CmdResult<BrowserIntegrationStatus> {
+    let browsers = state.with_engine(|e| e.browser_status())?;
+    let (host_path, host_registered, host_problem) = match plugin::host_exe_path() {
+        Ok(path) => {
+            let registered = crate::platform::native_host::is_installed(&path);
+            let problem = (!registered).then(|| "The browser entries are missing or point elsewhere; turn the setting off and on again.".to_string());
+            (Some(path.to_string_lossy().into_owned()), registered, problem)
+        }
+        Err(e) => (None, false, Some(e)),
+    };
+    Ok(BrowserIntegrationStatus {
+        browsers,
+        host_registered,
+        host_path,
+        host_problem,
+    })
 }
 
 #[tauri::command]
