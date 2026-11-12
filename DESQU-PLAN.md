@@ -1309,7 +1309,7 @@ source of truth for this phase; update the statuses here as steps finish.
 | P10.C1 | Spike: window region + viewport measurement | 🟡 |
 | P10.C2 | Platform additions (region, child rect, foreground) | ✅ |
 | P10.C3 | Engine zone flow | ✅ |
-| P10.C4 | Extension zone orchestration | ⬜ |
+| P10.C4 | Extension zone orchestration | 🧪 |
 | P10.C5 | Manual verification + docs | ⬜ |
 | P10.D | Store publishing prep | ⬜ |
 

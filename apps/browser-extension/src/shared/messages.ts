@@ -17,7 +17,13 @@ export type ContentToBackground =
 /** Sent by the background to every frame of a tab. */
 export type BackgroundToTab =
   | { kind: "setMode"; mode: FullscreenMode }
-  | { kind: "forceExit" };
+  | { kind: "forceExit" }
+  /** Reply with the page viewport in screen pixels (Firefox only; others reply null). */
+  | { kind: "measure" };
+
+export interface MeasureReply {
+  viewport: { left: number; top: number; right: number; bottom: number } | null;
+}
 
 export interface ModeReply {
   mode: FullscreenMode;
