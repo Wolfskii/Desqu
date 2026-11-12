@@ -195,8 +195,6 @@ impl Engine {
                 self.error(conn, request, ErrorCode::BadRequest, e);
                 return;
             }
-            let rules = self.config.browser.site_rules.clone();
-            self.broadcast_except(conn, ServerMessage::RulesChanged { rules });
         }
 
         let rules = self.config.browser.site_rules.clone();
@@ -218,11 +216,7 @@ impl Engine {
         let mut config = self.config.clone();
         config.browser.site_rules = rules;
         match self.set_config(config) {
-            Ok(saved) => {
-                let rules = saved.browser.site_rules;
-                self.broadcast_except(conn, ServerMessage::RulesChanged { rules });
-                self.reply(conn, ServerMessage::Ack { reply_to: request });
-            }
+            Ok(_) => self.reply(conn, ServerMessage::Ack { reply_to: request }),
             Err(e) => self.error(conn, request, ErrorCode::BadRequest, e),
         }
     }
@@ -340,11 +334,11 @@ impl Engine {
         );
     }
 
-    fn broadcast_except(&self, except: ConnId, message: ServerMessage) {
-        for (id, c) in &self.browser_conns {
-            if *id != except {
-                let _ = c.outbox.send(message.clone());
-            }
+    /// Every connected browser gets the saved rules, whoever saved them (Screenbound's UI or a browser).
+    pub(super) fn broadcast_rules_to_browsers(&self) {
+        let rules = self.config.browser.site_rules.clone();
+        for c in self.browser_conns.values() {
+            let _ = c.outbox.send(ServerMessage::RulesChanged { rules: rules.clone() });
         }
     }
 
@@ -544,7 +538,14 @@ mod tests {
         let rx = connect(&mut h, 1, CHROME_PID, "chrome.exe");
         h.engine.on_browser_message(ConnId(1), hello(rules_at(500, FullscreenMode::Window)));
 
-        match next(&rx) {
+        // Saving the newer copy tells every browser (this one too) before the ack.
+        let first = loop {
+            match next(&rx) {
+                ServerMessage::RulesChanged { .. } => continue,
+                other => break other,
+            }
+        };
+        match first {
             ServerMessage::HelloAck { reply_to, protocol, product, app_version, rules, zones } => {
                 assert_eq!(reply_to, "1");
                 assert_eq!(protocol, PROTOCOL_VERSION);
@@ -601,6 +602,22 @@ mod tests {
     }
 
     #[test]
+    fn rules_saved_from_screenbounds_own_ui_reach_every_connected_browser() {
+        let mut h = harness(chrome_platform(None));
+        let a = connect(&mut h, 1, CHROME_PID, "chrome.exe");
+        let b = connect(&mut h, 2, 5555, "brave.exe");
+        let mut config = h.engine.config();
+        config.browser.site_rules = rules_at(77, FullscreenMode::Zone);
+        h.engine.set_config(config).unwrap();
+        for rx in [&a, &b] {
+            match next(rx) {
+                ServerMessage::RulesChanged { rules } => assert_eq!(rules.updated_at, 77),
+                other => panic!("expected rulesChanged, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn saved_rules_reach_the_other_browsers_but_not_the_sender() {
         let mut h = harness(chrome_platform(None));
         let sender = connect(&mut h, 1, CHROME_PID, "chrome.exe");
@@ -614,8 +631,9 @@ mod tests {
             ServerMessage::RulesChanged { rules } => assert_eq!(rules.updated_at, 42),
             other => panic!("expected rulesChanged, got {other:?}"),
         }
+        // The sender hears the change too (the saved document is shared), then its ack.
+        assert!(matches!(next(&sender), ServerMessage::RulesChanged { .. }));
         assert!(matches!(next(&sender), ServerMessage::Ack { .. }));
-        assert!(sender.try_recv().is_err(), "the sender gets only its ack");
     }
 
     #[test]

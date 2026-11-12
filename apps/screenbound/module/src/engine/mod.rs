@@ -1719,7 +1719,11 @@ impl Engine {
     pub fn set_config(&mut self, config: AppConfig) -> Result<AppConfig, String> {
         let config = config.validated().map_err(|e: ConfigError| e.to_string())?;
         config.save(&self.paths.config).map_err(|e| e.to_string())?;
+        let rules_before = self.config.browser.site_rules.clone();
         self.config = config;
+        if self.config.browser.site_rules != rules_before {
+            self.broadcast_rules_to_browsers();
+        }
         self.reconcile_managed();
         self.reconcile_borderless();
         self.rejected.clear();
