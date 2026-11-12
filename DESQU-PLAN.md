@@ -1292,7 +1292,7 @@ source of truth for this phase; update the statuses here as steps finish.
 | Step | Name | Status |
 | --- | --- | --- |
 | P10.A1 | Scaffold `apps/browser-extension` (WXT + Svelte 5) | ✅ |
-| P10.A2 | Site rules model + storage | ⬜ |
+| P10.A2 | Site rules model + storage | ✅ |
 | P10.A3 | MAIN-world Fullscreen API patch | ⬜ |
 | P10.A4 | Isolated bridge script + mode resolution | ⬜ |
 | P10.A5 | Popup + options UI | ⬜ |
