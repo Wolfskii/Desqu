@@ -22,11 +22,25 @@ on:
         required: true
         type: string
 
+  # Called by release-family.yml, which releases every product in one run.
+  workflow_call:
+    inputs:
+      app:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+
 permissions:
   contents: write
 
 jobs:
   release:
+    # Products publish the same update feed branch; run them one at a time so pushes never collide.
+    concurrency:
+      group: release-feed
+      cancel-in-progress: false
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
