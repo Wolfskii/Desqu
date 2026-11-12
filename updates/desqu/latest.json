@@ -1,11 +1,11 @@
 {
-  "version": "0.2.1",
-  "notes": "- Groundwork for browser fullscreen support: Screenbound's settings can now store per-site fullscreen\n  rules. Nothing changes on screen yet; the browser extension and its connection come in a later release.\n- Update check and install: this release is also the first update to test the in-app update path.",
-  "pub_date": "2026-11-12T18:30:05Z",
+  "version": "0.3.0",
+  "notes": "- Browser integration (optional): the Browsers tab in Settings covers the Desqu Fullscreen browser\n  extension, with per-site fullscreen rules and the connection status.",
+  "pub_date": "2026-11-12T21:31:39Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSY3o0ek5WcTRoT2lST3ZxRmYrdkgzbUxGTXNZRk00UUFGZFZUMXhwenAyL3FSbUZhV0JtVCtSWDVsVVVwajFlOHZZMjFoTktYRHFGNytYRzlkTFFaNDh6VWRjUjRMTVFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTA4MjAzCWZpbGU6RGVzcXVfMC4yLjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4xCllPZ0dkdVNCR0xUVWhuZ1ByMS9SeXUyK3AxMEJZNW82WWxPbGFQbHNWRDI3akVVN3FzOFF6bWw1L2J0ZElWVkEwTHR5ZGI4R21NT1VBZmJQMmNnZ0FRPT0K",
-      "url": "https://github.com/Wolfskii/Desqu/releases/download/desqu-v0.2.1/Desqu_0.2.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSY3o0ek5WcTRoT3V2VmdiWkVIaU9ORXZKOVhQNWRLd0JON2Q2eGRydjBUOGkwdlJ4aWJuQXlVM2pkWTRqS3F5THVZK1BwbU1XZmsvWkJxUEpyWWUyUG1DOWlja3g5bXdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTE5MDk1CWZpbGU6RGVzcXVfMC4zLjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMy4wCnJKbHY4NnNPdXQ4MnpMM2lHOWZRUzVKYWY4Ymc4bm5FR21ydWZpanJRRWk2dktiMnFiTVFkU1BkRlR4VHgvODAxMzJTdHhTUkpiVlQ0MTQrc0t1c0RnPT0K",
+      "url": "https://github.com/Wolfskii/Desqu/releases/download/desqu-v0.3.0/Desqu_0.3.0_x64-setup.exe"
     }
   }
 }
