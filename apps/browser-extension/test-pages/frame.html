@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Frame</title>
+  <style>
+    body { margin: 0; background: #222; color: #eee; font: 14px system-ui, sans-serif; }
+    .player { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body>
+  <div class="player" id="p">
+    <button id="fs">Frame fullscreen</button>
+  </div>
+  <script>
+    document.getElementById("fs").addEventListener("click", () => {
+      document.getElementById("p").requestFullscreen().then(
+        () => parent.postMessage({ desquTest: "frame fullscreen resolved" }, "*"),
+        (e) => parent.postMessage({ desquTest: "frame fullscreen rejected: " + e.name }, "*"),
+      );
+    });
+    document.addEventListener("fullscreenchange", () => {
+      parent.postMessage({ desquTest: "frame fullscreenchange, element=" + (document.fullscreenElement ? "set" : "null") }, "*");
+    });
+  </script>
+</body>
+</html>

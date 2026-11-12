@@ -15,7 +15,12 @@ export default defineConfig({
     permissions: ["storage", "tabs", "nativeMessaging"],
     host_permissions: ["<all_urls>"],
     browser_specific_settings: {
-      gecko: { id: "desqu-fullscreen@wolfskii.github.io", strict_min_version: "128.0" },
+      gecko: {
+        id: "desqu-fullscreen@wolfskii.github.io",
+        strict_min_version: "128.0",
+        // Nothing is collected or sent off the machine (native messaging is local only).
+        data_collection_permissions: { required: ["none"] },
+      },
     },
     ...(mode === "development" ? { key: DEV_KEY } : {}),
   }),

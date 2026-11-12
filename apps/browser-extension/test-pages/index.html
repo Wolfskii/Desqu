@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Desqu Fullscreen test page</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; margin: 16px; background: #1b1b1f; color: #eee; }
+    .case { margin: 0 0 24px; }
+    video, .custom, iframe { width: 480px; height: 270px; background: #000; display: block; }
+    .custom { position: relative; }
+    .custom button { position: absolute; right: 8px; bottom: 8px; }
+    pre { background: #111; padding: 8px; max-height: 220px; overflow: auto; }
+    .transform-trap { transform: translateZ(0); padding: 4px; } /* a parent that traps position:fixed */
+  </style>
+</head>
+<body>
+  <h1>Desqu Fullscreen test page</h1>
+  <p>Set this site's mode in the extension, then try each case. The log shows what the page sees.</p>
+
+  <section class="case">
+    <h2>1. Video with a native fullscreen button</h2>
+    <video id="v1" controls muted loop></video>
+    <button data-fs="#v1">Fullscreen</button>
+  </section>
+
+  <section class="case transform-trap">
+    <h2>2. Custom player inside a transformed parent</h2>
+    <div class="custom" id="custom">
+      <video id="v2" muted loop style="width:100%;height:100%"></video>
+      <button data-fs="#custom">Fullscreen</button>
+    </div>
+  </section>
+
+  <section class="case">
+    <h2>3. Iframe with allowfullscreen (same origin)</h2>
+    <iframe id="f1" src="frame.html" allowfullscreen></iframe>
+  </section>
+
+  <section class="case">
+    <h2>4. Iframe without allowfullscreen (should be refused by the browser)</h2>
+    <iframe id="f2" src="frame.html"></iframe>
+  </section>
+
+  <section class="case">
+    <h2>5. Shadow DOM player</h2>
+    <div id="shadow-host"></div>
+  </section>
+
+  <section class="case">
+    <h2>Log</h2>
+    <pre id="log"></pre>
+    <p>innerWidth × innerHeight: <span id="size"></span></p>
+    <p>document.fullscreenElement: <span id="fse">none</span></p>
+  </section>
+
+  <script>
+    // Canvas stream as a video source, so no media file is needed.
+    function paint(video, color) {
+      const c = document.createElement("canvas");
+      c.width = 640; c.height = 360;
+      const ctx = c.getContext("2d");
+      let t = 0;
+      setInterval(() => {
+        t++;
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "48px sans-serif";
+        ctx.fillText("frame " + t, 40, 180);
+      }, 100);
+      video.srcObject = c.captureStream(10);
+      video.play().catch(() => {});
+    }
+    paint(document.getElementById("v1"), "#2a4d7a");
+    paint(document.getElementById("v2"), "#7a2a4d");
+
+    const shadow = document.getElementById("shadow-host").attachShadow({ mode: "open" });
+    shadow.innerHTML = `
+      <div id="sp" style="width:480px;height:270px;background:#333;position:relative">
+        <button id="sb" style="position:absolute;right:8px;bottom:8px">Fullscreen</button>
+      </div>`;
+    shadow.getElementById("sb").addEventListener("click", () => shadow.getElementById("sp").requestFullscreen());
+
+    const log = (msg) => {
+      const el = document.getElementById("log");
+      el.textContent = new Date().toLocaleTimeString() + "  " + msg + "\n" + el.textContent;
+    };
+    document.querySelectorAll("button[data-fs]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const target = document.querySelector(b.dataset.fs);
+        target.requestFullscreen().then(
+          () => log("requestFullscreen resolved on " + b.dataset.fs),
+          (e) => log("requestFullscreen rejected: " + e.name),
+        );
+      }),
+    );
+    document.addEventListener("fullscreenchange", () => {
+      const fse = document.fullscreenElement;
+      document.getElementById("fse").textContent = fse ? (fse.id || fse.tagName) : "none";
+      log("fullscreenchange, element=" + (fse ? (fse.id || fse.tagName) : "null"));
+    });
+    const updateSize = () => (document.getElementById("size").textContent = innerWidth + " × " + innerHeight);
+    addEventListener("resize", updateSize);
+    updateSize();
+
+    // Iframes: log messages posted by frame.html.
+    addEventListener("message", (e) => {
+      if (e.data && e.data.desquTest) log("from frame: " + e.data.desquTest);
+    });
+  </script>
+</body>
+</html>

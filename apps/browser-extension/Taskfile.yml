@@ -59,6 +59,12 @@ tasks:
     cmds:
       - npm run check
 
+  pages:
+    desc: Serve the manual test pages on http://127.0.0.1:5180
+    interactive: true
+    cmds:
+      - python -m http.server 5180 --directory test-pages --bind 127.0.0.1
+
   test:
     desc: Unit tests (vitest)
     deps: [install]
