@@ -6,6 +6,7 @@
   import RulesPanel from "./components/RulesPanel.svelte";
   import SettingsPanel from "./components/SettingsPanel.svelte";
   import ZonesPanel from "./components/ZonesPanel.svelte";
+  import BrowsersPanel from "./components/BrowsersPanel.svelte";
   import { api } from "./api";
   import { app } from "./state.svelte";
 
@@ -13,7 +14,7 @@
   let { onOpenDesqu, onExit }: { onOpenDesqu?: () => void; onExit?: () => void } = $props();
   const standalone = $derived(Boolean(onOpenDesqu || onExit));
 
-  type Tab = "zones" | "apps" | "groups" | "rules" | "settings" | "diagnostics";
+  type Tab = "zones" | "apps" | "groups" | "rules" | "browsers" | "settings" | "diagnostics";
   let tab = $state<Tab>("zones");
 
   onMount(() => void app.init());
@@ -54,7 +55,7 @@
   <header>
     <div class="brand">Screenbound</div>
     <nav>
-      {#each [["zones", "Zones"], ["apps", "Apps"], ["groups", "Groups"], ["rules", "Rules"], ["settings", "Settings"], ["diagnostics", "Diagnostics"]] as [id, label] (id)}
+      {#each [["zones", "Zones"], ["apps", "Apps"], ["groups", "Groups"], ["rules", "Rules"], ["browsers", "Browsers"], ["settings", "Settings"], ["diagnostics", "Diagnostics"]] as [id, label] (id)}
         <button class:active={tab === id} onclick={() => (tab = id as Tab)}>{label}</button>
       {/each}
     </nav>
@@ -96,6 +97,8 @@
       <GroupsPanel />
     {:else if tab === "rules"}
       <RulesPanel />
+    {:else if tab === "browsers"}
+      <BrowsersPanel />
     {:else if tab === "settings"}
       <SettingsPanel />
     {:else}

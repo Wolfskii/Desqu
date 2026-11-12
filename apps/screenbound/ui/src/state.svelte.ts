@@ -1,5 +1,14 @@
 import { api, events, type UnlistenFn } from "./api";
-import type { ActivityEntry, AppConfig, EngineStatus, LegacyStatus, ModuleStatus, MonitorInfo, Zone } from "./types";
+import type {
+    ActivityEntry,
+    AppConfig,
+    BrowserIntegrationStatus,
+    EngineStatus,
+    LegacyStatus,
+    ModuleStatus,
+    MonitorInfo,
+    Zone,
+} from "./types";
 
 const SAVE_DELAY_MS = 350;
 const ACTIVITY_LIMIT = 300;
@@ -20,6 +29,7 @@ class AppState {
     saveState = $state<"idle" | "pending" | "saving" | "saved">("idle");
     selectedMonitorId = $state<string | null>(null);
     selectedZoneId = $state<string | null>(null);
+    browserStatus = $state<BrowserIntegrationStatus | null>(null);
 
     #saveTimer: ReturnType<typeof setTimeout> | null = null;
     #unlisten: UnlistenFn[] = [];
@@ -105,6 +115,7 @@ class AppState {
         } catch (e) {
             this.error = String(e);
         }
+        await this.refreshBrowsers();
 
         this.#unlisten = await Promise.all([
             events.onActivity((entry) => {
@@ -112,6 +123,7 @@ class AppState {
             }),
             events.onManagedChanged(() => void this.refreshStatus()),
             events.onMonitorsChanged((m) => (this.monitors = m)),
+            events.onBrowserChanged(() => void this.refreshBrowsers()),
             events.onConfigChanged((c) => {
                 // Don't clobber edits the user is still making.
                 if (this.saveState !== "pending" && this.saveState !== "saving") this.config = c;
@@ -129,6 +141,44 @@ class AppState {
         } catch (e) {
             this.error = String(e);
         }
+    }
+
+    async refreshBrowsers() {
+        try {
+            this.browserStatus = await api.getBrowserStatus();
+        } catch (e) {
+            // Not fatal: the rest of the app works without the browser bridge.
+            this.browserStatus = null;
+            console.warn("browser status unavailable", e);
+        }
+    }
+
+    /** Turns the browser bridge on or off. The engine saves the setting and starts or stops the host. */
+    async setBrowserIntegration(enabled: boolean) {
+        try {
+            await api.setBrowserIntegration(enabled);
+            await this.refreshBrowsers();
+            this.config = await api.getConfig();
+        } catch (e) {
+            this.error = String(e);
+        }
+    }
+
+    /** Call after editing site rules: stamps them so the newer copy wins when a browser syncs. */
+    touchSiteRules() {
+        if (!this.config) return;
+        const current = this.config.browser?.siteRules;
+        this.config.browser = {
+            integrationEnabled: this.config.browser?.integrationEnabled ?? true,
+            siteRules: {
+                version: 1,
+                updatedAt: Date.now(),
+                defaultMode: current?.defaultMode ?? "native",
+                defaultZoneId: current?.defaultZoneId ?? null,
+                rules: current?.rules ?? [],
+            },
+        };
+        this.scheduleSave(true);
     }
 
     async refreshMonitors() {

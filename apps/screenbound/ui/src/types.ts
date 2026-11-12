@@ -150,6 +150,25 @@ export interface BrowserSettings {
     siteRules?: SiteRules;
 }
 
+/** A browser whose extension has said hello. */
+export interface BrowserConnection {
+    connId: number;
+    processName: string;
+    browserName: string;
+    browserVersion: string;
+    extensionVersion: string;
+    sinceMs: number;
+}
+
+/** What the Browsers tab shows (engine view plus host registration). */
+export interface BrowserIntegrationStatus {
+    integrationEnabled: boolean;
+    connections: BrowserConnection[];
+    hostRegistered: boolean;
+    hostPath: string | null;
+    hostProblem: string | null;
+}
+
 export type ShowState = "normal" | "minimized" | "maximized";
 
 export interface WindowState {

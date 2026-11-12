@@ -28,6 +28,14 @@
   <LegacySection />
 
   <section class="card">
+    <h3>Browser fullscreen without the flash</h3>
+    <p class="dim">
+      Install the Desqu Fullscreen extension in your browser, then open the Browsers tab to set which sites stay in the
+      window or move into a zone.
+    </p>
+  </section>
+
+  <section class="card">
     <h3>Fullscreen animation</h3>
     <p class="dim">
       When an app goes fullscreen, the window shrinks from the full monitor into your zone. When it leaves fullscreen,
