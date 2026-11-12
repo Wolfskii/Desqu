@@ -790,6 +790,9 @@ dependencies = [
 [[package]]
 name = "desqu-ipc"
 version = "0.1.0"
+dependencies = [
+ "windows",
+]
 
 [[package]]
 name = "desqu-shell"
