@@ -46,7 +46,8 @@ async function pushModesToAllTabs(): Promise<void> {
 
 /** Sends a request and waits for its reply. Rejects when Desqu is not connected or does not answer. */
 function request(build: (id: string) => ClientMessage): Promise<ServerMessage> {
-  if (!port || !connected) return Promise.reject(new Error("Desqu is not connected"));
+  // Only the port is needed here: `hello` is the message that makes us "connected", so it must be sent before that.
+  if (!port) return Promise.reject(new Error("Desqu is not connected"));
   const id = String(++counter);
   const reply = pending.add(id);
   port.postMessage(build(id));
