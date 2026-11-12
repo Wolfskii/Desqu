@@ -1311,7 +1311,7 @@ source of truth for this phase; update the statuses here as steps finish.
 | P10.C3 | Engine zone flow | ✅ |
 | P10.C4 | Extension zone orchestration | 🧪 |
 | P10.C5 | Manual verification + docs | 🟡 (docs written; manual checks pending) |
-| P10.D | Store publishing prep | 🟡 (publishing guide written; accounts and uploads pending) |
+| P10.D | Store publishing prep | ⏸ skipped for now (publishing guide kept for later) |
 
 ---
 
