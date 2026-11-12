@@ -12,6 +12,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 
+# Desqu and Screenbound bundle the browser host (bundle.externalBin): build it and place it first.
+if ($App -in @('desqu', 'screenbound')) {
+    & (Join-Path $root 'scripts/prepare-browser-host.ps1') -Profile release
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
 if ($NoSign) {
     # Installers only: updater artifacts are what need the private key.
     $noSignConfig = Join-Path ([IO.Path]::GetTempPath()) "desqu-nosign-$App.json"

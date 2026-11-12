@@ -53,11 +53,28 @@ New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 $nsisOut = Join-Path $dist ("{0}_{1}_{2}-setup.exe" -f $product, $version, $arch)
 $msiOut = Join-Path $dist ("{0}_{1}_{2}.msi" -f $product, $version, $arch)
-$portableOut = Join-Path $dist ("{0}_{1}_{2}-portable.exe" -f $product, $version, $arch)
+# Apps that ship the browser host need it next to the exe, so their portable build is a zip of both.
+$bundlesHost = $App -in @('desqu', 'screenbound')
+$portableOut = if ($bundlesHost) {
+    Join-Path $dist ("{0}_{1}_{2}-portable.zip" -f $product, $version, $arch)
+} else {
+    Join-Path $dist ("{0}_{1}_{2}-portable.exe" -f $product, $version, $arch)
+}
 
 Copy-Item -Force $nsis.FullName $nsisOut
 Copy-Item -Force $msi.FullName $msiOut
-Copy-Item -Force $exe $portableOut
+if ($bundlesHost) {
+    $hostExe = Join-Path $releaseDir 'desqu-browser-host.exe'
+    if (-not (Test-Path $hostExe)) { throw "Browser host not built: $hostExe (run scripts/prepare-browser-host.ps1 -Profile release)" }
+    $staging = Join-Path $dist '.portable'
+    New-Item -ItemType Directory -Force -Path $staging | Out-Null
+    Copy-Item -Force $exe $staging
+    Copy-Item -Force $hostExe $staging
+    Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $portableOut
+    Remove-Item -Recurse -Force $staging
+} else {
+    Copy-Item -Force $exe $portableOut
+}
 
 # Updater signatures sit next to the bundles when a signing key was available at build time.
 $sigs = @()
@@ -87,7 +104,7 @@ Write-Host ''
 Write-Host "Release artifacts in $dist`:"
 Write-Host ("  NSIS installer : {0} ({1:N2} MiB)" -f $nsisOut, ((Get-Item $nsisOut).Length / 1MB))
 Write-Host ("  MSI installer  : {0} ({1:N2} MiB)" -f $msiOut, ((Get-Item $msiOut).Length / 1MB))
-Write-Host ("  Portable exe   : {0} ({1:N2} MiB)" -f $portableOut, ((Get-Item $portableOut).Length / 1MB))
+Write-Host ("  Portable      : {0} ({1:N2} MiB)" -f $portableOut, ((Get-Item $portableOut).Length / 1MB))
 if ($sigs.Count -gt 0) {
     Write-Host ("  Signatures     : {0}" -f (($sigs | ForEach-Object { Split-Path $_ -Leaf }) -join ', '))
 } else {
@@ -95,4 +112,4 @@ if ($sigs.Count -gt 0) {
 }
 Write-Host '  Checksums      : SHA256SUMS.txt'
 Write-Host ''
-Write-Host 'Note: *-setup.exe and *.msi install the app. *-portable.exe is a no-install single binary (needs WebView2).'
+Write-Host 'Note: *-setup.exe and *.msi install the app. *-portable.exe (or *-portable.zip, which also holds the browser host) runs without installing (needs WebView2).'

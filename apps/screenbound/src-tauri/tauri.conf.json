@@ -40,9 +40,13 @@
     ],
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "windows/hooks.nsh"
       }
     },
+    "externalBin": [
+      "binaries/desqu-browser-host"
+    ],
     "createUpdaterArtifacts": true
   },
   "plugins": {

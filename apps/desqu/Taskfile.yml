@@ -21,16 +21,22 @@ tasks:
     cmds:
       - npm install
 
+  host:
+    desc: Build the browser host and copy it into src-tauri/binaries (needed before any Tauri build)
+    dir: ../..
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-browser-host.ps1
+
   dev:
     desc: Run Desqu locally (Vite + Tauri)
-    deps: [install]
+    deps: [install, host]
     interactive: true
     cmds:
       - npm run tauri dev
 
   dev:logs:
     desc: Run Desqu locally with engine debug logs
-    deps: [install]
+    deps: [install, host]
     interactive: true
     env:
       RUST_LOG: desqu_lib=debug,screenbound_module=debug,desqu_shell=debug
@@ -56,6 +62,7 @@ tasks:
   ci:
     desc: Typecheck, unit tests, and clippy
     cmds:
+      - task: host
       - task: check
       - task: test
       - task: lint
