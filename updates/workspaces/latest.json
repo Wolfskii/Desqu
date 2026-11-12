@@ -1,0 +1,11 @@
+{
+  "version": "0.3.0",
+  "notes": "- Hiding icons on other virtual desktops works again on Windows 11 build 26300 (it no longer lets\n  icons be moved off-screen): items owned by another desktop get the hidden attribute (the desktop\n  reacts in under a second) and lose it when you come back, quit, or after a crash at the next start.\n  System items such as the Recycle Bin cannot be hidden and are reported in Settings.",
+  "pub_date": "2026-11-12T21:26:46Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSYW56TE13ZG85cGVxTFE2NDZFVExuQlZSNU9WZzNKckxpeC8wRHRvMHdkNS9CeXRoNDd6TDF5ZFpQdjdPN2FUd2pJS1NXTVZpRHBjdlUvZTdVSGpBN2RNNzJuaXpxR3dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTE4ODA0CWZpbGU6V29ya3NwYWNlc18wLjMuMF94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4zLjAKZUJrYjVUbFBQNUdXVzd4U0xEVVNpelVMQmsrcGtoaXpEUmZCTGtkbU9vbjJhVnRYUkROakxWa0prcEZ6UDdDeUVESlZFWEpraEVtQnlLR1hObHNVRGc9PQo=",
+      "url": "https://github.com/Wolfskii/Desqu/releases/download/workspaces-v0.3.0/Workspaces_0.3.0_x64-setup.exe"
+    }
+  }
+}
