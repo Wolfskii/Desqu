@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "apps/desqu/src-tauri",
     "apps/screenbound/module",
+    "apps/screenbound/browser-host",
     "apps/screenbound/src-tauri",
     "apps/vials/module",
     "apps/vials/src-tauri",

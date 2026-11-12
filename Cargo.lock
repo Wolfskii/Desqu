@@ -776,6 +776,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "desqu-browser-host"
+version = "0.1.0"
+dependencies = [
+ "desqu-ipc",
+ "serde_json",
+ "windows",
+]
+
+[[package]]
 name = "desqu-desktop"
 version = "0.1.0"
 dependencies = [
