@@ -130,7 +130,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dist-browser
-          path: apps/browser-extension/.output/desqu-fullscreen-*.zip
+          path: apps/browser-extension/.output/screenbound-companion-*.zip
           if-no-files-found: error
 
   publish:

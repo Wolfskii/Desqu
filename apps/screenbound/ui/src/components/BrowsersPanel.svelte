@@ -82,7 +82,7 @@
     <p class="dim">
       An optional add-on for your browser. Without it, a browser fullscreens a video by resizing the whole window, and
       Screenbound then shrinks it back, which causes a flash. With the add-on, the video stays in its window or moves
-      into a zone instead. Each browser needs the Desqu Fullscreen add-on installed.
+      into a zone instead. Each browser needs the Screenbound Companion add-on installed.
     </p>
     <label class="row">
       <input

@@ -79,7 +79,7 @@
 </script>
 
 <main>
-  <h1>Desqu Fullscreen</h1>
+  <h1>Screenbound Companion</h1>
 
   {#if doc}
     <section>

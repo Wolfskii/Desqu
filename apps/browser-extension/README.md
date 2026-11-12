@@ -1,4 +1,4 @@
-# Desqu Fullscreen (browser add-on)
+# Screenbound Companion (browser add-on)
 
 An optional add-on for Screenbound, the fullscreen window limiter (Desqu hosts Screenbound). Browsers
 make a video fullscreen by resizing the whole window, which causes a flash before Screenbound limits it.

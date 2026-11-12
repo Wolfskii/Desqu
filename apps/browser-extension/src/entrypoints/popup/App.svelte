@@ -57,7 +57,7 @@
 
 <main>
   <header>
-    <strong>Desqu Fullscreen</strong>
+    <strong>Screenbound Companion</strong>
     <span class="host">{host ?? "No website"}</span>
   </header>
 

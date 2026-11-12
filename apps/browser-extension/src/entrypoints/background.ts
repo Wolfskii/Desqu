@@ -163,7 +163,7 @@ async function publishLocalRules(rules: SiteRules): Promise<void> {
 /** Tabs placed in a zone, mapped to their window. A zone shows one tab per window. */
 const zoneWindows = new Map<number, number>();
 
-const NORMAL_TITLE = "Desqu Fullscreen";
+const NORMAL_TITLE = "Screenbound Companion";
 
 async function setBadge(tabId: number, text: string, title: string): Promise<void> {
   await browser.action.setBadgeText({ tabId, text }).catch(() => undefined);

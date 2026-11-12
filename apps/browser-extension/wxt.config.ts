@@ -8,14 +8,14 @@ const DEV_KEY =
 export default defineConfig({
   srcDir: "src",
   zip: {
-    artifactTemplate: "desqu-fullscreen-{{version}}-{{browser}}.zip",
-    sourcesTemplate: "desqu-fullscreen-{{version}}-sources.zip",
+    artifactTemplate: "screenbound-companion-{{version}}-{{browser}}.zip",
+    sourcesTemplate: "screenbound-companion-{{version}}-sources.zip",
   },
   modules: ["@wxt-dev/module-svelte"],
   manifest: ({ mode }) => ({
-    name: "Desqu Fullscreen",
+    name: "Screenbound Companion",
     description:
-      "Optional add-on for Screenbound and Desqu: fullscreen video stays in its window or moves into a zone, without the flash.",
+      "Companion add-on for Screenbound (also works with Desqu): fullscreen video stays in its window or moves into a zone, without the flash.",
     permissions: ["storage", "tabs", "nativeMessaging"],
     host_permissions: ["<all_urls>"],
     browser_specific_settings: {

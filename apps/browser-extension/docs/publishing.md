@@ -1,4 +1,4 @@
-# Publishing the Desqu Fullscreen extension
+# Publishing the Screenbound Companion extension
 
 Written for the owner, who creates the store accounts and uploads. The add-on is an optional part of
 Screenbound (and Desqu, which hosts it). The build side is done:

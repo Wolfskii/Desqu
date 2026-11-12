@@ -30,7 +30,7 @@
   <section class="card">
     <h3>Browser fullscreen without the flash</h3>
     <p class="dim">
-      Install the Desqu Fullscreen extension in your browser, then open the Browsers tab to set which sites stay in the
+      Install the Screenbound Companion extension in your browser, then open the Browsers tab to set which sites stay in the
       window or move into a zone.
     </p>
   </section>

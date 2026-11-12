@@ -1,4 +1,4 @@
-# Manual testing: Desqu Fullscreen
+# Manual testing: Screenbound Companion
 
 Automated tests cover the rules and the protocol. Fullscreen behavior has to be checked by hand in
 each browser. Record results in `apps/screenbound/docs/fullscreen-research.md` (browser, version,
