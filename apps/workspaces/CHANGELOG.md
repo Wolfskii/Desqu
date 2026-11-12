@@ -5,6 +5,8 @@ version being released as the release notes and as the in-app update description
 
 ## Unreleased
 
+## 0.3.0
+
 - Hiding icons on other virtual desktops works again on Windows 11 build 26300 (it no longer lets
   icons be moved off-screen): items owned by another desktop get the hidden attribute (the desktop
   reacts in under a second) and lose it when you come back, quit, or after a crash at the next start.

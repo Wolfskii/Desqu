@@ -1,6 +1,7 @@
 # Publishing the Desqu Fullscreen extension
 
-Written for the owner, who creates the store accounts and uploads. The build side is done:
+Written for the owner, who creates the store accounts and uploads. The add-on is an optional part of
+Screenbound (and Desqu, which hosts it). The build side is done:
 `task browser:zip` (or `npm run zip:all` in this folder) writes one zip per store into `.output/`.
 
 ## GitHub release (optional)

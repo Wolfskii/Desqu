@@ -5,6 +5,8 @@ being released as the release notes and as the in-app update description.
 
 ## Unreleased
 
+## 0.3.0
+
 - Right-click an icon in a vial: Explorer's own context menu for that file, folder or shortcut
   (Shift for the extended one) instead of the web view's browser menu.
 - Windows 11 build 26300 (October 2026 updates) pulls icons that were moved off-screen back onto the

@@ -5,6 +5,8 @@ version being released as the release notes and as the in-app update description
 
 ## Unreleased
 
+## 0.3.0
+
 - Browser integration (optional): a Browsers tab for the Desqu Fullscreen browser extension, with per-site
   fullscreen rules, install links, and the connection status. Off by default until the extension is installed.
 - Zone mode for browsers (experimental until verified on real browsers): a browser's page can be placed in

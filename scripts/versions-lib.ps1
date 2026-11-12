@@ -1,6 +1,7 @@
 # Shared helpers for bump-version.ps1 and check-versions.ps1.
-# The version of an app is duplicated in several files; apps/<app>/src-tauri/Cargo.toml is the
-# source of truth and the others must match it.
+# One version covers the whole Desqu family: every app (with its module and UI package) and the browser
+# extension. Each app's version is duplicated in several files; apps/desqu/src-tauri/Cargo.toml is the
+# source of truth and every other file must match it.
 
 $script:RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 
@@ -57,4 +58,54 @@ function Set-FileVersion {
 function Test-SemVer {
     param([string]$Version)
     $Version -match '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$'
+}
+
+# Every app in apps/ that is a Tauri product (Desqu, Screenbound, Vials, Workspaces).
+function Get-Products {
+    Get-ChildItem (Join-Path $script:RepoRoot 'apps') -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName 'src-tauri/tauri.conf.json') } |
+        ForEach-Object { $_.Name }
+}
+
+# The browser extension has one version file.
+function Get-ExtensionVersionFiles {
+    $path = 'apps/browser-extension/package.json'
+    $full = Join-Path $script:RepoRoot $path
+    if (-not (Test-Path $full)) { throw "Missing required file: $path" }
+    [pscustomobject]@{ Path = $path; Full = $full; Kind = 'json' }
+}
+
+# Moves an app's "## Unreleased" notes under "## <Version>" and leaves Unreleased empty. Apps with no
+# notes get one line so the release has something to show. Apps without a CHANGELOG are skipped.
+function Set-ChangelogRelease {
+    param([Parameter(Mandatory)][string]$App, [Parameter(Mandatory)][string]$Version)
+    $path = Join-Path $script:RepoRoot "apps/$App/CHANGELOG.md"
+    if (-not (Test-Path $path)) { return }
+    $text = [System.IO.File]::ReadAllText($path)
+    if ([regex]::IsMatch($text, "(?m)^## $([regex]::Escape($Version))[ 	]*?$")) {
+        throw "apps/$App/CHANGELOG.md already has a section for $Version"
+    }
+    $eol = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $heading = [regex]::Match($text, '(?m)^## Unreleased[ 	]*?$')
+    if (-not $heading.Success) { throw "No '## Unreleased' heading in apps/$App/CHANGELOG.md" }
+    $bodyStart = $heading.Index + $heading.Length
+    $next = [regex]::Match($text.Substring($bodyStart), '(?m)^## ')
+    $bodyEnd = if ($next.Success) { $bodyStart + $next.Index } else { $text.Length }
+    $body = $text.Substring($bodyStart, $bodyEnd - $bodyStart).Trim()
+    if (-not $body) { $body = '- Version aligned with the rest of the Desqu family.' }
+    $body = $body -replace "`r?`n", $eol
+    $section = "## Unreleased$eol$eol## $Version$eol$eol$body$eol$eol"
+    $new = $text.Substring(0, $heading.Index) + $section + $text.Substring($bodyEnd)
+    [System.IO.File]::WriteAllText($path, $new, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host ("apps/{0}/CHANGELOG.md: notes moved under {1}" -f $App, $Version)
+}
+
+# The root package-lock.json records each workspace package's version. npm ci fails when those disagree
+# with the package.json files, so the bump updates them too.
+function Set-LockWorkspaceVersions {
+    Push-Location $script:RepoRoot
+    try {
+        & node (Join-Path $script:RepoRoot 'scripts/sync-lock-versions.js')
+        if ($LASTEXITCODE -ne 0) { throw 'Could not update package-lock.json' }
+    } finally { Pop-Location }
 }

@@ -15,7 +15,7 @@ export default defineConfig({
   manifest: ({ mode }) => ({
     name: "Desqu Fullscreen",
     description:
-      "Fullscreen for websites: keep videos inside the window, or place them in a Desqu zone.",
+      "Optional add-on for Screenbound and Desqu: fullscreen video stays in its window or moves into a zone, without the flash.",
     permissions: ["storage", "tabs", "nativeMessaging"],
     host_permissions: ["<all_urls>"],
     browser_specific_settings: {

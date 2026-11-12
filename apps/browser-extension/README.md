@@ -1,9 +1,12 @@
-# Desqu Fullscreen (browser extension)
+# Desqu Fullscreen (browser add-on)
 
-Optional extension for the Desqu collection app. It decides, per website, how fullscreen video
-behaves: real fullscreen, in the browser window, or inside a Desqu zone.
+An optional add-on for Screenbound, the fullscreen window limiter (Desqu hosts Screenbound). Browsers
+make a video fullscreen by resizing the whole window, which causes a flash before Screenbound limits it.
+This add-on keeps the video in the window or moves it into a zone instead. It decides, per website, how
+fullscreen video behaves: real fullscreen, in the browser window, or inside a zone.
 
-Without Desqu running, the extension still works for "In window" mode.
+Without Screenbound running, the add-on still works for "In window" mode. It is versioned with the rest
+of the family (see docs/releasing.md).
 
 ## Develop
 

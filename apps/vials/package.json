@@ -1,6 +1,6 @@
 {
     "name": "vials-app",
-    "version": "0.1.0",
+    "version": "0.3.0",
     "description": "Vials: desktop containers for shortcuts, apps and folders",
     "type": "module",
     "private": true,

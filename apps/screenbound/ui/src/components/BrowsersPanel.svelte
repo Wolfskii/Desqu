@@ -78,10 +78,11 @@
 
 <div class="browsers">
   <section class="card">
-    <h3>Browser extension</h3>
+    <h3>Browser add-on (optional)</h3>
     <p class="dim">
-      Lets a website's fullscreen video stay inside the window or move into a Desqu zone without the flash. Each browser
-      needs the Desqu Fullscreen extension. Everything here is optional.
+      An optional add-on for your browser. Without it, a browser fullscreens a video by resizing the whole window, and
+      Screenbound then shrinks it back, which causes a flash. With the add-on, the video stays in its window or moves
+      into a zone instead. Each browser needs the Desqu Fullscreen add-on installed.
     </p>
     <label class="row">
       <input

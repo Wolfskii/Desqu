@@ -1,16 +1,22 @@
-# Fails when an app's version differs between its files, or from a release tag.
-#   pwsh scripts/check-versions.ps1 -App screenbound
-#   pwsh scripts/check-versions.ps1 -App screenbound -Tag screenbound-v0.2.0
+# Fails when any product's version differs from the shared version, or when a release tag does not
+# match it. The shared version is the one in apps/desqu/src-tauri/Cargo.toml.
+#   pwsh scripts/check-versions.ps1
+#   pwsh scripts/check-versions.ps1 -Tag desqu-v0.3.0
+#   pwsh scripts/check-versions.ps1 -Tag browser-v0.3.0
 param(
-    [Parameter(Mandatory)][string]$App,
+    # Accepted for compatibility with release.yml; every product is always checked.
+    [string]$App,
     [string]$Tag
 )
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'versions-lib.ps1')
 
-$files = @(Get-VersionFiles -App $App)
-$truth = Get-FileVersion $files[0]   # apps/<app>/src-tauri/Cargo.toml
+$files = @()
+foreach ($app in Get-Products) { $files += @(Get-VersionFiles -App $app) }
+$files += @(Get-ExtensionVersionFiles)
+
+$truth = Get-FileVersion (Get-VersionFiles -App 'desqu' | Select-Object -First 1)
 $bad = @()
 foreach ($f in $files) {
     $v = Get-FileVersion $f
@@ -19,17 +25,19 @@ foreach ($f in $files) {
 }
 
 if ($Tag) {
-    $expected = "$App-v$truth"
-    if ($Tag -ne $expected) {
-        Write-Host "FAIL tag '$Tag' does not match the version: expected '$expected'"
+    if ($Tag -notmatch '^(desqu|screenbound|vials|workspaces|browser)-v(.+)$') {
         $bad += "tag:$Tag"
+        Write-Host "FAIL tag '$Tag' is not <product>-v<version>"
+    } elseif ($Matches[2] -ne $truth) {
+        $bad += "tag:$Tag"
+        Write-Host "FAIL tag '$Tag' does not match the shared version $truth"
     } else {
-        Write-Host "ok   tag '$Tag' matches"
+        Write-Host "ok   tag '$Tag' matches $truth"
     }
 }
 
 if ($bad.Count -gt 0) {
-    Write-Error "Version mismatch for '$App' (source of truth: src-tauri/Cargo.toml = $truth): $($bad -join ', ')"
+    Write-Error "Version mismatch (shared version $truth): $($bad -join ', ')"
     exit 1
 }
-Write-Host "All versions for '$App' are $truth."
+Write-Host "All products are $truth."

@@ -5,6 +5,8 @@ being released as the release notes and as the in-app update description.
 
 ## Unreleased
 
+## 0.3.0
+
 - Browser integration (optional): the Browsers tab in Settings covers the Desqu Fullscreen browser
   extension, with per-site fullscreen rules and the connection status.
 

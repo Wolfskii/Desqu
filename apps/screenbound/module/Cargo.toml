@@ -1,6 +1,6 @@
 [package]
 name = "screenbound-module"
-version = "0.1.0"
+version = "0.3.0"
 description = "Screenbound engine: constrain fullscreen windows to user-defined screen zones"
 authors = ["ScreenBound contributors"]
 edition = "2021"

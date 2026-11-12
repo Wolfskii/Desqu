@@ -76,9 +76,9 @@ and restarts. Portable builds only link to the download page. See [releasing.md]
 Windows only for now. Platform code lives under `platform/<os>/` with an `unsupported` stub, so other
 backends can be added later; nothing in the docs or UI claims support for other systems.
 
-## Browser bridge (Desqu Fullscreen)
+## Browser bridge (optional Screenbound add-on)
 
-Optional. A browser extension decides, per website, how fullscreen video behaves. The extension talks
+Optional. A browser add-on, part of the Screenbound feature set, decides per website how fullscreen video behaves. The extension talks
 to the Screenbound engine that Desqu (or standalone Screenbound) runs:
 
 ```

@@ -1,6 +1,6 @@
 [package]
 name = "vials"
-version = "0.1.0"
+version = "0.3.0"
 description = "Vials: desktop containers for shortcuts, apps and folders"
 authors = ["Desqu contributors"]
 edition = "2021"

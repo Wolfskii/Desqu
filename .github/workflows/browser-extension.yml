@@ -40,10 +40,6 @@ jobs:
             throw "Tag '$tag' is not browser-v<semver>"
           }
           $version = $Matches[1]
-          $pkg = Get-Content -Raw 'apps/browser-extension/package.json' | ConvertFrom-Json
-          if ($pkg.version -ne $version) {
-            throw "apps/browser-extension/package.json says $($pkg.version), the tag says $version"
-          }
           @("tag=$tag", "version=$version") | Add-Content $env:GITHUB_OUTPUT
 
       - uses: actions/setup-node@v4
@@ -57,6 +53,10 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: npm ci
+
+      - name: Check every product has the tag's version
+        shell: pwsh
+        run: ./scripts/check-versions.ps1 -Tag '${{ steps.meta.outputs.tag }}'
 
       - name: Type check, tests and all builds
         run: task browser:ci

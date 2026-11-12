@@ -31,32 +31,44 @@ These cannot be done from the repo. Do them once.
 
    Feeds then live at `https://wolfskii.github.io/Desqu/updates/<product>/latest.json`.
 
+## One version for the family
+
+Desqu, Screenbound, Vials, Workspaces and the browser extension share one version. A bump moves all of
+them, and the checks fail if any file disagrees. Releasing one product means releasing the family at
+that version: every product gets its own tag at the same number (`desqu-v0.3.0`, `screenbound-v0.3.0`,
+`vials-v0.3.0`, `workspaces-v0.3.0`, `browser-v0.3.0`).
+
 ## Making a release
 
-1. Pick the version and update the files that carry it (the script keeps them in sync and refreshes
-   `Cargo.lock`):
+1. Pick the version and bump everything in one go. The script updates every product, the extension, the
+   lockfiles and `Cargo.lock`, and moves each app's `## Unreleased` notes under the new version:
 
    ```powershell
-   pwsh scripts/bump-version.ps1 -App screenbound -Version 0.2.0
+   pwsh scripts/bump-version.ps1 -Version 0.3.0
+   pwsh scripts/check-versions.ps1
    ```
 
-2. In `apps/<app>/CHANGELOG.md`, rename `## Unreleased` to `## 0.2.0` (and add a fresh
-   `## Unreleased` above it). That section becomes the release notes and the in-app update text.
-3. Commit and merge to `develop`, then tag and push:
+2. Review each `apps/<app>/CHANGELOG.md`. Write the real notes under `## 0.3.0`; a product with nothing
+   new still gets its one line. Those sections become the release notes and the in-app update text.
+3. Commit and merge to `develop`, then tag each product and push:
 
    ```powershell
-   git tag screenbound-v0.2.0
-   git push origin screenbound-v0.2.0
+   git tag desqu-v0.3.0
+   git tag screenbound-v0.3.0
+   git tag vials-v0.3.0
+   git tag workspaces-v0.3.0
+   git tag browser-v0.3.0
+   git push origin desqu-v0.3.0 screenbound-v0.3.0 vials-v0.3.0 workspaces-v0.3.0 browser-v0.3.0
    ```
 
    Or run the **Release** workflow manually (Actions → Release → *Run workflow*) with the app and
-   version.
+   version, and the **Browser extension release** workflow for `browser-v`.
 
 The workflow then:
 
 1. checks that every version file matches the tag (`scripts/check-versions.ps1`),
-2. runs `task <app>:release:signed`, which builds the NSIS installer, the MSI and the portable exe and signs
-   the installers (`*.sig`),
+2. runs `task <app>:release:signed`, which builds the NSIS installer, the MSI and the portable build and
+   signs the installers (`*.sig`),
 3. writes `SHA256SUMS.txt`, `latest.json` and the release notes (`scripts/write-update-feed.ps1`),
 4. creates the GitHub release with all of those attached (only **Desqu** is marked *Latest*, because
    GitHub has a single repository-wide "latest"),
@@ -68,7 +80,7 @@ The workflow then:
 A version with a suffix, such as `screenbound-v0.2.0-rc.1`, publishes a GitHub **pre-release** and puts
 its feed under `updates/<app>/prerelease/`, which no installed app reads. Testers can install it by
 hand; nobody's updater moves. The version files must say `0.2.0-rc.1` for the check to pass
-(`bump-version.ps1 -Version 0.2.0-rc.1`).
+(`bump-version.ps1 -Version 0.2.0-rc.1`, which bumps every product).
 
 ## Building locally without CI
 

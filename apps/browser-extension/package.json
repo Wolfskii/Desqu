@@ -1,6 +1,6 @@
 {
   "name": "@desqu/browser-extension",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Desqu Fullscreen: browser extension for per-site fullscreen handling",
