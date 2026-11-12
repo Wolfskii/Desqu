@@ -788,6 +788,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "desqu-ipc"
+version = "0.1.0"
+
+[[package]]
 name = "desqu-shell"
 version = "0.1.0"
 dependencies = [
@@ -3225,6 +3229,7 @@ dependencies = [
 name = "screenbound-module"
 version = "0.1.0"
 dependencies = [
+ "desqu-ipc",
  "desqu-shell",
  "serde",
  "serde_json",
