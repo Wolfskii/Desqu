@@ -75,3 +75,26 @@ and restarts. Portable builds only link to the download page. See [releasing.md]
 
 Windows only for now. Platform code lives under `platform/<os>/` with an `unsupported` stub, so other
 backends can be added later; nothing in the docs or UI claims support for other systems.
+
+## Browser bridge (Desqu Fullscreen)
+
+Optional. A browser extension decides, per website, how fullscreen video behaves. The extension talks
+to the Screenbound engine that Desqu (or standalone Screenbound) runs:
+
+```
+extension (MV3, apps/browser-extension)
+  │ native messaging, stdio, length-prefixed JSON
+desqu-browser-host.exe (apps/screenbound/browser-host, started by the browser)
+  │ named pipe \\.\pipe\desqu-browser-bridge (DACL: SYSTEM + owner)
+Screenbound engine (bridge/ accepts, engine/browser*.rs handles)
+```
+
+- Framing and pipe: `crates/desqu-ipc`. Messages: `bridge/protocol.rs`, mirrored in
+  `apps/browser-extension/src/shared/protocol.ts`; the same JSON fixtures test both sides.
+- The browser finds the host through per-user manifests and registry keys written by
+  `platform/windows/native_host.rs` (`io.github.wolfskii.desqu.browser`).
+- Only the process that owns the module serves the pipe, so Desqu and standalone Screenbound never both do.
+- Zone mode moves the browser window so its page lands on a zone and clips the tabs away. The window's
+  state is journaled before it moves, so a crash gives it back on the next start.
+
+Status and plan: [apps/browser-extension/PLAN.md](../apps/browser-extension/PLAN.md).

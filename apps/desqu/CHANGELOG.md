@@ -5,6 +5,9 @@ being released as the release notes and as the in-app update description.
 
 ## Unreleased
 
+- Browser integration (optional): the Browsers tab in Settings covers the Desqu Fullscreen browser
+  extension, with per-site fullscreen rules and the connection status.
+
 ## 0.2.1
 
 - Groundwork for browser fullscreen support: Screenbound's settings can now store per-site fullscreen

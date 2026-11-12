@@ -56,7 +56,7 @@ file** first, then [AGENTS.md](AGENTS.md), then continue at the first step that 
 | 7 | Screenbound borderless gaming | 🧪 | 2 |
 | 8 | Desktop layer spike + Vials | 🧪 | 3 |
 | 9 | Virtual desktop spike + Workspaces | 🧪 | 8 |
-| 10 | Browser extension (Desqu Fullscreen) + Screenbound bridge | 🟡 | 2, 6, 7 |
+| 10 | Browser extension (Desqu Fullscreen) + Screenbound bridge | 🟡 (code complete; manual verification pending) | 2, 6, 7 |
 
 ---
 
@@ -1310,8 +1310,8 @@ source of truth for this phase; update the statuses here as steps finish.
 | P10.C2 | Platform additions (region, child rect, foreground) | ✅ |
 | P10.C3 | Engine zone flow | ✅ |
 | P10.C4 | Extension zone orchestration | 🧪 |
-| P10.C5 | Manual verification + docs | ⬜ |
-| P10.D | Store publishing prep | ⬜ |
+| P10.C5 | Manual verification + docs | 🟡 (docs written; manual checks pending) |
+| P10.D | Store publishing prep | 🟡 (publishing guide written; accounts and uploads pending) |
 
 ---
 

@@ -28,6 +28,16 @@ Platform (src-tauri/src/platform/windows/)   Win32 only: monitors, window state/
 
 (Paths above are from before the module split; they move under `module/` in Phase 2.)
 
+## Browser bridge
+
+- `bridge/` accepts native-host connections (`server.rs`) and holds the wire types (`protocol.rs`) and
+  the host manifests (`manifest.rs`). Nothing in it touches Win32.
+- `engine/browser.rs` handles requests (hello, rules, exemptions); `engine/browser_zone.rs` places a
+  browser page in a zone. Both run on the engine thread.
+- Win32 for the bridge lives in `platform/windows/native_host.rs` (registry) and `window.rs` (region,
+  child window).
+- Rules are edited in two places (the extension and the Browsers tab). The newer `updatedAt` wins.
+
 ## Native rules
 
 - Event-driven only (WinEvent hooks + display broadcasts). No periodic polling of windows.

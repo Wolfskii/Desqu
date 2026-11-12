@@ -71,3 +71,17 @@ desktop matches the geometric heuristic otherwise (observed).
 | Maximized with hidden taskbar | N/A | Has caption → not treated as fullscreen |
 | Exclusive DXGI/D3D fullscreen | No | Display mode owned by the app; detect via `SHQueryUserNotificationState` (`QUNS_RUNNING_D3D_FULL_SCREEN`) later |
 | UWP / cloaked windows | Unknown | Cloaked windows ignored |
+
+## Browser extension and zone mode (open until measured)
+
+Status of P10.C1 (see apps/browser-extension/PLAN.md). Not yet measured on real browsers. Record each
+run here with the browser, its version, the Windows build and the display scaling.
+
+- Probe: `cargo run -p screenbound-module --example probe_region` with a browser window in front. It prints
+  the window rect, the largest child window (the page, for Chromium-based browsers), and whether a clip
+  region is accepted and kept for 3 s.
+- Open question 1: does a `SetWindowRgn` clip on another process's browser window persist? The probe answers.
+- Open question 2: does the largest child window equal the page viewport for each browser? Firefox has no
+  such child window; it reports its viewport through the extension instead (`mozInnerScreenX/Y`).
+- If clipping is refused for a browser, zone mode for that browser falls back to moving the window only.
+  Record that here, and the UI text in the Browsers tab must say so.
