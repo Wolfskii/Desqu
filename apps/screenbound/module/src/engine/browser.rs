@@ -422,6 +422,12 @@ mod tests {
         fn foreground_window(&self) -> Option<WindowId> {
             *self.foreground.lock().unwrap()
         }
+        fn set_region(&self, _: WindowId, _: Option<Rect>) -> PlatformResult<()> {
+            Ok(())
+        }
+        fn largest_child_rect(&self, _: WindowId) -> Option<Rect> {
+            None
+        }
         fn subscribe(&self, _: EventSink) -> PlatformResult<EventSubscription> {
             Ok(EventSubscription::new(|| {}))
         }

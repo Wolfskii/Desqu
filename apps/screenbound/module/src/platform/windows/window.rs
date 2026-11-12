@@ -7,7 +7,9 @@ use windows::Win32::Foundation::{
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
 };
-use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONULL};
+use windows::Win32::Graphics::Gdi::{
+    CreateRectRgn, DeleteObject, HGDIOBJ, HRGN, MonitorFromWindow, SetWindowRgn, MONITOR_DEFAULTTONULL,
+};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
 use windows::Win32::System::StationsAndDesktops::{
     BroadcastSystemMessageW, BROADCAST_SYSTEM_MESSAGE_FLAGS, BSF_IGNORECURRENTTASK,
@@ -20,6 +22,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{ITaskbarList2, TaskbarList};
 use windows::Win32::UI::WindowsAndMessaging::{
+    EnumChildWindows,
     EnumWindows, GetClassNameW, GetPropW, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
     GetWindowRect, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsHungAppWindow,
     IsIconic, IsWindow, IsWindowVisible, IsZoomed, RegisterWindowMessageW, SetWindowLongPtrW,
@@ -535,3 +538,61 @@ pub(super) fn foreground() -> Option<WindowId> {
     let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
     (!hwnd.0.is_null()).then_some(WindowId(hwnd.0 as usize as u64))
 }
+
+/// Clips the window to `region` (window-relative), or removes the clip. On success the system owns
+/// the region, so it is not deleted here.
+pub(super) fn set_region(id: WindowId, region: Option<Rect>) -> PlatformResult<()> {
+    let h = hwnd(id);
+    let rgn = match region {
+        Some(r) => {
+            let created = unsafe { CreateRectRgn(r.left, r.top, r.right, r.bottom) };
+            if created.is_invalid() {
+                return Err(PlatformError::Native {
+                    op: "CreateRectRgn",
+                    code: 0,
+                    message: "could not create the clip region".into(),
+                });
+            }
+            created
+        }
+        None => HRGN(std::ptr::null_mut()),
+    };
+    let target = if rgn.0.is_null() { None } else { Some(rgn) };
+    let applied = unsafe { SetWindowRgn(h, target, true) };
+    if applied == 0 {
+        if !rgn.0.is_null() {
+            unsafe {
+                let _ = DeleteObject(HGDIOBJ(rgn.0));
+            }
+        }
+        return Err(window_error(id, "SetWindowRgn", windows::core::Error::from_thread()));
+    }
+    Ok(())
+}
+
+/// The largest visible window below `id` (the browser's page), in screen pixels. Browsers put the
+/// page in a child window, so this finds the page without knowing the browser's class names.
+pub(super) fn largest_child_rect(id: WindowId) -> Option<Rect> {
+    struct Best {
+        area: i64,
+        rect: Option<Rect>,
+    }
+    unsafe extern "system" fn visit(child: HWND, lparam: LPARAM) -> BOOL {
+        let best = unsafe { &mut *(lparam.0 as *mut Best) };
+        if unsafe { IsWindowVisible(child) }.as_bool() {
+            let mut r = RECT::default();
+            if unsafe { GetWindowRect(child, &mut r) }.is_ok() {
+                let rect = Rect::new(r.left, r.top, r.right, r.bottom);
+                if rect.area() > best.area {
+                    best.area = rect.area();
+                    best.rect = Some(rect);
+                }
+            }
+        }
+        BOOL::from(true)
+    }
+    let mut best = Best { area: 0, rect: None };
+    let _ = unsafe { EnumChildWindows(Some(hwnd(id)), Some(visit), LPARAM(&mut best as *mut Best as isize)) };
+    best.rect
+}
+

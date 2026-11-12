@@ -89,6 +89,14 @@ impl PlatformWindowManager for WindowsPlatform {
         window::foreground()
     }
 
+    fn set_region(&self, id: WindowId, region: Option<Rect>) -> PlatformResult<()> {
+        window::set_region(id, region)
+    }
+
+    fn largest_child_rect(&self, id: WindowId) -> Option<Rect> {
+        window::largest_child_rect(id)
+    }
+
     fn owner(&self, id: WindowId) -> Option<WindowId> {
         window::owner(id)
     }

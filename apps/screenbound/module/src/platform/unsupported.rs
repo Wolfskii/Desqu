@@ -21,6 +21,12 @@ impl PlatformWindowManager for UnsupportedPlatform {
     fn foreground_window(&self) -> Option<WindowId> {
         None
     }
+    fn set_region(&self, _: WindowId, _: Option<Rect>) -> PlatformResult<()> {
+        Err(PlatformError::Unsupported)
+    }
+    fn largest_child_rect(&self, _: WindowId) -> Option<Rect> {
+        None
+    }
     fn owner(&self, _: WindowId) -> Option<WindowId> {
         None
     }

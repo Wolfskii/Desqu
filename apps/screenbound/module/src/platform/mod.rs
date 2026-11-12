@@ -114,6 +114,12 @@ pub trait PlatformWindowManager: Send + Sync {
     /// The window the user is working in, if any. A browser asks for fullscreen from the foreground.
     fn foreground_window(&self) -> Option<WindowId>;
 
+    /// Clips the window to `region` (pixels relative to the window), or lifts the clip with `None`.
+    fn set_region(&self, window: WindowId, region: Option<Rect>) -> PlatformResult<()>;
+
+    /// The page area of a browser: the largest visible child window, in screen pixels.
+    fn largest_child_rect(&self, window: WindowId) -> Option<Rect>;
+
     fn subscribe(&self, sink: EventSink) -> PlatformResult<EventSubscription>;
 }
 
