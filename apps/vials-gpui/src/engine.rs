@@ -279,6 +279,22 @@ impl Engine {
         id
     }
 
+    /// A new empty vial of the default size (380 x 260 dip) with its corner at `point` (physical screen
+    /// pixels), kept on its monitor. `None` point: the middle of the primary monitor.
+    pub fn create_vial_at(&self, point: Option<(i32, i32)>) -> Option<String> {
+        let primary = self.monitors.iter().find(|m| m.primary).or(self.monitors.first())?;
+        let point = point.unwrap_or(((primary.bounds.left + primary.bounds.right) / 2, (primary.bounds.top + primary.bounds.bottom) / 2));
+        let at = PixelRect { left: point.0, top: point.1, right: point.0 + 1, bottom: point.1 + 1 };
+        let monitor = layout::monitor_containing(&at, &self.monitors).unwrap_or(primary);
+        let size = ((380.0 * monitor.scale).round() as i32, (260.0 * monitor.scale).round() as i32);
+        let (x, y) = vials_core::gesture::popup_position(point, size, &monitor.bounds);
+        self.create_vial(PixelRect { left: x, top: y, right: x + size.0, bottom: y + size.1 })
+    }
+
+    pub fn config(&self) -> VialsConfig {
+        self.config.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
     /// Deletes a vial; its items are back on the desktop.
     pub fn delete_vial(&self, vial_id: &str) -> bool {
         self.apply(|cfg| cfg.delete_vial(vial_id))

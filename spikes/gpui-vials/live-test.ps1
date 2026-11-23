@@ -27,7 +27,7 @@ New-Item -ItemType Directory $dir | Out-Null
 $file = Join-Path ([Environment]::GetFolderPath('Desktop')) 'zz-vials-gpui-test.txt'
 Set-Content $file 'throw-away file for the vials-gpui live test'
 $cfg = Join-Path $dir 'config.json'
-@{ version = 1; hideOnDesktop = $true; vials = @(@{ id = 'vial-1'; name = 'Live test'; monitor = $null
+@{ version = 1; hideOnDesktop = $true; contextMenu = $false; createOnDrag = $false; vials = @(@{ id = 'vial-1'; name = 'Live test'; monitor = $null
    rect = @{ x = 0.4; y = 0.3; width = 0.1; height = 0.2 }; items = @($file) }) } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
 function Hidden { ((Get-Item -LiteralPath $file -Force).Attributes -band [IO.FileAttributes]::Hidden) -ne 0 }
 function Start-App { Start-Process $Exe -ArgumentList '--live', '--config', "`"$cfg`"" -PassThru -RedirectStandardError (Join-Path $dir "err-$([guid]::NewGuid().ToString('N').Substring(0,4)).txt") }
@@ -46,7 +46,8 @@ try {
     $results.stillHiddenAfterKill = Hidden            # a crash leaves it hidden...
     $p = Start-App; Start-Sleep 4                     # ...and the next start recovers, then hides again
     $results.hiddenAfterRestart = Hidden
-    [T]::Of($p.Id) | ForEach-Object { [T]::Close($_) }
+    # Closing the windows no longer ends the app (it lives in the tray): a second launch asks it to quit.
+    Start-Process $Exe -ArgumentList '--live', '--config', "`"$cfg`"", '--action=quit' -Wait
     $p.WaitForExit(8000) | Out-Null
     $results.exitedOnClose = $p.HasExited
     Start-Sleep 1

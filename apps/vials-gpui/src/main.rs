@@ -8,10 +8,11 @@
 
 mod engine;
 mod menu;
+mod tray;
 mod view;
 mod win;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -21,11 +22,14 @@ use gpui::{
     point, px, size, AnyWindowHandle, App, AppContext, Application, Bounds, Entity, WindowBackgroundAppearance, WindowBounds,
     WindowOptions,
 };
+use vials_core::gesture;
 use vials_core::layout::{self, MonitorRef};
 use vials_core::model::{Vial, VialsConfig};
 
 use engine::Engine;
+use menu::MenuEntry;
 use view::{bump, Live, Placement, Revision, VialView};
+use vials_platform::{MouseEvent, MouseWatcher};
 
 fn config_path() -> PathBuf {
     let mut args = std::env::args().skip(1);
@@ -116,8 +120,29 @@ fn main() {
             std::process::exit(1);
         }
     };
+    let live_mode = std::env::args().any(|a| a == "--live");
+    let action = std::env::args().find_map(|a| a.strip_prefix("--action=").map(str::to_string));
+    // Live mode is one running copy: a second launch (for example the desktop's "Create vial here"
+    // entry, which runs `--action=create-vial`) hands its action to the first and exits.
+    let _single = if live_mode {
+        match tray::single_instance() {
+            Some(s) => Some(s),
+            None => {
+                if let Some(action) = &action {
+                    if !tray::forward_action(action) {
+                        eprintln!("the running copy did not take the action");
+                    }
+                } else {
+                    eprintln!("Vials is already running");
+                }
+                return;
+            }
+        }
+    } else {
+        None
+    };
     let monitors = win::monitors();
-    let engine = if std::env::args().any(|a| a == "--live") {
+    let engine = if live_mode {
         match Engine::start(&path, config.clone(), monitors.clone()) {
             Ok(e) => Some(e),
             Err(e) => {
@@ -130,12 +155,15 @@ fn main() {
     };
     let engine_for_exit = engine.clone();
     Application::new().run(move |cx: &mut App| {
-        cx.on_window_closed(|cx| {
-            if cx.windows().is_empty() {
-                cx.quit();
-            }
-        })
-        .detach();
+        // Without a tray (the read-only viewer) the app ends with its last window.
+        if !live_mode {
+            cx.on_window_closed(|cx| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+        }
         let revision = cx.new(|_| Revision(0));
         let shell = Shell { monitors, engine: engine.clone(), revision: revision.clone() };
         let windows: Windows = Rc::new(RefCell::new(HashMap::new()));
@@ -158,7 +186,9 @@ fn main() {
             let _ = tx.send(());
         });
         let _ = engine.reconcile();
+        let (engine_for_desktop, revision_for_desktop) = (engine.clone(), revision.clone());
         cx.spawn(async move |cx| loop {
+            let (engine, revision) = (&engine_for_desktop, &revision_for_desktop);
             let mut changed = false;
             while rx.try_recv().is_ok() {
                 changed = true;
@@ -176,9 +206,94 @@ fn main() {
             cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
         })
         .detach();
+
+        // The tray icon, second launches, and the mouse on the desktop.
+        let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
+        let tray = tray::start(event_tx.clone()).map_err(|e| eprintln!("no tray icon: {e}")).ok();
+        if action.is_some() {
+            let _ = event_tx.send(tray::Event::Action(action.clone().unwrap_or_default()));
+        }
+        let (mouse_tx, mouse_rx) = std::sync::mpsc::channel::<MouseEvent>();
+        let mouse = MouseWatcher::start(Box::new(move |e| {
+            let _ = mouse_tx.send(e);
+        }))
+        .map_err(|e| eprintln!("cannot watch the desktop for dragged boxes: {e}"))
+        .ok();
+        let config = engine.config();
+        if config.context_menu {
+            let exe = std::env::current_exe().ok();
+            if let Err(e) = vials_platform::set_context_menu(exe.as_deref().and_then(|p| p.to_str())) {
+                eprintln!("could not add the desktop's right-click entry: {e}");
+            }
+        }
+        let context_point: Rc<Cell<Option<(i32, i32)>>> = Rc::new(Cell::new(None));
+        let engine = engine.clone();
+        cx.spawn(async move |cx| {
+            // Owned by this task: dropped (tray icon removed, hook released) when the app ends.
+            let _keep = (&tray, &mouse);
+            loop {
+                while let Ok(event) = event_rx.try_recv() {
+                    match event {
+                        tray::Event::Quit => {
+                            let _ = cx.update(|cx| cx.quit());
+                        }
+                        tray::Event::NewVial => {
+                            if engine.create_vial_at(None).is_some() {
+                                let revision = revision.clone();
+                                let _ = cx.update(|cx| bump(&revision, cx));
+                            }
+                        }
+                        tray::Event::Action(name) if name == "create-vial" => {
+                            if engine.create_vial_at(context_point.take()).is_some() {
+                                let revision = revision.clone();
+                                let _ = cx.update(|cx| bump(&revision, cx));
+                            }
+                        }
+                        tray::Event::Action(name) if name == "quit" => {
+                            let _ = cx.update(|cx| cx.quit());
+                        }
+                        tray::Event::Action(_) => {}
+                    }
+                }
+                while let Ok(event) = mouse_rx.try_recv() {
+                    match event {
+                        MouseEvent::ContextDown(at) => context_point.set(Some(at)),
+                        MouseEvent::ButtonDown(_) => {}
+                        MouseEvent::Marquee(down, up) => {
+                            // A box dragged on empty desktop offers a vial there; a box that caught icons
+                            // is a selection, which Explorer needs a moment to settle.
+                            let Some(rect) = gesture::marquee(down, up) else { continue };
+                            if !engine.config().create_on_drag {
+                                continue;
+                            }
+                            let (engine, revision) = (engine.clone(), revision.clone());
+                            cx.spawn(async move |cx| {
+                                cx.background_executor().timer(std::time::Duration::from_millis(350)).await;
+                                let empty = matches!(desqu_desktop::selection_count(), Ok(0));
+                                if !empty {
+                                    return;
+                                }
+                                let _ = cx.update(|cx| {
+                                    let entry = MenuEntry::new("Create vial here", move |cx| {
+                                        if engine.create_vial(rect).is_some() {
+                                            bump(&revision, cx);
+                                        }
+                                    });
+                                    menu::open(cx, up, vec![entry]);
+                                });
+                            })
+                            .detach();
+                        }
+                    }
+                }
+                cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+            }
+        })
+        .detach();
     });
     // The windows are gone: give the desktop its items back before the process ends.
     if let Some(e) = engine_for_exit {
         e.restore();
+        let _ = vials_platform::set_context_menu(None);
     }
 }

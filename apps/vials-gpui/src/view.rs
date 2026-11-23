@@ -398,13 +398,7 @@ impl VialView {
         {
             let live = live.clone();
             entries.push(MenuEntry::new("New vial here", move |cx| {
-                let scale = win::monitors()
-                    .iter()
-                    .find(|m| at.0 >= m.bounds.left && at.0 < m.bounds.right && at.1 >= m.bounds.top && at.1 < m.bounds.bottom)
-                    .map_or(1.0, |m| m.scale);
-                let (w, h) = ((380.0 * scale) as i32, (260.0 * scale) as i32);
-                let rect = PixelRect { left: at.0, top: at.1, right: at.0 + w, bottom: at.1 + h };
-                if live.engine.create_vial(rect).is_some() {
+                if live.engine.create_vial_at(Some(at)).is_some() {
                     bump(&live.revision, cx);
                 }
             }));
