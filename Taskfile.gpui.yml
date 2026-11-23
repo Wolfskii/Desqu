@@ -1,0 +1,50 @@
+version: "3"
+
+# The GPUI apps (Rust, no WebView). Each is its own cargo workspace under apps/<name>-gpui.
+# Run from the repo root as `task gpui:<task>`. The first build compiles GPUI and takes a few minutes.
+
+tasks:
+  desqu:
+    desc: Run the Desqu GPUI shell (it starts the modules that are on)
+    dir: apps/desqu-gpui
+    interactive: true
+    cmds:
+      - cargo build --release --manifest-path ../vials-gpui/Cargo.toml
+      - cargo build --release --manifest-path ../workspaces-gpui/Cargo.toml
+      - cargo build --release --manifest-path ../screenbound-gpui/Cargo.toml
+      - cargo run --release
+
+  vials:
+    desc: Run Vials (GPUI) on your real desktop (hides vial items there; they come back on quit)
+    dir: apps/vials-gpui
+    interactive: true
+    cmds:
+      - cargo run --release -- --live
+
+  workspaces:
+    desc: Run Workspaces (GPUI)
+    dir: apps/workspaces-gpui
+    interactive: true
+    cmds:
+      - cargo run --release
+
+  screenbound:
+    desc: Run Screenbound (GPUI)
+    dir: apps/screenbound-gpui
+    interactive: true
+    cmds:
+      - cargo run --release
+
+  test:
+    desc: Unit tests for every GPUI app and its crates
+    cmds:
+      - for: [vials-gpui, workspaces-gpui, screenbound-gpui, desqu-gpui]
+        cmd: cargo test --release --manifest-path apps/{{.ITEM}}/Cargo.toml
+      - cargo test --release -p vials-core -p vials-platform -p workspaces-core -p screenbound-module
+
+  package:
+    desc: "Build an installer: task gpui:package APP=vials|workspaces|screenbound|desqu"
+    requires:
+      vars: [APP]
+    cmds:
+      - pwsh scripts/package-gpui-app.ps1 -App {{.APP}}
