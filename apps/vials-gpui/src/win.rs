@@ -3,14 +3,13 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use vials_core::layout::MonitorRef;
 use vials_core::model::PixelRect;
-use windows::core::{w, BOOL, PCWSTR};
+use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND};
 use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW};
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
-use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
+    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
 };
 
@@ -137,19 +136,14 @@ pub fn window_rect_of(raw: isize) -> Option<PixelRect> {
     window_rect(HWND(raw as *mut std::ffi::c_void))
 }
 
-/// Opens a file, folder or shortcut like a double click on the desktop. ShellExecute runs its own
-/// message loop while it waits, which re-enters GPUI's window procedure in the middle of an event and
-/// aborts the program ("RefCell already borrowed"), so it runs on a thread of its own.
+/// Opens a file, folder or shortcut like a double click on the desktop. Explorer does it, in its own
+/// process: calling the shell from here either re-enters GPUI's window procedure (ShellExecute runs a
+/// message loop and aborts the program with "RefCell already borrowed") or, on a helper thread, can tear
+/// down a COM apartment the shell is still using and crash a few seconds later.
 pub fn open_path(path: &str) {
-    let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
-    std::thread::spawn(move || {
-        // SAFETY: a COM apartment for this thread, and NUL-terminated buffers that outlive the call.
-        unsafe {
-            let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
-            ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
-            windows::Win32::System::Com::CoUninitialize();
-        }
-    });
+    if let Err(e) = std::process::Command::new("explorer.exe").arg(path).spawn() {
+        eprintln!("could not open {path}: {e}");
+    }
 }
 
 /// Gives a window the tool-window style and takes it off the taskbar and Task View. The taskbar only
