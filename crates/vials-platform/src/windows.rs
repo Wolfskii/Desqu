@@ -354,6 +354,46 @@ impl IDropSource_Impl for DropSource_Impl {
     }
 }
 
+
+use ::windows::Win32::System::Ole::{IDropTarget, RegisterDragDrop, RevokeDragDrop};
+use ::windows::Win32::UI::WindowsAndMessaging::{EnumThreadWindows, GetPropW};
+
+/// GPUI's own file-drop handler crashes on the data object of an in-process drag (it misreads the
+/// file list of a shortcut). Our drags never need it: items move between vials inside the app. So
+/// while a drag runs, this app's windows stop being drop targets and get their handler back after.
+struct PausedTargets(Vec<(HWND, IDropTarget)>);
+
+impl PausedTargets {
+    unsafe fn pause() -> Self {
+        unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            let list = &mut *(lparam.0 as *mut Vec<(HWND, IDropTarget)>);
+            // OLE keeps the registered IDropTarget in this window property.
+            let raw = GetPropW(hwnd, ::windows::core::w!("OleDropTargetInterface"));
+            if !raw.is_invalid() {
+                if let Some(target) = IDropTarget::from_raw_borrowed(&raw.0).cloned() {
+                    list.push((hwnd, target));
+                }
+            }
+            BOOL(1)
+        }
+        let mut found: Vec<(HWND, IDropTarget)> = Vec::new();
+        let _ = EnumThreadWindows(GetCurrentThreadId(), Some(each), LPARAM(&mut found as *mut _ as isize));
+        for (hwnd, _) in &found {
+            let _ = RevokeDragDrop(*hwnd);
+        }
+        Self(found)
+    }
+}
+
+impl Drop for PausedTargets {
+    fn drop(&mut self) {
+        for (hwnd, target) in &self.0 {
+            // SAFETY: the window still exists unless it was closed during the drag, in which case this fails harmlessly.
+            let _ = unsafe { RegisterDragDrop(*hwnd, target) };
+        }
+    }
+}
+
 /// How a drag ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragEnd {
@@ -401,7 +441,9 @@ pub fn drag_items(paths: &[String]) -> Result<DragEnd, String> {
         let released = std::sync::Arc::new(std::sync::Mutex::new(None));
         let source: IDropSource = DropSource { released_on_desktop: released.clone() }.into();
         let mut effect = DROPEFFECT(0);
+        let paused = PausedTargets::pause();
         let result = DoDragDrop(&data, &source, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &mut effect);
+        drop(paused);
         let mut at = POINT::default();
         let _ = GetCursorPos(&mut at);
         if let Some(hbmp) = bitmap {
