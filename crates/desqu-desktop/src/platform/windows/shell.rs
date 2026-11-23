@@ -13,10 +13,13 @@ use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, IServiceProvi
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::Storage::FileSystem::{
-    GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_FLAGS_AND_ATTRIBUTES, INVALID_FILE_ATTRIBUTES,
+    GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_HIDDEN, FILE_FLAGS_AND_ATTRIBUTES,
+    INVALID_FILE_ATTRIBUTES,
 };
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
-use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ATTRIBUTES, SHCNF_PATHW};
+use windows::Win32::UI::Shell::{
+    SHChangeNotify, SHCNE_ATTRIBUTES, SHCNE_CREATE, SHCNE_DELETE, SHCNE_MKDIR, SHCNE_RMDIR, SHCNF_FLUSHNOWAIT, SHCNF_PATHW,
+};
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemImageFactory,
     IShellWindows, SHCreateItemFromIDList, SHCreateItemFromParsingName, SHGetKnownFolderPath, ShellWindows,
@@ -96,9 +99,12 @@ pub(super) fn is_hidden_attribute(path: &str) -> Option<bool> {
     (attrs != INVALID_FILE_ATTRIBUTES).then_some(attrs & FILE_ATTRIBUTE_HIDDEN.0 != 0)
 }
 
-/// Sets or clears the hidden attribute and tells the shell, so the desktop follows within a
-/// fraction of a second (without the notification it takes several seconds). Other attributes are
-/// kept. The file's contents, name and place are never touched.
+/// Sets or clears the hidden attribute and tells the shell, so the desktop follows at once. Other
+/// attributes are kept. The file's contents, name and place are never touched.
+///
+/// An attribute-change notice alone takes the desktop 1-1.5 s to act on. Saying the item went away
+/// (or came back) takes it about 20 ms and keeps the icon's position; measured with a temporary
+/// file and folder. The attribute notice is still sent, for views that only look at that.
 pub(super) fn set_hidden_attribute(path: &str, hidden: bool) -> DesktopResult<()> {
     let wide = windows::core::HSTRING::from(path);
     // SAFETY: plain file system calls on a string that outlives them.
@@ -111,7 +117,17 @@ pub(super) fn set_hidden_attribute(path: &str, hidden: bool) -> DesktopResult<()
         if next != attrs {
             SetFileAttributesW(&wide, FILE_FLAGS_AND_ATTRIBUTES(next)).map_err(|e| native("SetFileAttributes", e))?;
         }
-        SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW, Some(wide.as_ptr().cast()), None);
+        let folder = attrs & FILE_ATTRIBUTE_DIRECTORY.0 != 0;
+        let event = match (hidden, folder) {
+            (true, false) => SHCNE_DELETE,
+            (true, true) => SHCNE_RMDIR,
+            (false, false) => SHCNE_CREATE,
+            (false, true) => SHCNE_MKDIR,
+        };
+        // FLUSHNOWAIT: delivered now, without waiting on Explorer (which may itself be waiting on
+        // us, when the drop comes from its own drag).
+        SHChangeNotify(event, SHCNF_PATHW | SHCNF_FLUSHNOWAIT, Some(wide.as_ptr().cast()), None);
+        SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW | SHCNF_FLUSHNOWAIT, Some(wide.as_ptr().cast()), None);
     }
     Ok(())
 }
