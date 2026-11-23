@@ -1,12 +1,13 @@
 # Installs an app's installer silently into a temp folder, starts the installed app (temp config), then
 # uninstalls silently and checks that everything it created is gone and the running copy was closed.
 # Refuses to run if that app is already installed, so it can never touch a real install.
-#   pwsh installer-test.ps1 -App vials | workspaces
-param([ValidateSet('vials', 'workspaces')][string]$App = 'vials')
+#   pwsh installer-test.ps1 -App vials | workspaces | screenbound
+param([ValidateSet('vials', 'workspaces', 'screenbound')][string]$App = 'vials')
 $ErrorActionPreference = 'Stop'
 $a = @{
     vials      = @{ Display = 'Vials'; Key = 'VialsGpui'; Exe = 'vials-gpui.exe'; Args = @('--live') }
     workspaces = @{ Display = 'Workspaces'; Key = 'WorkspacesGpui'; Exe = 'workspaces-gpui.exe'; Args = @() }
+    screenbound = @{ Display = 'Screenbound'; Key = 'ScreenboundGpui'; Exe = 'screenbound-gpui.exe'; Args = @() }
 }[$App]
 $setup = (Get-ChildItem "$PSScriptRoot\..\..\apps\$App-gpui\dist\$($a.Display)-GPUI_*_x64-setup.exe" | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($a.Key)"
@@ -20,6 +21,11 @@ $cfg = Join-Path $cfgDir 'config.json'
 if ($App -eq 'vials') {
     @{ version = 1; contextMenu = $false; createOnDrag = $false; vials = @(@{ id = 'vial-1'; name = 'I'; monitor = $null; rect = @{ x = 0.4; y = 0.3; width = 0.1; height = 0.2 }; items = @() }) } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
 }
+if ($App -eq 'screenbound') {
+    # Paused, so the engine cannot move any real window while the installed copy runs.
+    @{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @() } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
+}
+$configArgs = if ($App -eq 'screenbound') { @('--config-dir', "`"$cfgDir`"") } else { @('--config', "`"$cfg`"") }
 $exe = Join-Path $dir $a.Exe
 try {
     # /D must be the last argument and unquoted.
@@ -31,7 +37,7 @@ try {
     $res.startMenuShortcut = Test-Path $shortcut
     $res.installedExeHasIcon = ((Get-Item $exe).VersionInfo.ProductName -eq $a.Display)
 
-    $running = Start-Process $exe -ArgumentList (@($a.Args) + @('--config', "`"$cfg`"")) -PassThru
+    $running = Start-Process $exe -ArgumentList (@($a.Args) + $configArgs) -PassThru
     Start-Sleep 4
     $res.installedAppRuns = -not $running.HasExited
 

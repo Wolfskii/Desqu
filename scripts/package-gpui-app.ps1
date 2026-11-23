@@ -1,8 +1,8 @@
 # Builds a Desqu GPUI app in release mode and packs it into a per-user installer with NSIS.
 #   pwsh scripts/package-gpui-app.ps1 -App vials        -> apps/vials-gpui/dist/Vials-GPUI_<version>_x64-setup.exe
-#   pwsh scripts/package-gpui-app.ps1 -App workspaces
+#   pwsh scripts/package-gpui-app.ps1 -App workspaces | screenbound
 # NSIS is found on PATH, or in the folder the Tauri bundler downloads it to ($env:LOCALAPPDATA\tauri\NSIS).
-param([Parameter(Mandatory)][ValidateSet('vials', 'workspaces')][string]$App)
+param([Parameter(Mandatory)][ValidateSet('vials', 'workspaces', 'screenbound')][string]$App)
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 
@@ -11,6 +11,7 @@ $apps = @{
     vials      = @{ Display = 'Vials'; Key = 'VialsGpui'; Exe = 'vials-gpui.exe'; Args = '--live'
                     Menu = 'Software\Classes\DesktopBackground\Shell\DesquVials' }
     workspaces = @{ Display = 'Workspaces'; Key = 'WorkspacesGpui'; Exe = 'workspaces-gpui.exe'; Args = ''; Menu = '' }
+    screenbound = @{ Display = 'Screenbound'; Key = 'ScreenboundGpui'; Exe = 'screenbound-gpui.exe'; Args = ''; Menu = '' }
 }
 $a = $apps[$App]
 $dir = Join-Path $root "apps/$App-gpui"
