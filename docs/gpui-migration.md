@@ -10,7 +10,8 @@ The UI is the only thing that changes. Everything that is not UI stays Rust and 
 | --- | --- | --- |
 | Model, rules, layout, sort (pure) | `crates/vials-core` | extracted, 49 tests, used by both UIs |
 | Desktop layer (items, hide, icons) | `crates/desqu-desktop` | unchanged; new `icon_png()` needs no lock |
-| Tauri + Svelte Vials (current) | `apps/vials`, `apps/vials/module` | unchanged and still shipping |
+| Native Windows pieces (item menu, drag out, clipboard, mouse hook) | `crates/vials-platform` | moved out of the Tauri module, used by both |
+| Tauri + Svelte Vials (current) | `apps/vials`, `apps/vials/module` | still shipping, now uses the shared crates |
 | GPUI Vials | `apps/vials-gpui` (own workspace, so Tauri CI never builds GPUI) | phase 1 |
 
 ## Phases
@@ -19,7 +20,8 @@ The UI is the only thing that changes. Everything that is not UI stays Rust and 
 | --- | --- | --- |
 | 1 | Read-only viewer: real config, real positions, real icons, blur, rounded, tool window, drag by header, collapse, double-click opens | done |
 | 2 | Own engine for the GPUI app (not a refactor of the Tauri one, to keep it shipping safely): `--live` owns the desktop layer, hides items of vials, restores on exit or from the journal after a crash, saves window moves. Test: `spikes/gpui-vials/live-test.ps1` | done |
-| 3 | Editing: drop files in, drag out to Explorer (OLE), rename, item menu (Explorer's own), copy/paste, sort, auto-sort rules, new vials | todo |
+| 3a | Editing, first half: drop files in, take an item out (x on hover, Delete), drag out to Explorer and the desktop, Explorer's item menu (right-click), Ctrl+C / Ctrl+X, window takes the keyboard only while used. Engine logic is tested (`cargo test --release -- --ignored --test-threads=1` in `apps/vials-gpui`); drop, drag and menu still need a hand test | done, hand test pending |
+| 3b | Editing, second half: paste (Ctrl+V), sort, auto-sort rules, rename a vial (needs a text field), new / delete vial | todo |
 | 4 | Create-by-dragging-a-box (mouse hook), desktop right-click entry, tray icon | todo |
 | 5 | Settings window, rules window, themes (Glass, Classic, Fluent) | todo |
 | 6 | Liquid glass: wallpaper shader needs a custom wgpu pass; GPUI does not expose one | todo, hardest |

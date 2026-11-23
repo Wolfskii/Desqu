@@ -4617,6 +4617,14 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "vials-core",
+ "vials-platform",
+]
+
+[[package]]
+name = "vials-platform"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
  "windows",
  "windows-core",
 ]

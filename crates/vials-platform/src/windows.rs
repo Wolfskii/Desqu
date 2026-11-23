@@ -12,7 +12,7 @@ use ::windows::Win32::UI::WindowsAndMessaging::{
 ///
 /// The window is hidden and shown again (without activating it) so the shell re-evaluates it, and
 /// put back at the bottom of the z-order so it stays above the desktop icons only.
-pub(crate) fn mark_as_tool_window(hwnd: isize) -> Result<(), String> {
+pub fn mark_as_tool_window(hwnd: isize) -> Result<(), String> {
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
     // SAFETY: `hwnd` is a window of this process, owned by Tauri, that is still alive.
     unsafe {
@@ -37,7 +37,7 @@ pub(crate) fn mark_as_tool_window(hwnd: isize) -> Result<(), String> {
 
 /// Puts a window back at the bottom of the z-order without activating it (used after a vial took the
 /// keyboard focus, which would otherwise leave it above other windows).
-pub(crate) fn send_to_bottom(hwnd: isize) {
+pub fn send_to_bottom(hwnd: isize) {
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
     // SAFETY: `hwnd` is a window of this process, owned by Tauri, that is still alive.
     unsafe {
@@ -46,7 +46,7 @@ pub(crate) fn send_to_bottom(hwnd: isize) {
 }
 
 /// Where the mouse pointer is, in screen pixels.
-pub(crate) fn cursor_position() -> Option<(i32, i32)> {
+pub fn cursor_position() -> Option<(i32, i32)> {
     let mut at = POINT::default();
     // SAFETY: plain cursor query into a local.
     unsafe { GetCursorPos(&mut at) }.ok()?;
@@ -54,7 +54,7 @@ pub(crate) fn cursor_position() -> Option<(i32, i32)> {
 }
 
 /// Calls the handler with the files that were cut when Ctrl+V is pressed on the desktop.
-pub(crate) fn watch_cut_paste(on_paste: Box<dyn Fn(Vec<String>) + Send>) -> Result<desqu_desktop::CutPasteWatcher, String> {
+pub fn watch_cut_paste(on_paste: Box<dyn Fn(Vec<String>) + Send>) -> Result<desqu_desktop::CutPasteWatcher, String> {
     desqu_desktop::watch_cut_paste(on_paste).map_err(|e| e.to_string())
 }
 
@@ -73,7 +73,7 @@ use ::windows::Win32::UI::WindowsAndMessaging::{
 };
 
 /// Mouse gestures on the desktop icon view.
-pub(crate) enum MouseEvent {
+pub enum MouseEvent {
     /// A drag from the press point to the release point.
     Marquee((i32, i32), (i32, i32)),
     /// The right button went down here (the desktop's context menu is about to open).
@@ -82,7 +82,7 @@ pub(crate) enum MouseEvent {
     ButtonDown((i32, i32)),
 }
 
-pub(crate) type MouseHandler = Box<dyn Fn(MouseEvent) + Send>;
+pub type MouseHandler = Box<dyn Fn(MouseEvent) + Send>;
 
 struct HookState {
     down: Option<(i32, i32)>,
@@ -158,13 +158,13 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
 
 /// Watches left-button presses and releases system-wide, only to see a drag that starts on the
 /// desktop icon view. The callback runs inside the hook, so it must only hand the data over.
-pub(crate) struct MouseWatcher {
+pub struct MouseWatcher {
     thread_id: u32,
     thread: Option<JoinHandle<()>>,
 }
 
 impl MouseWatcher {
-    pub(crate) fn start(on_event: MouseHandler) -> Result<Self, String> {
+    pub fn start(on_event: MouseHandler) -> Result<Self, String> {
         let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
         let thread = std::thread::Builder::new()
             .name("vials-mouse-hook".into())
@@ -258,7 +258,7 @@ fn create_key(path: &str) -> Result<HKEY, String> {
 /// Adds (`Some(exe)`) or removes (`None`) a "Create vial here" entry in the desktop's right-click
 /// menu. It runs `exe --action=create-vial`, which the running app turns into a vial at the spot
 /// that was right-clicked. On Windows 11 the entry is under "Show more options".
-pub(crate) fn set_context_menu(exe: Option<&str>) -> Result<(), String> {
+pub fn set_context_menu(exe: Option<&str>) -> Result<(), String> {
     match exe {
         Some(exe) => {
             let key = create_key(VERB_KEY)?;
@@ -356,7 +356,7 @@ impl IDropSource_Impl for DropSource_Impl {
 
 /// How a drag ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DragEnd {
+pub enum DragEnd {
     Cancelled,
     /// Let go over the empty desktop (nothing was handed to Explorer): place the icon here.
     OnDesktop((i32, i32)),
@@ -368,7 +368,7 @@ pub(crate) enum DragEnd {
 /// Starts the standard Windows drag of one file or folder (its icon follows the cursor, targets
 /// see a real shell item, Ctrl/Shift/Alt choose copy/move/link) and returns when it ends. Must run
 /// on the thread that owns the window the drag started from, because the drag runs a modal loop.
-pub(crate) fn drag_items(paths: &[String]) -> Result<DragEnd, String> {
+pub fn drag_items(paths: &[String]) -> Result<DragEnd, String> {
     let Some(first) = paths.first() else { return Err("there is nothing to drag".into()) };
     // SAFETY: COM/OLE calls on the calling (UI) thread; all interface pointers stay alive across
     // the drag, and the bitmap handle is released afterwards.
@@ -475,7 +475,7 @@ unsafe extern "system" fn menu_host_proc(hwnd: HWND, msg: u32, wparam: WPARAM, l
 ///
 /// Must run on the UI thread: the menu runs a modal loop. A vial window never takes focus, so the
 /// menu is owned by a small hidden window that exists only while it is open.
-pub(crate) fn show_item_menu(path: &str) -> Result<(), String> {
+pub fn show_item_menu(path: &str) -> Result<(), String> {
     // SAFETY: COM and window calls on the calling (UI) thread; every interface pointer and the
     // helper window stay alive until the menu is closed and the chosen command has run.
     unsafe {
@@ -564,7 +564,7 @@ use ::windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER
 
 /// Rounded corners for a borderless window (Windows 11 only rounds decorated windows on its own).
 /// The blur behind the window is clipped to them. Failure (Windows 10) just leaves square corners.
-pub(crate) fn round_corners(hwnd: isize, round: bool) {
+pub fn round_corners(hwnd: isize, round: bool) {
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
     let preference = if round { DWMWCP_ROUND } else { DWMWCP_DONOTROUND };
     // SAFETY: `hwnd` is a window of this process; the attribute value is a plain i32 enum.
@@ -608,7 +608,7 @@ fn desktop_reg_string(name: &str) -> Option<String> {
 
 /// The current wallpaper file and its layout. Windows keeps the picture actually shown (also from a
 /// slideshow) as `TranscodedWallpaper`; the configured path is the fallback.
-pub(crate) fn wallpaper() -> Result<(std::path::PathBuf, u32, bool), String> {
+pub fn wallpaper() -> Result<(std::path::PathBuf, u32, bool), String> {
     let transcoded = std::env::var_os("APPDATA")
         .map(|a| std::path::PathBuf::from(a).join("Microsoft\\Windows\\Themes\\TranscodedWallpaper"))
         .filter(|p| p.is_file());
@@ -667,13 +667,13 @@ unsafe extern "system" fn icons_proc(_: HWINEVENTHOOK, _: u32, hwnd: HWND, id_ob
 
 /// Calls the callback when the desktop's icon view is shown or hidden, which is what the desktop's
 /// "Show desktop icons" switch does. Event-driven (a WinEvent hook).
-pub(crate) struct IconsWatcher {
+pub struct IconsWatcher {
     thread_id: u32,
     thread: Option<JoinHandle<()>>,
 }
 
 impl IconsWatcher {
-    pub(crate) fn start(on_change: Box<dyn Fn() + Send>) -> Result<Self, String> {
+    pub fn start(on_change: Box<dyn Fn() + Send>) -> Result<Self, String> {
         let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
         let thread = std::thread::Builder::new()
             .name("vials-icons-watch".into())

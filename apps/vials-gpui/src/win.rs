@@ -10,7 +10,7 @@ use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, H
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, SWP_NOACTIVATE, SW_SHOWNORMAL, WS_EX_NOACTIVATE,
+    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNORMAL, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
 };
 
@@ -74,6 +74,25 @@ pub fn place_at_bottom(hwnd: HWND, rect: &PixelRect) {
     // SAFETY: our own window.
     unsafe {
         let _ = SetWindowPos(hwnd, Some(HWND_BOTTOM), rect.left, rect.top, rect.width(), rect.height(), SWP_NOACTIVATE);
+    }
+}
+
+/// Lets the window be activated (and so receive keys) while the user works in it.
+pub fn take_keyboard(hwnd: HWND) {
+    // SAFETY: our own window.
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex & !(WS_EX_NOACTIVATE.0 as isize));
+    }
+}
+
+/// Back to a window that never takes focus, below everything else.
+pub fn release_keyboard(hwnd: HWND) {
+    // SAFETY: our own window.
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE.0 as isize);
+        let _ = SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
     }
 }
 

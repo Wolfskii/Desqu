@@ -13,6 +13,7 @@ gpui = "0.2.2"
 raw-window-handle = "0.6"
 vials-core = { path = "../../crates/vials-core" }
 desqu-desktop = { path = "../../crates/desqu-desktop" }
+vials-platform = { path = "../../crates/vials-platform" }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"

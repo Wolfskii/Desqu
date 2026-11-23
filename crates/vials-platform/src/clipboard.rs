@@ -25,7 +25,7 @@ use ::windows::Win32::UI::Shell::{
 };
 
 /// Files found on the clipboard.
-pub(crate) struct ClipboardFiles {
+pub struct ClipboardFiles {
     pub paths: Vec<String>,
     /// They were cut: pasting moves them.
     pub cut: bool,
@@ -48,7 +48,7 @@ fn format_etc(format: u16) -> FORMATETC {
 }
 
 /// An item array for absolute paths (they may be in different folders).
-pub(crate) unsafe fn items_array(paths: &[String]) -> Result<IShellItemArray, String> {
+pub unsafe fn items_array(paths: &[String]) -> Result<IShellItemArray, String> {
     let mut pidls: Vec<*mut ITEMIDLIST> = Vec::new();
     let mut failure = None;
     for path in paths {
@@ -83,7 +83,7 @@ unsafe fn file_system_path(item: &IShellItem) -> Option<String> {
 
 /// Puts the files on the clipboard the way Explorer does for Ctrl+C (`cut` false) or Ctrl+X: real
 /// files, so any program can paste them, and Explorer moves them when they were cut.
-pub(crate) fn put_files(paths: &[String], cut: bool) -> Result<(), String> {
+pub fn put_files(paths: &[String], cut: bool) -> Result<(), String> {
     // SAFETY: COM calls on the calling thread; every pointer outlives the call that uses it.
     unsafe {
         let _ = OleInitialize(None);
@@ -111,7 +111,7 @@ pub(crate) fn put_files(paths: &[String], cut: bool) -> Result<(), String> {
 }
 
 /// The files on the clipboard, or `None` when there are none.
-pub(crate) fn files() -> Result<Option<ClipboardFiles>, String> {
+pub fn files() -> Result<Option<ClipboardFiles>, String> {
     // SAFETY: COM calls on the calling thread; the storage medium is released after it is read.
     unsafe {
         let _ = OleInitialize(None);
@@ -141,7 +141,7 @@ pub(crate) fn files() -> Result<Option<ClipboardFiles>, String> {
 }
 
 /// Empties the clipboard (what Explorer does after a cut has been pasted).
-pub(crate) fn clear() {
+pub fn clear() {
     // SAFETY: plain OLE call on the calling thread.
     unsafe {
         let _ = OleInitialize(None);
@@ -279,7 +279,7 @@ impl IFileOperationProgressSink_Impl for Collector_Impl {
 /// paths it made. With `rename_on_collision` a copy beside its original is named "... - Copy" instead
 /// of asking. The operation shows Explorer's own progress and conflict dialogs and can be undone with
 /// Ctrl+Z in Explorer. Runs until it is finished, so call it off the UI thread.
-pub(crate) fn transfer(paths: &[String], cut: bool, folder: &str, rename_on_collision: bool) -> Result<Vec<String>, String> {
+pub fn transfer(paths: &[String], cut: bool, folder: &str, rename_on_collision: bool) -> Result<Vec<String>, String> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }

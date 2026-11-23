@@ -15,7 +15,7 @@ use gpui::{point, px, size, App, AppContext, Application, Bounds, WindowBackgrou
 use vials_core::layout;
 use vials_core::model::VialsConfig;
 
-use view::{Placement, VialView};
+use view::{Live, Placement, Revision, VialView};
 
 fn config_path() -> PathBuf {
     let mut args = std::env::args().skip(1);
@@ -59,6 +59,7 @@ fn main() {
             }
         })
         .detach();
+        let revision = cx.new(|_| Revision(0));
         for vial in config.vials.iter().filter(|v| !v.inbox) {
             let Some(monitor) = layout::pick_monitor(vial.monitor.as_deref(), &monitors) else { continue };
             let rect = layout::resolve(&vial.rect, &monitor.bounds);
@@ -68,7 +69,7 @@ fn main() {
             placed.bottom = placed.top + height;
             let (name, items, collapsed) = (vial.name.clone(), vial.items.clone(), vial.collapsed);
             let full = rect;
-            let live = engine.as_ref().map(|e| (Arc::clone(e), vial.id.clone()));
+            let live = engine.as_ref().map(|e| Live { engine: Arc::clone(e), revision: revision.clone(), vial_id: vial.id.clone() });
             let title = name.clone();
 
             // The size here is a placeholder: the exact physical rectangle is applied right after.

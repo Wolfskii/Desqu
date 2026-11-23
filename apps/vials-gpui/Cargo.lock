@@ -5918,7 +5918,17 @@ dependencies = [
  "gpui",
  "raw-window-handle",
  "vials-core",
+ "vials-platform",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "vials-platform"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]

@@ -13,6 +13,7 @@ members = [
     "crates/desqu-ipc",
     "crates/desqu-shell",
     "crates/vials-core",
+    "crates/vials-platform",
 ]
 
 # Profiles are only honoured at the workspace root.
