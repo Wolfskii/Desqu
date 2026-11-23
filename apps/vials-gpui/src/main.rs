@@ -133,6 +133,7 @@ impl Shell {
 
 fn main() {
     desqu_native_shell::stdio::protect();
+    desqu_native_shell::crash::install();
     let path = config_path();
     let config = match VialsConfig::load(&path) {
         Ok(c) => c,

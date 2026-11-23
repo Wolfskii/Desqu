@@ -3,6 +3,7 @@
 //! newer version). Each app says who it is with an [`Identity`].
 
 pub mod autostart;
+pub mod crash;
 pub mod stdio;
 pub mod tray;
 pub mod update;

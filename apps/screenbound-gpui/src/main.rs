@@ -43,6 +43,7 @@ fn config_dir() -> PathBuf {
 
 fn main() {
     desqu_native_shell::stdio::protect();
+    desqu_native_shell::crash::install();
     // Uninstalling: take the browser entries away (the installer runs this before deleting the files).
     if std::env::args().any(|a| a == "--unregister-browser") {
         if let Err(e) = runtime::unregister_host() {
