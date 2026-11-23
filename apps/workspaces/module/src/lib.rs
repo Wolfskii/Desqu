@@ -3,9 +3,9 @@
 //! restored). Only the virtual desktop registry layout is used; no window is touched.
 
 mod commands;
-pub mod core;
+pub use workspaces_core as core;
 pub mod engine;
-mod platform;
+use workspaces_platform as platform;
 pub mod plugin;
 
 pub use plugin::{init, ModuleOptions, WorkspacesModule};

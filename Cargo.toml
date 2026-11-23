@@ -14,6 +14,8 @@ members = [
     "crates/desqu-shell",
     "crates/vials-core",
     "crates/vials-platform",
+    "crates/workspaces-core",
+    "crates/workspaces-platform",
 ]
 
 # Profiles are only honoured at the workspace root.

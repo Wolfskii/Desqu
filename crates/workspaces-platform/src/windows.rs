@@ -25,7 +25,7 @@ use ::windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::{DesktopInfo, Desktops};
-use crate::core::model::guid_from_registry_bytes;
+use workspaces_core::model::guid_from_registry_bytes;
 
 const KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops";
 

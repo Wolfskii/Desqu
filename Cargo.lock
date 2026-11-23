@@ -5336,6 +5336,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "workspaces-core"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "workspaces-module"
 version = "0.3.0"
 dependencies = [
@@ -5348,6 +5357,19 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "windows",
+ "workspaces-core",
+ "workspaces-platform",
+]
+
+[[package]]
+name = "workspaces-platform"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "serde",
+ "tracing",
+ "windows",
+ "workspaces-core",
 ]
 
 [[package]]

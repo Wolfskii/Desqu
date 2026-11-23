@@ -1,0 +1,15 @@
+[package]
+name = "workspaces-core"
+version = "0.3.0"
+description = "Workspaces' pure logic (model, which icons to hide). No native calls, no UI framework."
+authors = ["Desqu contributors"]
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "workspaces_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
