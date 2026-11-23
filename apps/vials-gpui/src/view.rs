@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use gpui::{
-    div, img, prelude::*, px, rgba, white, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
+    div, img, prelude::*, px, rgba, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
     ImageFormat, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
     Render, SharedString, Window,
 };
@@ -13,6 +13,7 @@ use vials_core::model::PixelRect;
 
 use crate::engine::Engine;
 use crate::menu::{self, MenuEntry};
+use crate::theme::Theme;
 use crate::win;
 
 /// Bumped whenever the config changed (an item came or left a vial, a vial was added...), so every
@@ -75,6 +76,9 @@ pub struct VialView {
     save_gen: u64,
     live: Option<Live>,
     focus: FocusHandle,
+    theme: Theme,
+    /// The window material has to be re-applied on the next render (it needs the window).
+    material_dirty: bool,
 }
 
 /// What the desktop calls an item: the file name, without the extension of shortcut-like types.
@@ -95,6 +99,7 @@ impl VialView {
         collapsed: bool,
         placement: Placement,
         live: Option<Live>,
+        theme: Theme,
         cx: &mut Context<Self>,
     ) -> Self {
         // Keeps the full-size rectangle current when the user resizes the window, and (live) saves a moved
@@ -157,6 +162,8 @@ impl VialView {
             save_gen: 0,
             live,
             focus: cx.focus_handle(),
+            theme,
+            material_dirty: false,
         };
         view.set_items(ids, cx);
         view
@@ -179,6 +186,11 @@ impl VialView {
 
     fn reload(&mut self, cx: &mut Context<Self>) {
         let Some(live) = &self.live else { return };
+        let look = live.engine.look();
+        if look != self.theme {
+            self.theme = look;
+            self.material_dirty = true;
+        }
         if let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) {
             self.name = vial.name.clone().into();
             let ids = vial.items;
@@ -493,6 +505,10 @@ impl Render for VialView {
             self.wants_keyboard = false;
             self.take_keyboard(window);
         }
+        if std::mem::take(&mut self.material_dirty) {
+            window.set_background_appearance(self.theme.material);
+        }
+        let t = self.theme;
         let chevron = div()
             .id("collapse")
             .w(px(30.))
@@ -501,7 +517,7 @@ impl Render for VialView {
             .items_center()
             .justify_center()
             .text_xs()
-            .hover(|s| s.bg(rgba(0xffffff22)))
+            .hover(move |s| s.bg(rgba(t.hover)))
             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.toggle_collapsed(window, cx)))
             .child(if self.collapsed { "v" } else { "^" });
 
@@ -526,7 +542,7 @@ impl Render for VialView {
             .flex()
             .items_center()
             .border_b_1()
-            .border_color(rgba(0xffffff24))
+            .border_color(rgba(t.line))
             .child(
                 // Press and drag moves the window, a plain click renames it, right click opens the menu.
                 div()
@@ -592,7 +608,7 @@ impl Render for VialView {
                 let id = item.id.clone();
                 let icon = match self.icons.get(&item.id) {
                     Some(image) => img(image.clone()).size(px(32.)).into_any_element(),
-                    None => div().size(px(32.)).rounded(px(6.)).bg(rgba(0xffffff18)).into_any_element(),
+                    None => div().size(px(32.)).rounded(px(6.)).bg(rgba(t.placeholder)).into_any_element(),
                 };
                 let remove_id = item.id.clone();
                 div()
@@ -609,8 +625,8 @@ impl Render for VialView {
                     .rounded(px(6.))
                     .border_1()
                     .border_color(rgba(0x00000000))
-                    .when(selected == Some(i), |d| d.bg(rgba(0x78afff48)).border_color(rgba(0xaad2ffb4)))
-                    .when(selected != Some(i), |d| d.hover(|s| s.bg(rgba(0xffffff28)).border_color(rgba(0xffffff57))))
+                    .when(selected == Some(i), move |d| d.bg(rgba(t.selected)).border_color(rgba(t.selected_border)))
+                    .when(selected != Some(i), move |d| d.hover(move |s| s.bg(rgba(t.hover)).border_color(rgba(t.hover_border))))
                     .when(item.missing, |d| d.opacity(0.5))
                     .on_mouse_down(
                         MouseButton::Left,
@@ -674,11 +690,11 @@ impl Render for VialView {
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.drop_paths(paths, cx)))
             .drag_over::<ExternalPaths>(|s, _, _, _| s.border_color(rgba(0xaad2ffd9)).bg(rgba(0x78afff30)))
             .size_full()
-            .rounded(px(12.))
+            .rounded(px(t.radius))
             .border_1()
-            .border_color(rgba(0xffffff42))
-            .bg(rgba(0x181c2633))
-            .text_color(white())
+            .border_color(rgba(t.border))
+            .bg(rgba(t.panel))
+            .text_color(rgba(t.text))
             .flex()
             .flex_col()
             .child(header)

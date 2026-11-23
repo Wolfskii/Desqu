@@ -291,6 +291,12 @@ impl Engine {
         self.create_vial(PixelRect { left: x, top: y, right: x + size.0, bottom: y + size.1 })
     }
 
+    /// How vials look right now.
+    pub fn look(&self) -> crate::theme::Theme {
+        let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        crate::theme::Theme::of(cfg.theme, cfg.glass_tint)
+    }
+
     pub fn config(&self) -> VialsConfig {
         self.config.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }

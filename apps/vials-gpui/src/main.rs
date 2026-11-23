@@ -8,6 +8,7 @@
 
 mod engine;
 mod menu;
+mod theme;
 mod tray;
 mod view;
 mod win;
@@ -19,7 +20,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    point, px, size, AnyWindowHandle, App, AppContext, Application, Bounds, Entity, WindowBackgroundAppearance, WindowBounds,
+    point, px, size, AnyWindowHandle, App, AppContext, Application, Bounds, Entity, WindowBounds,
     WindowOptions,
 };
 use vials_core::gesture;
@@ -50,6 +51,9 @@ struct Shell {
     monitors: Vec<MonitorRef>,
     engine: Option<Arc<Engine>>,
     revision: Entity<Revision>,
+    /// The look of the read-only viewer (it has no engine to ask).
+    theme: vials_core::model::VialTheme,
+    tint: u8,
 }
 
 type Windows = Rc<RefCell<HashMap<String, AnyWindowHandle>>>;
@@ -65,6 +69,10 @@ impl Shell {
         let (name, items, collapsed) = (vial.name.clone(), vial.items.clone(), vial.collapsed);
         let live = self.engine.as_ref().map(|e| Live { engine: Arc::clone(e), revision: self.revision.clone(), vial_id: vial.id.clone() });
         let title = name.clone();
+        let look = match &self.engine {
+            Some(e) => e.look(),
+            None => theme::Theme::of(self.theme, self.tint),
+        };
 
         // The size here is a placeholder: the exact physical rectangle is applied right after.
         let handle = cx
@@ -74,11 +82,11 @@ impl Shell {
                     titlebar: Some(gpui::TitlebarOptions { title: Some(title.into()), appears_transparent: true, ..Default::default() }),
                     focus: false,
                     is_resizable: true,
-                    window_background: WindowBackgroundAppearance::Blurred,
+                    window_background: look.material,
                     ..Default::default()
                 },
                 move |window, cx| {
-                    cx.new(|cx| VialView::new(window, &name, items, collapsed, Placement { rect, collapsed_height }, live, cx))
+                    cx.new(|cx| VialView::new(window, &name, items, collapsed, Placement { rect, collapsed_height }, live, look, cx))
                 },
             )
             .ok()?;
@@ -165,7 +173,7 @@ fn main() {
             .detach();
         }
         let revision = cx.new(|_| Revision(0));
-        let shell = Shell { monitors, engine: engine.clone(), revision: revision.clone() };
+        let shell = Shell { monitors, engine: engine.clone(), revision: revision.clone(), theme: config.theme, tint: config.glass_tint };
         let windows: Windows = Rc::new(RefCell::new(HashMap::new()));
 
         let first: Vec<Vial> = match &engine {
