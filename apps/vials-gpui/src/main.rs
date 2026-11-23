@@ -13,6 +13,7 @@ mod liquid;
 mod menu;
 mod rules_window;
 mod settings;
+mod update;
 mod theme;
 mod tray;
 mod view;

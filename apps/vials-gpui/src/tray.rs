@@ -95,7 +95,9 @@ fn add_icon(hwnd: HWND) {
         nid.uCallbackMessage = TRAY_MESSAGE;
         // The icon embedded by build.rs (resource 1); the stock application icon if it is missing.
         let instance = GetModuleHandleW(None).unwrap_or_default();
-        nid.hIcon = LoadIconW(Some(instance.into()), PCWSTR(1 as *const u16)).or_else(|_| LoadIconW(None, IDI_APPLICATION)).unwrap_or_default();
+        #[allow(clippy::manual_dangling_ptr)] // resource id 1 as a pointer: the Windows MAKEINTRESOURCE idiom
+        let resource = PCWSTR(1 as *const u16);
+        nid.hIcon = LoadIconW(Some(instance.into()), resource).or_else(|_| LoadIconW(None, IDI_APPLICATION)).unwrap_or_default();
         for (i, c) in "Vials".encode_utf16().enumerate() {
             nid.szTip[i] = c;
         }

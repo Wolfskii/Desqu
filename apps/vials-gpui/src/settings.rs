@@ -35,9 +35,37 @@ struct SettingsView {
     dragging: Option<u8>,
     /// Why "Start with Windows" could not be changed, if it could not.
     autostart_note: String,
+    /// The result of the last update check, and its download link.
+    update_note: String,
+    update_url: Option<String>,
 }
 
 impl SettingsView {
+    /// Asks the update server (off the UI thread) and shows what it said.
+    fn check_update(&mut self, cx: &mut Context<Self>) {
+        self.update_note = "Checking...".into();
+        self.update_url = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async { crate::update::check(env!("CARGO_PKG_VERSION"), crate::update::MANIFEST_URL) })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(crate::update::Outcome::UpToDate) => view.update_note = format!("Version {} is the latest", env!("CARGO_PKG_VERSION")),
+                    Ok(crate::update::Outcome::Available(r)) => {
+                        view.update_note = format!("Version {} is available", r.version);
+                        view.update_url = r.url;
+                    }
+                    Err(e) => view.update_note = e,
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn config(&self) -> VialsConfig {
         self.engine.config()
     }
@@ -189,6 +217,17 @@ impl Render for SettingsView {
                     },
                 )))
             })
+            .child(
+                row("Updates", &self.update_note).child(
+                    div()
+                        .flex()
+                        .gap_2()
+                        .child(button("Check now", false).id("check-update").on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.check_update(cx))))
+                        .when_some(self.update_url.clone(), |d, url| {
+                            d.child(button("Download", true).id("download").on_click(move |_, _, _| crate::win::open_path(&url)))
+                        }),
+                ),
+            )
             .child(toggle("Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, |c, v| c.context_menu = v))
     }
 }
@@ -209,7 +248,7 @@ pub fn open(cx: &mut App, engine: Arc<Engine>, revision: Entity<Revision>) {
             window_background: WindowBackgroundAppearance::Opaque,
             ..Default::default()
         },
-        move |_, cx| cx.new(|_| SettingsView { engine, revision, dragging: None, autostart_note: String::new() }),
+        move |_, cx| cx.new(|_| SettingsView { engine, revision, dragging: None, autostart_note: String::new(), update_note: String::new(), update_url: None }),
     );
     if let Ok(handle) = opened {
         cx.set_global(Open(Some(handle.into())));
