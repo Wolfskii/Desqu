@@ -1,11 +1,15 @@
 //! Vials in GPUI. Read-only viewer: it opens one window per vial of the real Vials config, in the
 //! same place, with the same items and icons, but never writes the config or hides anything.
-//!   vials-gpui [--config <path to config.json>]
+//!   vials-gpui [--config <path to config.json>] [--live]
+//! With `--live` it also owns the desktop: items in a vial are hidden on the desktop (put back on
+//! exit, or from the journal after a crash) and moving a vial saves its place.
 
+mod engine;
 mod view;
 mod win;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use gpui::{point, px, size, App, AppContext, Application, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions};
 use vials_core::layout;
@@ -35,8 +39,26 @@ fn main() {
             std::process::exit(1);
         }
     };
+    let monitors = win::monitors();
+    let engine = if std::env::args().any(|a| a == "--live") {
+        match engine::Engine::start(&path, config.clone(), monitors.clone()) {
+            Ok(e) => Some(e),
+            Err(e) => {
+                eprintln!("live mode is off: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let engine_for_exit = engine.clone();
     Application::new().run(move |cx: &mut App| {
-        let monitors = win::monitors();
+        cx.on_window_closed(|cx| {
+            if cx.windows().is_empty() {
+                cx.quit();
+            }
+        })
+        .detach();
         for vial in config.vials.iter().filter(|v| !v.inbox) {
             let Some(monitor) = layout::pick_monitor(vial.monitor.as_deref(), &monitors) else { continue };
             let rect = layout::resolve(&vial.rect, &monitor.bounds);
@@ -46,6 +68,7 @@ fn main() {
             placed.bottom = placed.top + height;
             let (name, items, collapsed) = (vial.name.clone(), vial.items.clone(), vial.collapsed);
             let full = rect;
+            let live = engine.as_ref().map(|e| (Arc::clone(e), vial.id.clone()));
             let title = name.clone();
 
             // The size here is a placeholder: the exact physical rectangle is applied right after.
@@ -58,8 +81,8 @@ fn main() {
                     window_background: WindowBackgroundAppearance::Blurred,
                     ..Default::default()
                 },
-                move |_, cx| {
-                    cx.new(|cx| VialView::new(&name, items, collapsed, Placement { rect: full, collapsed_height }, cx))
+                move |window, cx| {
+                    cx.new(|cx| VialView::new(window, &name, items, collapsed, Placement { rect: full, collapsed_height }, live, cx))
                 },
             );
             if let Ok(handle) = opened {
@@ -72,4 +95,8 @@ fn main() {
             }
         }
     });
+    // The windows are gone: give the desktop its items back before the process ends.
+    if let Some(e) = engine_for_exit {
+        e.restore();
+    }
 }

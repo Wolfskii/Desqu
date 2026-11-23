@@ -9,6 +9,7 @@ use gpui::{
 };
 use vials_core::model::PixelRect;
 
+use crate::engine::Engine;
 use crate::win;
 
 pub struct Item {
@@ -30,6 +31,7 @@ pub struct VialView {
     selected: Option<usize>,
     collapsed: bool,
     placement: Placement,
+    save_gen: u64,
 }
 
 /// What the desktop calls an item: the file name, without the extension of shortcut-like types.
@@ -43,7 +45,35 @@ pub fn display_name(id: &str) -> String {
 }
 
 impl VialView {
-    pub fn new(name: &str, ids: Vec<String>, collapsed: bool, placement: Placement, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        window: &mut Window,
+        name: &str,
+        ids: Vec<String>,
+        collapsed: bool,
+        placement: Placement,
+        live: Option<(Arc<Engine>, String)>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        // Live mode: a moved or resized window is saved, once it has stayed still for a moment.
+        if let Some((engine, vial_id)) = live {
+            cx.observe_window_bounds(window, move |this, window, cx| {
+                let Some(hwnd) = win::hwnd(window) else { return };
+                this.save_gen += 1;
+                let generation = this.save_gen;
+                let (engine, vial_id) = (engine.clone(), vial_id.clone());
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                    if this.update(cx, |view, _| view.save_gen == generation).unwrap_or(false) {
+                        if let Some(rect) = win::window_rect(hwnd) {
+                            engine.persist_rect(&vial_id, rect);
+                        }
+                    }
+                })
+                .detach();
+            })
+            .detach();
+        }
+
         let items: Vec<Item> = ids
             .into_iter()
             .map(|id| Item { name: display_name(&id).into(), missing: !Path::new(&id).exists(), icon: None, id })
@@ -92,7 +122,7 @@ impl VialView {
             })
             .detach();
         }
-        Self { name: name.to_string().into(), items, selected: None, collapsed, placement }
+        Self { name: name.to_string().into(), items, selected: None, collapsed, placement, save_gen: 0 }
     }
 
     fn toggle_collapsed(&mut self, window: &mut Window, cx: &mut Context<Self>) {

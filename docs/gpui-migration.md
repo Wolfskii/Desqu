@@ -18,9 +18,9 @@ The UI is the only thing that changes. Everything that is not UI stays Rust and 
 | # | What | Status |
 | --- | --- | --- |
 | 1 | Read-only viewer: real config, real positions, real icons, blur, rounded, tool window, drag by header, collapse, double-click opens | done |
-| 2 | Engine off Tauri: `VialsModule` talks to a small `Host` trait (windows, events, paths) instead of `AppHandle`; Tauri implements it, GPUI implements it | todo |
-| 3 | Editing: drop files in, drag out to Explorer (OLE), rename, item menu (Explorer's own), copy/paste, sort | todo |
-| 4 | Hiding items on the desktop with the journal (needs phase 2), create-by-dragging-a-box (mouse hook), tray | todo |
+| 2 | Own engine for the GPUI app (not a refactor of the Tauri one, to keep it shipping safely): `--live` owns the desktop layer, hides items of vials, restores on exit or from the journal after a crash, saves window moves. Test: `spikes/gpui-vials/live-test.ps1` | done |
+| 3 | Editing: drop files in, drag out to Explorer (OLE), rename, item menu (Explorer's own), copy/paste, sort, auto-sort rules, new vials | todo |
+| 4 | Create-by-dragging-a-box (mouse hook), desktop right-click entry, tray icon | todo |
 | 5 | Settings window, rules window, themes (Glass, Classic, Fluent) | todo |
 | 6 | Liquid glass: wallpaper shader needs a custom wgpu pass; GPUI does not expose one | todo, hardest |
 | 7 | Installer, updater, autostart, then Screenbound / Workspaces / the Desqu shell | todo |

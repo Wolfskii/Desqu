@@ -10,7 +10,7 @@ use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, H
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, SWP_NOACTIVATE, SW_SHOWNORMAL, WS_EX_NOACTIVATE,
+    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, SWP_NOACTIVATE, SW_SHOWNORMAL, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
 };
 
@@ -75,6 +75,14 @@ pub fn place_at_bottom(hwnd: HWND, rect: &PixelRect) {
     unsafe {
         let _ = SetWindowPos(hwnd, Some(HWND_BOTTOM), rect.left, rect.top, rect.width(), rect.height(), SWP_NOACTIVATE);
     }
+}
+
+/// The window's current rectangle in physical pixels.
+pub fn window_rect(hwnd: HWND) -> Option<PixelRect> {
+    let mut r = RECT::default();
+    // SAFETY: our own window and a valid out-pointer.
+    unsafe { GetWindowRect(hwnd, &mut r) }.ok()?;
+    Some(PixelRect { left: r.left, top: r.top, right: r.right, bottom: r.bottom })
 }
 
 /// Opens a file, folder or shortcut like a double click on the desktop.
