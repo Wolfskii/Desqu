@@ -1,0 +1,103 @@
+//! Workspaces in GPUI: give each Windows virtual desktop its own desktop icons.
+//!   workspaces-gpui [--config <path to config.json>] [--autostart] [--action=show|quit]
+//! It lives in the tray; a second launch brings its window up (or hands over its `--action`).
+
+mod engine;
+mod view;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use desqu_native_shell::{tray, Identity};
+use gpui::{App, Application};
+
+use engine::Engine;
+
+/// Who this app is to Windows (names of its mutex, tray window and startup entry are derived from it).
+pub const ID: Identity = Identity { name: "Workspaces", key: "WorkspacesGpui" };
+/// Where the update manifest lives. Not published yet for this build.
+pub const MANIFEST_URL: &str = "https://wolfskii.github.io/Desqu/updates/workspaces-gpui/latest.json";
+const TRAY_MENU: [&str; 2] = ["Open Workspaces", "Quit Workspaces"];
+
+fn arg_value(name: &str) -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == name {
+            return args.next();
+        }
+    }
+    None
+}
+
+fn config_path() -> PathBuf {
+    if let Some(p) = arg_value("--config") {
+        return PathBuf::from(p);
+    }
+    let appdata = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
+    appdata.join("io.github.wolfskii.workspaces").join("config.json")
+}
+
+fn main() {
+    let action = std::env::args().find_map(|a| a.strip_prefix("--action=").map(str::to_string));
+    let autostarted = std::env::args().any(|a| a == "--autostart");
+    // One running copy: a second launch asks it to show its window (or to do its `--action`).
+    let Some(_single) = tray::single_instance(&ID) else {
+        let wanted = action.as_deref().unwrap_or("show");
+        if !tray::forward_action(&ID, wanted) {
+            eprintln!("the running copy did not take the action");
+        }
+        return;
+    };
+    // Quitting something that is not running: nothing to do.
+    if action.as_deref() == Some("quit") {
+        return;
+    }
+
+    let path = config_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let engine = match Engine::start(&path, Box::new(|| workspaces_platform::desktops().unwrap_or_default())) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("Workspaces could not start: {e}");
+            std::process::exit(1);
+        }
+    };
+    let engine_for_exit = engine.clone();
+    Application::new().run(move |cx: &mut App| {
+        let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
+        let tray = tray::start(&ID, &TRAY_MENU, event_tx.clone()).map_err(|e| eprintln!("no tray icon: {e}")).ok();
+        // A first run (or a plain launch) shows the window; a sign-in launch stays in the tray.
+        if !autostarted || action.as_deref() == Some("show") {
+            view::open(cx, Arc::clone(&engine));
+        }
+        cx.spawn(async move |cx| {
+            let _keep = &tray;
+            loop {
+                while let Ok(event) = event_rx.try_recv() {
+                    let engine = Arc::clone(&engine);
+                    match event {
+                        tray::Event::Menu(0) => {
+                            let _ = cx.update(|cx| view::open(cx, engine));
+                        }
+                        tray::Event::Menu(1) => {
+                            let _ = cx.update(|cx| cx.quit());
+                        }
+                        tray::Event::Action(name) if name == "show" => {
+                            let _ = cx.update(|cx| view::open(cx, engine));
+                        }
+                        tray::Event::Action(name) if name == "quit" => {
+                            let _ = cx.update(|cx| cx.quit());
+                        }
+                        _ => {}
+                    }
+                }
+                cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+            }
+        })
+        .detach();
+    });
+    // The window and tray are gone: give the desktop its icons back before the process ends.
+    engine_for_exit.stop();
+}

@@ -107,6 +107,16 @@ pub fn guid_from_registry_bytes(b: &[u8]) -> Option<String> {
     ))
 }
 
+/// What a virtual desktop is called: its own name, or "Desktop N" (1-based `index` in Windows' order) when
+/// the user never named it.
+pub fn desktop_label(index: usize, name: &str) -> String {
+    if name.is_empty() {
+        format!("Desktop {}", index + 1)
+    } else {
+        name.to_string()
+    }
+}
+
 impl WorkspacesConfig {
     pub fn workspace(&self, desktop_id: &str) -> Option<&Workspace> {
         self.workspaces.iter().find(|w| w.desktop_id == desktop_id)
@@ -139,6 +149,13 @@ impl WorkspacesConfig {
             }
         }
         true
+    }
+
+    /// Forgets a workspace: its items are shown on every desktop again. Returns whether it existed.
+    pub fn remove_workspace(&mut self, desktop_id: &str) -> bool {
+        let before = self.workspaces.len();
+        self.workspaces.retain(|w| w.desktop_id != desktop_id);
+        self.workspaces.len() != before
     }
 
     /// Fixes what can be fixed (names, an item listed twice) and rejects what cannot (a bad or
@@ -190,6 +207,18 @@ impl WorkspacesConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unnamed_desktops_are_numbered_and_removed_workspaces_free_their_items() {
+        assert_eq!(desktop_label(1, ""), "Desktop 2");
+        assert_eq!(desktop_label(0, "Work"), "Work");
+        let mut cfg = WorkspacesConfig::default();
+        cfg.assign("C:/a.txt", Some(("{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}", "A")));
+        assert!(cfg.remove_workspace("{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}"));
+        assert_eq!(cfg.owner_of("C:/a.txt"), None);
+        assert!(!cfg.remove_workspace("{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}"));
+    }
+
 
     const ID: &str = "{753C9B0D-EDAA-45D2-AC5A-5740141905EA}";
     const ID2: &str = "{3FEBEE14-E0E2-4DCE-A63D-09646A16F375}";
