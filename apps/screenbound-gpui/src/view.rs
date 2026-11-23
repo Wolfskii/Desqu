@@ -23,7 +23,7 @@ impl Global for Open {}
 const PREVIEW_W: f32 = 640.0;
 const PREVIEW_H: f32 = 150.0;
 
-fn button(label: impl Into<SharedString>, active: bool) -> gpui::Stateful<gpui::Div> {
+pub fn button(label: impl Into<SharedString>, active: bool) -> gpui::Stateful<gpui::Div> {
     let label: SharedString = label.into();
     div()
         .id(label.clone())
@@ -315,6 +315,7 @@ impl Render for ScreenboundView {
             )
             .child(section(&format!("Managed now: {}", managed.len())))
             .children(managed.iter().take(4).map(|m| div().text_xs().child(format!("{} ({:?})", m.process_name, m.kind))))
+            .child(div().flex().child(button("Groups, rules and browser...", false).id("manage").on_click(cx.listener(|this, _: &ClickEvent, _, cx| crate::manage::open(cx, this.rt.clone())))))
             .child(section("Activity"))
             .children(activity)
             .when(!self.note.is_empty(), |d| d.child(div().text_xs().text_color(rgba(0xffb870ff)).child(self.note.clone())))

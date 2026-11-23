@@ -4,6 +4,9 @@
 //! Not in this window yet (the engine still applies them if they are in the config): groups, rules,
 //! the browser integration, diagnostics.
 
+mod field;
+mod manage;
+mod manage_model;
 mod model;
 mod runtime;
 mod view;
