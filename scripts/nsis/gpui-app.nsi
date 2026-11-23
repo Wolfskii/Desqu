@@ -72,6 +72,9 @@ Section "Install"
   !ifdef EXE4
     File "${EXE4}"
   !endif
+  !ifdef EXE5
+    File "${EXE5}"
+  !endif
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Its own shortcut name, so installing or removing this never touches the Tauri build's shortcut.
@@ -91,6 +94,11 @@ SectionEnd
 
 Section "Uninstall"
   !insertmacro QuitRunningCopy
+  ; Programs with something to undo first (Screenbound's browser entries): /DUNINSTALL_EXE=<name> /DUNINSTALL_ARGS=<arguments>.
+  !ifdef UNINSTALL_EXE
+    IfFileExists "$INSTDIR\${UNINSTALL_EXE}" 0 +2
+      nsExec::Exec '"$INSTDIR\${UNINSTALL_EXE}" ${UNINSTALL_ARGS}'
+  !endif
   Delete "$INSTDIR\${EXEFILE}"
   !ifdef EXEFILE2
     Delete "$INSTDIR\${EXEFILE2}"
@@ -100,6 +108,9 @@ Section "Uninstall"
   !endif
   !ifdef EXEFILE4
     Delete "$INSTDIR\${EXEFILE4}"
+  !endif
+  !ifdef EXEFILE5
+    Delete "$INSTDIR\${EXEFILE5}"
   !endif
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"

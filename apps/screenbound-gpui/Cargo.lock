@@ -4619,6 +4619,7 @@ dependencies = [
  "desqu-native-shell",
  "gpui",
  "screenbound-module",
+ "serde_json",
  "winresource",
 ]
 

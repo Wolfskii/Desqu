@@ -175,7 +175,7 @@ pub fn set_default_mode(cfg: &mut AppConfig, mode: FullscreenMode, now_ms: u64) 
 pub fn add_site_rule(cfg: &mut AppConfig, text: &str, mode: FullscreenMode, zone_id: Option<&str>, now_ms: u64) -> bool {
     let text = text.trim();
     // An address with a path after the host is a prefix; a bare host (with or without scheme) is a host.
-    let has_path = text.split_once("://").map_or(false, |(_, rest)| rest.split_once('/').is_some_and(|(_, path)| !path.is_empty()));
+    let has_path = text.split_once("://").is_some_and(|(_, rest)| rest.split_once('/').is_some_and(|(_, path)| !path.is_empty()));
     let pattern = if has_path {
         SitePattern::UrlPrefix(text.to_string())
     } else if text.starts_with("*.") {

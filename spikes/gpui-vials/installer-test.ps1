@@ -15,6 +15,8 @@ $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($a.
 $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$($a.Display) (GPUI).lnk"
 if ((Test-Path $uninstallKey) -or (Test-Path $shortcut)) { throw "$($a.Display) (GPUI) seems to be installed already: not touching it." }
 $res = [ordered]@{}
+$nativeKey = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\io.github.wolfskii.desqu.browser'
+$nativeBefore = (Get-ItemProperty $nativeKey -ErrorAction SilentlyContinue).PSObject.Properties["(default)"].Value
 $dir = Join-Path $env:TEMP "gpui-install-test-$([guid]::NewGuid().ToString('N').Substring(0,6))"
 $cfgDir = Join-Path $env:TEMP "gpui-install-cfg-$([guid]::NewGuid().ToString('N').Substring(0,6))"
 New-Item -ItemType Directory $cfgDir | Out-Null
@@ -24,7 +26,7 @@ if ($App -eq 'vials') {
 }
 if ($App -eq 'screenbound') {
     # Paused, so the engine cannot move any real window while the installed copy runs.
-    @{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @() } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
+    @{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @(); browser = @{ integrationEnabled = $false } } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
 }
 $configArgs = if ($App -in 'screenbound', 'desqu') { @('--config-dir', "`"$cfgDir`"") } else { @('--config', "`"$cfg`"") }
 $exe = Join-Path $dir $a.Exe
@@ -37,6 +39,7 @@ try {
     $res.displayVersion = (Get-ItemProperty $uninstallKey -ErrorAction SilentlyContinue).DisplayVersion
     $res.startMenuShortcut = Test-Path $shortcut
     $res.installedExeHasIcon = ((Get-Item $exe).VersionInfo.ProductName -eq $a.Display)
+    if ($App -in "screenbound", "desqu") { $res.browserHostInstalled = Test-Path (Join-Path $dir "desqu-browser-host.exe") }
     if ($a.With) { $res.modulesInstalledToo = -not ($a.With | Where-Object { -not (Test-Path (Join-Path $dir $_)) }) }
 
     $running = Start-Process $exe -ArgumentList (@($a.Args) + $configArgs) -PassThru
@@ -51,6 +54,7 @@ try {
     if ($a.With) { $res.modulesRemovedToo = -not ($a.With | Where-Object { Test-Path (Join-Path $dir $_) }) }
     $res.addRemoveEntryRemoved = -not (Test-Path $uninstallKey)
     $res.startMenuShortcutRemoved = -not (Test-Path $shortcut)
+    $res.realBrowserEntryUntouched = (((Get-ItemProperty $nativeKey -ErrorAction SilentlyContinue).PSObject.Properties["(default)"].Value) -eq $nativeBefore)
 }
 finally {
     Get-Process ($a.Exe -replace '\.exe$', '') -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir*" } | Stop-Process -Force

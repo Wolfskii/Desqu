@@ -1,8 +1,6 @@
 //! Screenbound in GPUI: make fullscreen mean fullscreen inside the part of the screen you choose.
-//!   screenbound-gpui [--config-dir <folder>] [--autostart] [--action=show|pause|resume|quit]
+//!   screenbound-gpui [--config-dir <folder>] [--autostart] [--action=show|pause|resume|quit] [--unregister-browser]
 //! It lives in the tray; a second launch brings its window up (or hands over its `--action`).
-//! Not in this window yet (the engine still applies them if they are in the config): groups, rules,
-//! the browser integration, diagnostics.
 
 mod field;
 mod manage;
@@ -44,6 +42,13 @@ fn config_dir() -> PathBuf {
 }
 
 fn main() {
+    // Uninstalling: take the browser entries away (the installer runs this before deleting the files).
+    if std::env::args().any(|a| a == "--unregister-browser") {
+        if let Err(e) = runtime::unregister_host() {
+            eprintln!("{e}");
+        }
+        return;
+    }
     let action = std::env::args().find_map(|a| a.strip_prefix("--action=").map(str::to_string));
     let autostarted = std::env::args().any(|a| a == "--autostart");
     // One running copy: a second launch asks it to show its window (or to do its `--action`).
@@ -58,7 +63,6 @@ fn main() {
     if matches!(action.as_deref(), Some("quit" | "pause" | "resume")) {
         return;
     }
-
     let rt = match Runtime::start(&config_dir(), env!("CARGO_PKG_VERSION")) {
         Ok(rt) => rt,
         Err(e) => {

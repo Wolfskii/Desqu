@@ -35,7 +35,7 @@ foreach ($k in $exes.Keys) { Copy-Item $exes[$k] (Join-Path $root (Split-Path $e
 $env:APPDATA = Join-Path $root 'appdata'
 New-Item -ItemType Directory (Join-Path $env:APPDATA 'io.github.wolfskii.desqu'), (Join-Path $env:APPDATA 'io.github.wolfskii.screenbound') | Out-Null
 @{ vials = $false; workspaces = $true; screenbound = $true } | ConvertTo-Json | Set-Content (Join-Path $env:APPDATA 'io.github.wolfskii.desqu\gpui-shell.json') -Encoding utf8
-@{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @() } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:APPDATA 'io.github.wolfskii.screenbound\config.json') -Encoding utf8
+@{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @(); browser = @{ integrationEnabled = $false } } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:APPDATA 'io.github.wolfskii.screenbound\config.json') -Encoding utf8
 $desqu = Join-Path $root 'desqu-gpui.exe'
 function Running($name) { @(Get-Process $name -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root*" }).Count }
 try {

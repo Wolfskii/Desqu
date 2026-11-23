@@ -33,7 +33,7 @@ $res = [ordered]@{}
 $dir = Join-Path $env:TEMP "screenbound-manage-$([guid]::NewGuid().ToString('N').Substring(0,6))"
 New-Item -ItemType Directory $dir | Out-Null
 $cfg = Join-Path $dir 'config.json'
-@{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @() } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
+@{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @(); browser = @{ integrationEnabled = $false } } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
 function Cfg { Get-Content $cfg -Raw | ConvertFrom-Json }
 $script:win = $null
 function Click($x, $y) { [M]::Msg($script:win, 0x0201, 1, $x, $y); Start-Sleep -Milliseconds 100; [M]::Msg($script:win, 0x0202, 0, $x, $y); Start-Sleep -Milliseconds 700 }

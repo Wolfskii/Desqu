@@ -34,7 +34,7 @@ $res = [ordered]@{}
 $dir = Join-Path $env:TEMP "screenbound-test-$([guid]::NewGuid().ToString('N').Substring(0,6))"
 New-Item -ItemType Directory $dir | Out-Null
 $cfg = Join-Path $dir 'config.json'
-@{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @() } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
+@{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @(); browser = @{ integrationEnabled = $false } } | ConvertTo-Json -Depth 6 | Set-Content $cfg -Encoding utf8
 function Zone { (Get-Content $cfg -Raw | ConvertFrom-Json).zones[0].rect }
 $p = $null
 try {

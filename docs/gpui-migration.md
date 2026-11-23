@@ -28,7 +28,7 @@ The UI is the only thing that changes. Everything that is not UI stays Rust and 
 | 6 | Liquid glass: GPUI has no shader hook, so the glass is computed on the CPU (`liquid.rs`): the wallpaper is read, and for each vial's rectangle the refraction at the rim, colour fringing, blur, tint and rim light are drawn per pixel (about 20 ms for a 480 x 320 vial) and shown as an image behind the content; redrawn after a move or resize, and when the wallpaper file changes. It does not show icons or windows behind a vial, only the wallpaper. Look: `spikes/gpui-vials/theme-shot.ps1` | done |
 | 7 | Vials: installer (per-user NSIS, closes a running copy, clean uninstall), start with Windows (own Run entry, refused for debug builds), update check (reads a Tauri-style manifest and links to the download; it does not install), icon and version info in the exe. Shared by every GPUI app in `crates/desqu-native-shell` (single instance, tray with menu, actions from second launches, autostart, update check). Tested: `installer-test.ps1 -App vials`, `action-test.ps1` | done |
 | 8 | Workspaces in GPUI (`apps/workspaces-gpui`): engine ported with injectable desktops, window with one card per virtual desktop, first-run question, auto-assign, tray, installer. Core and platform extracted to `crates/workspaces-core` and `crates/workspaces-platform`. Tested: engine test with two fake desktops on the real desktop, `workspaces-test.ps1`, `installer-test.ps1 -App workspaces` | done |
-| 9 | Screenbound in GPUI (`apps/screenbound-gpui`): the engine is used as it is (the Tauri plugin is now an optional cargo feature of `screenbound-module`), with a runtime wrapper, a window with on/off, the zone drawn on a preview of the monitors or from presets, the Apps list, what is managed now and recent activity, tray, installer. Not in this window yet (the engine still applies them when they are in the config): groups, rules editing, the browser integration (extension bridge and native host), diagnostics, borderless-window settings, the old-install migration. Tested: 112 module tests, `screenbound-test.ps1` (paused temp config, so no real window is moved), `installer-test.ps1 -App screenbound` | done, minus the panels above |
+| 9 | Screenbound in GPUI (`apps/screenbound-gpui`): the engine is used as it is (the Tauri plugin is now an optional cargo feature of `screenbound-module`), with a runtime wrapper, a window with on/off, the zone drawn on a preview of the monitors or from presets, the Apps list, what is managed now and recent activity, tray, installer. Groups, rules, browser and diagnostics are in a second window. Not ported: borderless-window settings, the old-install migration. Tested: 112 module tests, `screenbound-test.ps1` (paused temp config, so no real window is moved), `installer-test.ps1 -App screenbound` | done, minus borderless settings and migration |
 | 10 | The Desqu shell (`apps/desqu-gpui`): one tray icon and one window. Each module stays its own program (a crash in one does not take the others down); Desqu starts the modules that are on, stops them (they put the desktop and the windows back first), opens their windows, shows their state, starts them at sign-in and quits them with itself. The modules run with `--no-tray-icon` so there is only one icon. The installer carries all four programs. Tested: `desqu-test.ps1` (in a temp folder with a temp `APPDATA`), `installer-test.ps1 -App desqu` | done |
 
 ## Where things stand
@@ -39,10 +39,14 @@ gesture on the real mouse hook, a real fullscreen app in Screenbound, a real vir
 are the remaining proof. The Tauri apps are untouched and still ship; the GPUI apps are installed under
 their own names ("... (GPUI)") so both can sit side by side.
 
-Not ported: Screenbound's groups, rules editing, browser integration and diagnostics panels; editing
-of Vials rules with several conditions; Workspaces' per-item assignment (only first-run, auto-assign,
-Ctrl+X / Ctrl+V and "show on every desktop"); signed in-place updates (the update check only links to
-the download). The update manifests for the GPUI builds are not published yet.
+Not ported: Screenbound's borderless-window settings and the old-install migration; signed in-place
+updates (the update check only links to the download). Done since the first pass: Vials rules with several
+conditions ("+ and also"), Workspaces per-item assignment (click an item, pick its desktop), Screenbound's
+Groups / Rules / Browser / Diagnostics window (`manage.rs`), and the browser bridge (the pipe the extension
+talks to is served while integration is on; the native host ships in the Screenbound and Desqu installers,
+and uninstalling removes the browser entries only if they point at that install, because the Tauri
+Screenbound registers the same entries). `scripts/write-gpui-update-feed.ps1 -App <app> -Tag <tag>` writes
+the update manifest for a GPUI installer; publishing it (and the installers) is a release step not done here.
 
 Commands: `pwsh scripts/package-gpui-app.ps1 -App vials|workspaces|screenbound|desqu` builds an installer;
 `spikes/gpui-vials/*.ps1` are the end-to-end checks (they use temp configs and refuse to run over a real install).

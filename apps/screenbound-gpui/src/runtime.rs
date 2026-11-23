@@ -10,12 +10,13 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use screenbound_module::bridge::protocol::Product;
+use screenbound_module::bridge::server::BridgeServer;
 use screenbound_module::core::config::AppConfig;
 use screenbound_module::core::monitor::MonitorInfo;
 use screenbound_module::core::window::WindowInfo;
 use screenbound_module::engine::activity::ActivityEntry;
 use screenbound_module::engine::{
-    Engine, EngineHandle, EngineMessage, EnginePaths, EngineStatus, HostIdentity, Notification, Notifier,
+    Engine, EngineHandle, EngineMessage, EnginePaths, EngineSink, EngineStatus, HostIdentity, Notification, Notifier,
 };
 use screenbound_module::platform::{self, EventSubscription};
 
@@ -37,6 +38,8 @@ struct Shared {
     generation: AtomicU64,
     wake: (Mutex<bool>, std::sync::Condvar),
     stopping: AtomicBool,
+    /// The browser bridge (the pipe the extension talks to), while integration is on.
+    bridge: Mutex<Option<BridgeServer>>,
 }
 
 pub struct Runtime {
@@ -47,6 +50,46 @@ pub struct Runtime {
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The native host that ships next to this app (it relays the browser extension to the bridge pipe).
+fn host_exe_path() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let host = exe.with_file_name("desqu-browser-host.exe");
+    if host.is_file() {
+        Ok(host)
+    } else {
+        Err("desqu-browser-host.exe is not next to this app".into())
+    }
+}
+
+/// Writes the browser manifests and registry entries so browsers can start the host.
+fn register_host() -> Result<(), String> {
+    use screenbound_module::bridge::manifest::{chromium_manifest, chromium_origins, firefox_manifest};
+    let host = host_exe_path()?.to_string_lossy().into_owned();
+    platform::native_host::install(&chromium_manifest(&host, &chromium_origins()), &firefox_manifest(&host)).map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Whether the registered browser host is the one next to this app (the Tauri Screenbound registers the
+/// same entries, so what belongs to another install is left alone).
+fn host_is_ours() -> bool {
+    let Some(local) = std::env::var_os("LOCALAPPDATA") else { return false };
+    let manifest = std::path::Path::new(&local).join("Desqu").join("browser-host").join("chromium.json");
+    let Ok(text) = std::fs::read_to_string(manifest) else { return false };
+    let registered = serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|v| v.get("path").and_then(|p| p.as_str().map(str::to_string)));
+    let ours = host_exe_path().ok();
+    match (registered, ours) {
+        (Some(r), Some(o)) => r.eq_ignore_ascii_case(&o.to_string_lossy()),
+        _ => false,
+    }
+}
+
+/// Removes the browser entries (what "Browser integration: off" and uninstalling do), if they are ours.
+pub fn unregister_host() -> Result<(), String> {
+    if !host_is_ours() {
+        return Ok(());
+    }
+    platform::native_host::uninstall().map_err(|e| e.to_string())
 }
 
 impl Runtime {
@@ -89,9 +132,11 @@ impl Runtime {
             generation: AtomicU64::new(0),
             wake: (Mutex::new(false), std::sync::Condvar::new()),
             stopping: AtomicBool::new(false),
+            bridge: Mutex::new(None),
         });
         let _ = cell.set(shared.clone());
         shared.refresh();
+        shared.sync_bridge();
         let worker = shared.clone();
         let join = std::thread::Builder::new().name("screenbound-snapshot".into()).spawn(move || worker.refresh_loop()).map_err(|e| e.to_string())?;
         #[allow(clippy::arc_with_non_send_sync)] // only used on the UI thread
@@ -119,6 +164,12 @@ impl Runtime {
         self.shared.poke();
     }
 
+    /// After the browser integration setting changed: starts or stops the bridge to match (off the UI thread).
+    pub fn sync_browser(&self) {
+        let shared = self.shared.clone();
+        std::thread::spawn(move || shared.sync_bridge());
+    }
+
     /// Gives every constrained window its original size and position back.
     pub fn release_all(&self) {
         self.shared.handle.post(|e| e.release_all());
@@ -132,11 +183,34 @@ impl Runtime {
         if let Some(join) = lock(&self.refresher).take() {
             let _ = join.join();
         }
+        drop(lock(&self.shared.bridge).take());
         self.shared.handle.stop(Duration::from_secs(3));
     }
 }
 
 impl Shared {
+    /// Brings the browser bridge in line with the saved setting: serves the pipe and registers the host
+    /// while integration is on; stops and unregisters when it is off.
+    fn sync_bridge(&self) {
+        let on = self.handle.call(|e| e.config().browser.integration_enabled).unwrap_or(false);
+        let mut slot = lock(&self.bridge);
+        if on {
+            if slot.is_none() {
+                if let Err(e) = register_host() {
+                    eprintln!("browser host is not registered: {e}");
+                }
+                match BridgeServer::start(Arc::new(EngineSink(self.handle.clone()))) {
+                    Ok(server) => *slot = Some(server),
+                    Err(e) => eprintln!("browser bridge did not start: {e}"),
+                }
+            }
+        } else if slot.take().is_some() {
+            if let Err(e) = unregister_host() {
+                eprintln!("could not remove the browser host entries: {e}");
+            }
+        }
+    }
+
     fn poke(&self) {
         *lock(&self.wake.0) = true;
         self.wake.1.notify_one();

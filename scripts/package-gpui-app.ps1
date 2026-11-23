@@ -11,11 +11,11 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 # travel with it.
 $apps = @{
     vials       = @{ Display = 'Vials'; Key = 'VialsGpui'; Exe = 'vials-gpui.exe'; Args = '--live'
-                     Menu = 'Software\Classes\DesktopBackground\Shell\DesquVials'; With = @() }
-    workspaces  = @{ Display = 'Workspaces'; Key = 'WorkspacesGpui'; Exe = 'workspaces-gpui.exe'; Args = ''; Menu = ''; With = @() }
-    screenbound = @{ Display = 'Screenbound'; Key = 'ScreenboundGpui'; Exe = 'screenbound-gpui.exe'; Args = ''; Menu = ''; With = @() }
+                     Menu = 'Software\Classes\DesktopBackground\Shell\DesquVials'; With = @(); Host = $false }
+    workspaces  = @{ Display = 'Workspaces'; Key = 'WorkspacesGpui'; Exe = 'workspaces-gpui.exe'; Args = ''; Menu = ''; With = @(); Host = $false }
+    screenbound = @{ Display = 'Screenbound'; Key = 'ScreenboundGpui'; Exe = 'screenbound-gpui.exe'; Args = ''; Menu = ''; With = @(); Host = $true }
     desqu       = @{ Display = 'Desqu'; Key = 'DesquGpui'; Exe = 'desqu-gpui.exe'; Args = ''
-                     Menu = 'Software\Classes\DesktopBackground\Shell\DesquVials'; With = @('vials', 'workspaces', 'screenbound') }
+                     Menu = 'Software\Classes\DesktopBackground\Shell\DesquVials'; With = @('vials', 'workspaces', 'screenbound'); Host = $true }
 }
 $a = $apps[$App]
 
@@ -45,6 +45,19 @@ foreach ($name in $a.With) {
     $nsisArgs += "/DEXE$n=$(Join-Path $root "apps/$name-gpui/target/release/$($other.Exe)")"
     $nsisArgs += "/DEXEFILE$n=$($other.Exe)"
     $n++
+}
+# Screenbound's browser integration needs the native messaging host next to it; uninstalling asks
+# Screenbound to remove the browser entries first.
+if ($a.Host) {
+    Push-Location $root
+    try {
+        cargo build --release -p desqu-browser-host
+        if ($LASTEXITCODE -ne 0) { throw 'cargo build failed for desqu-browser-host' }
+    } finally { Pop-Location }
+    $nsisArgs += "/DEXE$n=$(Join-Path $root 'target/release/desqu-browser-host.exe')"
+    $nsisArgs += "/DEXEFILE$n=desqu-browser-host.exe"
+    $nsisArgs += '/DUNINSTALL_EXE=screenbound-gpui.exe'
+    $nsisArgs += '/DUNINSTALL_ARGS=--unregister-browser'
 }
 if ($a.Args) { $nsisArgs += "/DEXTRA_ARGS=$($a.Args)" }
 if ($a.Menu) { $nsisArgs += "/DDESKTOP_MENU_KEY=$($a.Menu)" }

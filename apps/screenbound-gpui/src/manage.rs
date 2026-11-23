@@ -222,6 +222,7 @@ impl Render for ManageView {
                     .child(row().child(div().flex_1().text_sm().child("Browser integration (needs the Screenbound browser extension)")).child(
                         button(if on { "On" } else { "Off" }, on).id("bint").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                             this.rt.change(move |c| m::set_integration(c, !on));
+                            this.rt.sync_browser();
                             cx.notify();
                         })),
                     ))
