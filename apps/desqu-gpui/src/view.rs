@@ -146,8 +146,12 @@ impl Render for DesquView {
                         .id(SharedString::from(format!("open-{}", kind.name())))
                         .when(!alive, |d| d.opacity(0.4))
                         .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                            if !this.shell.supervisor.open(kind) {
+                            if !alive {
+                                this.note = format!("Turn {} on first (the button on the right)", kind.name());
+                            } else if !this.shell.supervisor.open(kind) {
                                 this.note = format!("{} did not answer", kind.name());
+                            } else {
+                                this.note.clear();
                             }
                             cx.notify();
                         })),
