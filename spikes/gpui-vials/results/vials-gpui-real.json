@@ -1,0 +1,65 @@
+{
+  "kind": "gpui",
+  "exe": "C:\\Users\\dawid\\Projects\\Desqu-gpui-spike\\apps\\vials-gpui\\target\\release\\vials-gpui.exe",
+  "cores": 16,
+  "startupSeconds": 0.54,
+  "vialWindows": 3,
+  "processTree": [
+    "vials-gpui#13616"
+  ],
+  "afterStartup": {
+    "processes": 1,
+    "privateMB": 20.5,
+    "workingMB": 68.0,
+    "commitMB": 79.6,
+    "threads": 70.0,
+    "handles": 783.0,
+    "gpuMemMB": 26.9,
+    "gpuUtilPct": 0.0,
+    "perProcess": [
+      "vials-gpui#13616: 20.5 MB"
+    ],
+    "cpuSeconds": 0.812
+  },
+  "screenshot": "C:/Users/dawid/Projects/Desqu-gpui-spike/spikes/gpui-vials/results/vials-gpui.png",
+  "idle": {
+    "phase": "idle",
+    "seconds": 20.4,
+    "cpuPctOfOneCore": 1.69,
+    "gpuUtilAvgPct": 0.0,
+    "snapshot": {
+      "processes": 1,
+      "privateMB": 21.5,
+      "workingMB": 68.9,
+      "commitMB": 80.6,
+      "threads": 68.0,
+      "handles": 773.0,
+      "gpuMemMB": 27.8,
+      "gpuUtilPct": 0.0,
+      "perProcess": [
+        "vials-gpui#13616: 21.5 MB"
+      ],
+      "cpuSeconds": 1.312
+    }
+  },
+  "drag": {
+    "phase": "drag",
+    "seconds": 11.7,
+    "cpuPctOfOneCore": 1.74,
+    "gpuUtilAvgPct": 0.0,
+    "snapshot": {
+      "processes": 1,
+      "privateMB": 21.5,
+      "workingMB": 69.0,
+      "commitMB": 80.7,
+      "threads": 68.0,
+      "handles": 773.0,
+      "gpuMemMB": 27.8,
+      "gpuUtilPct": 0.0,
+      "perProcess": [
+        "vials-gpui#13616: 21.5 MB"
+      ],
+      "cpuSeconds": 1.547
+    }
+  }
+}

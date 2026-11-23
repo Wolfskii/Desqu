@@ -143,6 +143,13 @@ pub(crate) fn desktop_folders() -> Vec<PathBuf> {
     shell::desktop_folders()
 }
 
+/// An item's icon without a [`DesktopLayer`]: needs no lock and moves or hides nothing, so a viewer can
+/// call it next to the app that owns the layer.
+pub(crate) fn icon_png_standalone(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    // SAFETY: shell calls on this thread inside its own COM apartment.
+    with_com(|| unsafe { shell::icon_png(id, size) })
+}
+
 pub(crate) fn icons_visible() -> DesktopResult<bool> {
     // SAFETY: plain window lookup and visibility query.
     unsafe { shell::icons_visible() }

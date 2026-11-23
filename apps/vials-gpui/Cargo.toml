@@ -1,0 +1,32 @@
+[package]
+name = "vials-gpui"
+version = "0.0.1"
+description = "Vials with GPUI instead of Tauri + WebView2 (spike: read-only viewer of the real config)"
+edition = "2021"
+publish = false
+
+# Standalone workspace: the Tauri apps and their CI are not affected by GPUI's dependency tree.
+[workspace]
+
+[dependencies]
+gpui = "0.2.2"
+raw-window-handle = "0.6"
+vials-core = { path = "../../crates/vials-core" }
+desqu-desktop = { path = "../../crates/desqu-desktop" }
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

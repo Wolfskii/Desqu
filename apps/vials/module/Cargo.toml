@@ -16,6 +16,7 @@ tauri-plugin = { version = "2", features = ["build"] }
 
 [dependencies]
 desqu-desktop = { path = "../../../crates/desqu-desktop" }
+vials-core = { path = "../../../crates/vials-core" }
 desqu-shell = { path = "../../../crates/desqu-shell" }
 tauri = "2"
 serde = { version = "1", features = ["derive"] }

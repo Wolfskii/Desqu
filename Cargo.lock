@@ -4595,6 +4595,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vials-core"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "vials-module"
 version = "0.3.0"
 dependencies = [
@@ -4606,6 +4616,7 @@ dependencies = [
  "tauri-plugin",
  "thiserror 2.0.21",
  "tracing",
+ "vials-core",
  "windows",
  "windows-core",
 ]

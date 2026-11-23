@@ -36,6 +36,12 @@ pub fn open(owner: &str, journal_path: &Path) -> DesktopResult<Arc<dyn DesktopLa
     platform::open(owner, journal_path)
 }
 
+/// An item's icon as a PNG without opening the layer: read-only, no lock, hides nothing. Slow (about
+/// 6 ms): call off the UI thread and cache.
+pub fn icon_png(item_id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    platform::icon_png_standalone(item_id, size)
+}
+
 /// Restores items listed in another journal (for example a standalone app that crashed while
 /// Desqu hosts the module now) and deletes it. Returns how many items were moved back.
 pub fn recover_from(journal_path: &Path) -> DesktopResult<usize> {

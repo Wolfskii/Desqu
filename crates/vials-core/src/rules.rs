@@ -87,7 +87,7 @@ pub fn assign_new_items(cfg: &VialsConfig, items: &[DesktopItem]) -> Vec<(String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::model::{NormalizedRect, Vial};
+    use crate::model::{NormalizedRect, Vial};
     use desqu_desktop::{ItemKind, Point};
 
     fn item(id: &str, name: &str, kind: ItemKind) -> DesktopItem {
