@@ -140,6 +140,15 @@ pub fn build_matcher(kind: ConditionKind, text: &str, item_kind: ItemKind) -> Op
     }
 }
 
+/// Conditions that must all hold: none gives `None`, one stays itself, several become `All`.
+pub fn all_of(mut list: Vec<ItemMatcher>) -> Option<ItemMatcher> {
+    match list.len() {
+        0 => None,
+        1 => list.pop(),
+        _ => Some(ItemMatcher::All(list)),
+    }
+}
+
 /// A matcher in words, for the list of rules.
 pub fn describe(matcher: &ItemMatcher) -> String {
     match matcher {
@@ -310,4 +319,17 @@ mod tests {
         assert!(assign_new_items(&cfg, &items).is_empty());
     }
 
+}
+
+#[cfg(test)]
+mod all_of_tests {
+    use super::*;
+
+    #[test]
+    fn combines_conditions() {
+        assert_eq!(all_of(vec![]), None);
+        assert_eq!(all_of(vec![ItemMatcher::Extension("pdf".into())]), Some(ItemMatcher::Extension("pdf".into())));
+        let both = all_of(vec![ItemMatcher::Extension("pdf".into()), ItemMatcher::NameContains("tax".into())]).unwrap();
+        assert_eq!(describe(&both), "has the extension pdf and name contains tax");
+    }
 }

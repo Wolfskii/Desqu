@@ -9,7 +9,8 @@ use gpui::{
     div, point, prelude::*, px, rgba, size, AnyWindowHandle, App, Bounds, ClickEvent, Context, Entity, Global, IntoElement, Render, SharedString,
     Window, WindowBackgroundAppearance, WindowBounds, WindowOptions,
 };
-use vials_core::rules::{build_matcher, describe, kind_label, ConditionKind};
+use vials_core::model::ItemMatcher;
+use vials_core::rules::{all_of, build_matcher, describe, kind_label, ConditionKind};
 
 use crate::engine::Engine;
 use crate::field::TextField;
@@ -29,6 +30,8 @@ struct RulesView {
     condition: ConditionKind,
     item_kind: ItemKind,
     target: Option<String>,
+    /// Conditions already added to the rule being made; the rule needs all of them.
+    pending: Vec<ItemMatcher>,
 }
 
 impl RulesView {
@@ -104,7 +107,8 @@ impl Render for RulesView {
 
         let text = self.field.read(cx).text().to_string();
         let matcher = build_matcher(self.condition, &text, self.item_kind);
-        let can_add = matcher.is_some() && target.is_some();
+        let can_add = (matcher.is_some() || !self.pending.is_empty()) && target.is_some();
+        let can_and = matcher.is_some();
         let target_for_add = target.clone();
 
         div()
@@ -137,6 +141,27 @@ impl Render for RulesView {
             } else {
                 self.field.clone().into_any_element()
             })
+            .child(div().flex().flex_wrap().items_center().gap_1().children(self.pending.iter().enumerate().map(|(i, m)| {
+                button(format!("{}  x", describe(m)), true).id(("pend", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    if i < this.pending.len() {
+                        this.pending.remove(i);
+                    }
+                    cx.notify();
+                }))
+            })))
+            .child(
+                button("+ and also...", false)
+                    .id("and")
+                    .when(!can_and, |d| d.opacity(0.4))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        let text = this.field.read(cx).text().to_string();
+                        if let Some(m) = build_matcher(this.condition, &text, this.item_kind) {
+                            this.pending.push(m);
+                            this.field.update(cx, |f, cx| f.clear(cx));
+                            cx.notify();
+                        }
+                    })),
+            )
             .child(div().text_sm().child("goes to"))
             .child(div().flex().flex_wrap().gap_1().children(targets))
             .child(
@@ -146,11 +171,14 @@ impl Render for RulesView {
                         .when(!can_add, |d| d.opacity(0.4))
                         .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                             let text = this.field.read(cx).text().to_string();
-                            let (Some(matcher), Some(target)) = (build_matcher(this.condition, &text, this.item_kind), target_for_add.clone()) else {
+                            let mut all = this.pending.clone();
+                            all.extend(build_matcher(this.condition, &text, this.item_kind));
+                            let (Some(matcher), Some(target)) = (all_of(all), target_for_add.clone()) else {
                                 return;
                             };
                             let name = describe(&matcher);
                             if this.engine.add_rule(&name, matcher, &target) {
+                                this.pending.clear();
                                 this.field.update(cx, |f, cx| f.clear(cx));
                                 this.changed(cx);
                             }
@@ -169,7 +197,7 @@ pub fn open(cx: &mut App, engine: Arc<Engine>, revision: Entity<Revision>) {
     }
     let opened = cx.open_window(
         WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(260.), px(80.)), size(px(620.), px(640.))))),
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(260.), px(80.)), size(px(620.), px(700.))))),
             titlebar: Some(gpui::TitlebarOptions { title: Some("Vial rules".into()), ..Default::default() }),
             focus: true,
             is_resizable: false,
@@ -180,7 +208,7 @@ pub fn open(cx: &mut App, engine: Arc<Engine>, revision: Entity<Revision>) {
             let field = cx.new(|cx| TextField::new(ConditionKind::Contains.hint(), cx));
             cx.new(|cx| {
                 cx.observe(&field, |_, _, cx| cx.notify()).detach();
-                RulesView { engine, revision, field, condition: ConditionKind::Contains, item_kind: ItemKind::Shortcut, target: None }
+                RulesView { engine, revision, field, condition: ConditionKind::Contains, item_kind: ItemKind::Shortcut, target: None, pending: Vec::new() }
             })
         },
     );
