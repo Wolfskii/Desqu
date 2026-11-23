@@ -93,7 +93,10 @@ impl Wallpaper {
     }
 }
 
-static CURRENT: OnceLock<Mutex<(Option<Arc<Wallpaper>>, Option<Instant>)>> = OnceLock::new();
+/// The loaded wallpaper and when it was last checked.
+type Cache = Mutex<(Option<Arc<Wallpaper>>, Option<Instant>)>;
+
+static CURRENT: OnceLock<Cache> = OnceLock::new();
 
 /// The wallpaper, loaded on first use and re-read when the file changed (checked at most every 5 s).
 /// Slow the first time: call it off the UI thread.

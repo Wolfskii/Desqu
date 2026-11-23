@@ -6,6 +6,7 @@
 //! paste, new, delete), new desktop files are sorted into vials by the rules, and a moved vial
 //! saves its place.
 
+mod autostart;
 mod engine;
 mod field;
 mod liquid;

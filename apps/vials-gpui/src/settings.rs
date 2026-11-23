@@ -33,6 +33,8 @@ struct SettingsView {
     revision: Entity<Revision>,
     /// The tint while the slider is being dragged (applied on release).
     dragging: Option<u8>,
+    /// Why "Start with Windows" could not be changed, if it could not.
+    autostart_note: String,
 }
 
 impl SettingsView {
@@ -175,6 +177,18 @@ impl Render for SettingsView {
                     })),
                 ),
             )
+            .child({
+                let on = crate::autostart::is_enabled();
+                row("Start with Windows", &self.autostart_note).child(button(if on { "On" } else { "Off" }, on).id("autostart").on_click(cx.listener(
+                    move |this, _: &ClickEvent, _, cx| {
+                        this.autostart_note = match crate::autostart::set(!on) {
+                            Ok(()) => String::new(),
+                            Err(e) => e,
+                        };
+                        cx.notify();
+                    },
+                )))
+            })
             .child(toggle("Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, |c, v| c.context_menu = v))
     }
 }
@@ -195,7 +209,7 @@ pub fn open(cx: &mut App, engine: Arc<Engine>, revision: Entity<Revision>) {
             window_background: WindowBackgroundAppearance::Opaque,
             ..Default::default()
         },
-        move |_, cx| cx.new(|_| SettingsView { engine, revision, dragging: None }),
+        move |_, cx| cx.new(|_| SettingsView { engine, revision, dragging: None, autostart_note: String::new() }),
     );
     if let Ok(handle) = opened {
         cx.set_global(Open(Some(handle.into())));
