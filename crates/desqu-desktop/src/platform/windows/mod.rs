@@ -231,8 +231,8 @@ pub(crate) fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
                     let view = shell::desktop_view()?;
                     let lv = shell::listview()?;
                     let p = shell::screen_to_client(lv, screen);
-                    let Some(index) = shell::hit_item(lv, p) else { return Ok(None) };
                     let raw = shell::list(&view)?;
+                    let Some(index) = shell::hit_item(&view, &raw, p) else { return Ok(None) };
                     Ok(raw
                         .into_iter()
                         .find(|r| r.index == index)

@@ -24,7 +24,7 @@ use windows::Win32::UI::Shell::{
     SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, GetParent, IsWindowVisible, SendMessageTimeoutW, SendMessageW, SMTO_ABORTIFHUNG,
+    EnumWindows, FindWindowExW, GetParent, IsWindowVisible, SendMessageTimeoutW, SMTO_ABORTIFHUNG,
     SMTO_NORMAL,
 };
 
@@ -34,18 +34,6 @@ use crate::model::Point;
 /// `LVM_SETITEMPOSITION`: x and y are packed as signed 16-bit values in `lParam`, so the message
 /// carries no pointer and works across processes.
 const LVM_SETITEMPOSITION: u32 = 0x1000 + 15;
-/// `LVM_HITTEST`: which item of a list view is at a point (client coordinates).
-const LVM_HITTEST: u32 = 0x1000 + 18;
-
-/// `LVHITTESTINFO`
-#[repr(C)]
-struct HitTestInfo {
-    pt: windows::Win32::Foundation::POINT,
-    flags: u32,
-    item: i32,
-    sub_item: i32,
-    group: i32,
-}
 const WM_COMMAND: u32 = 0x0111;
 /// The command Explorer's own "View, Show desktop icons" sends to `SHELLDLL_DefView`.
 const CMD_TOGGLE_DESKTOP_ICONS: usize = 0x7402;
@@ -238,17 +226,16 @@ pub(super) unsafe fn screen_to_client(lv: HWND, p: Point) -> Point {
     Point { x: pt.x, y: pt.y }
 }
 
-/// The index of the icon at `p` (client coordinates of the list view `lv`), or `None` over empty space.
-pub(super) unsafe fn hit_item(lv: HWND, p: Point) -> Option<i32> {
-    let mut info = HitTestInfo {
-        pt: windows::Win32::Foundation::POINT { x: p.x, y: p.y },
-        flags: 0,
-        item: -1,
-        sub_item: 0,
-        group: 0,
-    };
-    let index = SendMessageW(lv, LVM_HITTEST, Some(WPARAM(0)), Some(LPARAM(&mut info as *mut HitTestInfo as isize))).0;
-    (index >= 0).then_some(index as i32)
+/// The index of the icon at `p` (client coordinates of the list view), or `None` over empty space.
+/// Worked out from the icon positions and the grid cell size the view reports through COM: a
+/// list-view hit-test message would hand Explorer a pointer into this process, which crashes it.
+pub(super) unsafe fn hit_item(view: &IFolderView2, items: &[RawItem], p: Point) -> Option<i32> {
+    let mut cell = windows::Win32::Foundation::POINT::default();
+    view.GetSpacing(&mut cell).ok()?;
+    items
+        .iter()
+        .find(|r| p.x >= r.pos.x && p.x < r.pos.x + cell.x && p.y >= r.pos.y && p.y < r.pos.y + cell.y)
+        .map(|r| r.index)
 }
 
 /// Moves one item (by its index in the view). Negative coordinates park it off-screen.

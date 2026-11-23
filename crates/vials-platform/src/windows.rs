@@ -324,8 +324,6 @@ const DRAGDROP_S_USEDEFAULTCURSORS: HRESULT = HRESULT(0x0004_0102);
 #[implement(IDropSource)]
 struct DropSource {
     released_on_desktop: std::sync::Arc<std::sync::Mutex<Option<(i32, i32)>>>,
-    /// The desktop folder the icon was let go over (the drag is cancelled and the caller moves the files).
-    released_on_folder: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl IDropSource_Impl for DropSource_Impl {
@@ -337,10 +335,9 @@ impl IDropSource_Impl for DropSource_Impl {
             // SAFETY: plain cursor query into a local.
             let _ = unsafe { GetCursorPos(&mut at) };
             if on_desktop_view(at.x, at.y) {
-                // Over a desktop folder the files are moved into it by the caller (Explorer is not offered them there).
-                if let Some(folder) = desqu_desktop::folder_at(desqu_desktop::Point { x: at.x, y: at.y }).ok().flatten() {
-                    *self.released_on_folder.lock().unwrap_or_else(|e| e.into_inner()) = Some(folder);
-                    return DRAGDROP_S_CANCEL;
+                // Over a desktop folder the drop goes to Explorer, which moves the file into it.
+                if desqu_desktop::folder_at(desqu_desktop::Point { x: at.x, y: at.y }).ok().flatten().is_some() {
+                    return DRAGDROP_S_DROP;
                 }
                 *self.released_on_desktop.lock().unwrap_or_else(|e| e.into_inner()) = Some((at.x, at.y));
                 DRAGDROP_S_CANCEL
@@ -397,71 +394,6 @@ impl Drop for PausedTargets {
     }
 }
 
-
-use ::windows::Win32::System::Com::{IAdviseSink, IEnumFORMATETC, IEnumSTATDATA, FORMATETC, STGMEDIUM};
-use ::windows::Win32::Foundation::{DV_E_FORMATETC, E_NOTIMPL};
-use ::windows::core::Ref;
-
-/// The data of a drag, as Explorer's desktop sees it: nothing. Offering the dragged files to the
-/// desktop's icon list crashes Explorer (the list tracks the dragged icons, and these are hidden by
-/// Vials). Over the desktop the drag is ours alone (letting go there places the icon, or moves it
-/// into a desktop folder, see `drag_items`); everywhere else the real data is passed through.
-#[implement(IDataObject)]
-struct DragData {
-    inner: IDataObject,
-}
-
-impl DragData {
-    fn offered() -> bool {
-        let mut at = POINT::default();
-        // SAFETY: plain cursor query into a local.
-        let _ = unsafe { GetCursorPos(&mut at) };
-        !on_desktop_view(at.x, at.y)
-    }
-}
-
-impl ::windows::Win32::System::Com::IDataObject_Impl for DragData_Impl {
-    fn GetData(&self, format: *const FORMATETC) -> ::windows::core::Result<STGMEDIUM> {
-        if !DragData::offered() {
-            return Err(DV_E_FORMATETC.into());
-        }
-        unsafe { self.inner.GetData(format) }
-    }
-    fn GetDataHere(&self, format: *const FORMATETC, medium: *mut STGMEDIUM) -> ::windows::core::Result<()> {
-        if !DragData::offered() {
-            return Err(DV_E_FORMATETC.into());
-        }
-        unsafe { self.inner.GetDataHere(format, medium) }
-    }
-    fn QueryGetData(&self, format: *const FORMATETC) -> HRESULT {
-        if !DragData::offered() {
-            return DV_E_FORMATETC;
-        }
-        unsafe { self.inner.QueryGetData(format) }
-    }
-    fn GetCanonicalFormatEtc(&self, input: *const FORMATETC, output: *mut FORMATETC) -> HRESULT {
-        unsafe { self.inner.GetCanonicalFormatEtc(input, output) }
-    }
-    fn SetData(&self, format: *const FORMATETC, medium: *const STGMEDIUM, release: BOOL) -> ::windows::core::Result<()> {
-        unsafe { self.inner.SetData(format, medium, release.as_bool()) }
-    }
-    fn EnumFormatEtc(&self, direction: u32) -> ::windows::core::Result<IEnumFORMATETC> {
-        if !DragData::offered() {
-            return Err(DV_E_FORMATETC.into());
-        }
-        unsafe { self.inner.EnumFormatEtc(direction) }
-    }
-    fn DAdvise(&self, _format: *const FORMATETC, _flags: u32, _sink: Ref<IAdviseSink>) -> ::windows::core::Result<u32> {
-        Err(E_NOTIMPL.into())
-    }
-    fn DUnadvise(&self, _connection: u32) -> ::windows::core::Result<()> {
-        Err(E_NOTIMPL.into())
-    }
-    fn EnumDAdvise(&self) -> ::windows::core::Result<IEnumSTATDATA> {
-        Err(E_NOTIMPL.into())
-    }
-}
-
 /// How a drag ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragEnd {
@@ -507,12 +439,10 @@ pub fn drag_items(paths: &[String]) -> Result<DragEnd, String> {
         }
 
         let released = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let folder = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let source: IDropSource = DropSource { released_on_desktop: released.clone(), released_on_folder: folder.clone() }.into();
-        let offered: IDataObject = DragData { inner: data.clone() }.into();
+        let source: IDropSource = DropSource { released_on_desktop: released.clone() }.into();
         let mut effect = DROPEFFECT(0);
         let paused = PausedTargets::pause();
-        let result = DoDragDrop(&offered, &source, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &mut effect);
+        let result = DoDragDrop(&data, &source, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &mut effect);
         drop(paused);
         let mut at = POINT::default();
         let _ = GetCursorPos(&mut at);
@@ -523,18 +453,7 @@ pub fn drag_items(paths: &[String]) -> Result<DragEnd, String> {
         drop(helper);
 
         let on_desktop = released.lock().unwrap_or_else(|e| e.into_inner()).take();
-        let into_folder = folder.lock().unwrap_or_else(|e| e.into_inner()).take();
-        if let Some(target) = into_folder {
-            let mut all = true;
-            for path in paths {
-                let from = std::path::Path::new(path);
-                let to = std::path::Path::new(&target).join(from.file_name().unwrap_or_default());
-                if from == to || to.exists() || std::fs::rename(from, &to).is_err() {
-                    all = false;
-                }
-            }
-            Ok(DragEnd::Dropped { at: (at.x, at.y), accepted: all, moved: all })
-        } else if let Some(at) = on_desktop {
+        if let Some(at) = on_desktop {
             Ok(DragEnd::OnDesktop(at))
         } else if result == DRAGDROP_S_DROP {
             Ok(DragEnd::Dropped { at: (at.x, at.y), accepted: effect.0 != 0, moved: effect.0 & DROPEFFECT_MOVE.0 != 0 })
