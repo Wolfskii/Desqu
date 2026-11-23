@@ -133,6 +133,11 @@ pub fn window_rect(hwnd: HWND) -> Option<PixelRect> {
     Some(PixelRect { left: r.left, top: r.top, right: r.right, bottom: r.bottom })
 }
 
+/// [`window_rect`] for a handle kept as a plain number.
+pub fn window_rect_of(raw: isize) -> Option<PixelRect> {
+    window_rect(HWND(raw as *mut std::ffi::c_void))
+}
+
 /// Opens a file, folder or shortcut like a double click on the desktop.
 pub fn open_path(path: &str) {
     let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();

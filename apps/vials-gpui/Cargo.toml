@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 gpui = "0.2.2"
 raw-window-handle = "0.6"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
 vials-core = { path = "../../crates/vials-core" }
 desqu-desktop = { path = "../../crates/desqu-desktop" }
 vials-platform = { path = "../../crates/vials-platform" }

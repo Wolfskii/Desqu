@@ -8,6 +8,7 @@
 
 mod engine;
 mod field;
+mod liquid;
 mod menu;
 mod rules_window;
 mod settings;

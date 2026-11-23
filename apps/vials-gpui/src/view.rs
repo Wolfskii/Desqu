@@ -5,13 +5,14 @@ use std::path::Path;
 use std::sync::Arc;
 
 use gpui::{
-    div, img, prelude::*, px, rgba, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
+    div, img, RenderImage, prelude::*, px, rgba, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
     ImageFormat, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
     Render, SharedString, Window,
 };
 use vials_core::model::PixelRect;
 
 use crate::engine::Engine;
+use crate::liquid;
 use crate::menu::{self, MenuEntry};
 use crate::theme::Theme;
 use crate::win;
@@ -79,6 +80,10 @@ pub struct VialView {
     theme: Theme,
     /// The window material has to be re-applied on the next render (it needs the window).
     material_dirty: bool,
+    /// The Liquid backdrop for the window as it is now, and the bookkeeping to redraw it.
+    liquid: Option<Arc<RenderImage>>,
+    liquid_gen: u64,
+    hwnd: Option<isize>,
 }
 
 /// Everything a vial window starts from.
@@ -110,6 +115,8 @@ impl VialView {
         let saver = live.clone();
         cx.observe_window_bounds(window, move |this, window, cx| {
             let Some(hwnd) = win::hwnd(window) else { return };
+            this.hwnd = Some(hwnd.0 as isize);
+            this.refresh_liquid(cx);
             if let Some(now) = win::window_rect(hwnd) {
                 if this.collapsed {
                     this.placement.rect.left = now.left;
@@ -167,6 +174,9 @@ impl VialView {
             focus: cx.focus_handle(),
             theme,
             material_dirty: false,
+            liquid: None,
+            liquid_gen: 0,
+            hwnd: None,
         };
         view.set_items(ids, cx);
         view
@@ -188,11 +198,12 @@ impl VialView {
     }
 
     fn reload(&mut self, cx: &mut Context<Self>) {
-        let Some(live) = &self.live else { return };
+        let Some(live) = self.live.clone() else { return };
         let look = live.engine.look();
         if look != self.theme {
             self.theme = look;
             self.material_dirty = true;
+            self.refresh_liquid(cx);
         }
         if let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) {
             self.name = vial.name.clone().into();
@@ -244,6 +255,50 @@ impl VialView {
                 return;
             }
             cx.background_executor().timer(std::time::Duration::from_millis(40)).await;
+        })
+        .detach();
+    }
+
+    /// Redraws the Liquid backdrop for where the window is now. Several moves in a row (a drag) draw
+    /// once, a moment after the last one; the drawing itself runs off the UI thread.
+    fn refresh_liquid(&mut self, cx: &mut Context<Self>) {
+        if !self.theme.liquid {
+            self.liquid = None;
+            return;
+        }
+        let Some(hwnd) = self.hwnd else { return };
+        self.liquid_gen += 1;
+        let generation = self.liquid_gen;
+        let tint = self.theme.tint;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(45)).await;
+            if !this.update(cx, |view, _| view.liquid_gen == generation).unwrap_or(false) {
+                return;
+            }
+            let Some(rect) = win::window_rect_of(hwnd) else { return };
+            let monitors = win::monitors();
+            let Some(monitor) = vials_core::layout::monitor_containing(&rect, &monitors) else { return };
+            let scale = monitor.scale as f32;
+            let params = liquid::Params {
+                width: rect.width().max(1) as u32,
+                height: rect.height().max(1) as u32,
+                window: (rect.left - monitor.bounds.left, rect.top - monitor.bounds.top),
+                monitor: (monitor.bounds.width().max(1) as u32, monitor.bounds.height().max(1) as u32),
+                radius: 12.0 * scale,
+                bezel: 26.0 * scale,
+                tint,
+                dpr: scale,
+            };
+            let rendered = cx.background_executor().spawn(async move { liquid::current().map(|wallpaper| liquid::render(&wallpaper, &params)) }).await;
+            if let Some(image) = rendered {
+                let data = Arc::new(RenderImage::new(vec![image::Frame::new(image)]));
+                let _ = this.update(cx, |view, cx| {
+                    if view.liquid_gen == generation {
+                        view.liquid = Some(data);
+                        cx.notify();
+                    }
+                });
+            }
         })
         .detach();
     }
@@ -708,6 +763,8 @@ impl Render for VialView {
             .text_color(rgba(t.text))
             .flex()
             .flex_col()
+            .relative()
+            .when_some(self.liquid.clone().filter(|_| t.liquid), |d, image| d.child(img(image).absolute().top_0().left_0().size_full()))
             .child(header)
             .when(!self.collapsed, |d| d.child(grid))
     }

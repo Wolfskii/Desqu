@@ -18,6 +18,8 @@ pub struct Theme {
     pub selected_border: u32,
     pub placeholder: u32,
     pub radius: f32,
+    /// The glass tint setting as 0.0 (clear) to 1.0 (dark): used by the Liquid backdrop.
+    pub tint: f32,
     /// Liquid glass draws its own backdrop (see `liquid.rs`) instead of the window material.
     pub liquid: bool,
 }
@@ -40,11 +42,12 @@ impl Theme {
             selected_border: 0xaad2ffb4,
             placeholder: 0xffffff18,
             radius: 12.0,
+            tint: tint as f32 / 100.0,
             liquid: false,
         };
         match theme {
             VialTheme::Glass => glass,
-            VialTheme::Liquid => Theme { liquid: true, panel: 0x00000000, ..glass },
+            VialTheme::Liquid => Theme { liquid: true, material: WindowBackgroundAppearance::Transparent, panel: 0x00000000, border: 0x00000000, ..glass },
             VialTheme::Classic => Theme {
                 material: WindowBackgroundAppearance::Transparent,
                 panel: 0x181b20e6,
@@ -90,10 +93,12 @@ mod tests {
 
     #[test]
     fn only_classic_has_no_blur_and_only_liquid_draws_its_own_backdrop() {
-        for t in [VialTheme::Glass, VialTheme::Fluent, VialTheme::FluentLight, VialTheme::Liquid] {
+        for t in [VialTheme::Glass, VialTheme::Fluent, VialTheme::FluentLight] {
             assert_eq!(Theme::of(t, 20).material, WindowBackgroundAppearance::Blurred);
         }
-        assert_eq!(Theme::of(VialTheme::Classic, 20).material, WindowBackgroundAppearance::Transparent);
+        for t in [VialTheme::Classic, VialTheme::Liquid] {
+            assert_eq!(Theme::of(t, 20).material, WindowBackgroundAppearance::Transparent, "no Windows blur behind {t:?}");
+        }
         assert!(Theme::of(VialTheme::Liquid, 20).liquid && !Theme::of(VialTheme::Glass, 20).liquid);
     }
 

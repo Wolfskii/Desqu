@@ -5916,6 +5916,7 @@ version = "0.0.1"
 dependencies = [
  "desqu-desktop",
  "gpui",
+ "image",
  "raw-window-handle",
  "vials-core",
  "vials-platform",
