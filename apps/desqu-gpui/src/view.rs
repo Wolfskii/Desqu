@@ -38,7 +38,7 @@ pub fn status_text(status: Status) -> &'static str {
         Status::Off => "Off",
         Status::Running => "Running",
         Status::RunningElsewhere => "Running on its own",
-        Status::Stopped => "Stopped: it ended unexpectedly",
+        Status::Stopped => "Stopped: it ended unexpectedly (details in the Desqu logs folder, gpui-<name>.log)",
         Status::Missing => "Not installed",
     }
 }

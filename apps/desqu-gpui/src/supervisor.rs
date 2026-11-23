@@ -36,6 +36,26 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Where a module's output and exit code are kept: `%APPDATA%\io.github.wolfskii.desqu\logs\gpui-<module>.log`.
+pub fn log_path(kind: Kind) -> PathBuf {
+    let appdata = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
+    appdata.join("io.github.wolfskii.desqu").join("logs").join(format!("gpui-{}.log", kind.name().to_lowercase()))
+}
+
+/// Opens the module's log for appending (with a line saying it started), or `None` if that is not possible.
+fn open_log(kind: Kind) -> Option<std::fs::File> {
+    use std::io::Write;
+    let path = log_path(kind);
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    // A log that grew past 1 MB starts over.
+    if std::fs::metadata(&path).map(|m| m.len() > 1_000_000).unwrap_or(false) {
+        let _ = std::fs::remove_file(&path);
+    }
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+    let _ = writeln!(file, "--- started {:?}", std::time::SystemTime::now());
+    Some(file)
+}
+
 /// Whether some copy of the module's app is running: its single-instance mutex is taken.
 fn running_anywhere(kind: Kind) -> bool {
     tray::single_instance(&kind.identity()).is_none()
@@ -56,7 +76,11 @@ impl Supervisor {
         if let Some(child) = children.get_mut(&kind) {
             match child.try_wait() {
                 Ok(None) => return Status::Running,
-                _ => {
+                ended => {
+                    use std::io::Write;
+                    if let (Ok(Some(code)), Ok(mut log)) = (ended, std::fs::OpenOptions::new().append(true).open(log_path(kind))) {
+                        let _ = writeln!(log, "--- ended: {code}");
+                    }
                     children.remove(&kind);
                     let mut crashed = lock(&self.crashed);
                     if !crashed.contains(&kind) {
@@ -87,7 +111,16 @@ impl Supervisor {
         if !exe.is_file() {
             return Err(format!("{} is not next to Desqu", kind.exe()));
         }
-        let child = Command::new(&exe).args(kind.start_args()).spawn().map_err(|e| format!("could not start {}: {e}", kind.name()))?;
+        // Its output (a panic message, an error) goes to a log file, so a crash can be explained afterwards.
+        let mut command = Command::new(&exe);
+        command.args(kind.start_args()).env("RUST_BACKTRACE", "1");
+        if let Some(log) = open_log(kind) {
+            if let Ok(err) = log.try_clone() {
+                command.stderr(err);
+            }
+            command.stdout(log);
+        }
+        let child = command.spawn().map_err(|e| format!("could not start {}: {e}", kind.name()))?;
         lock(&self.children).insert(kind, child);
         Ok(())
     }
