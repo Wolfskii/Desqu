@@ -49,7 +49,7 @@ export interface SortRule {
     targetVial: string;
 }
 
-export type VialTheme = "glass" | "classic" | "fluent" | "fluentLight";
+export type VialTheme = "glass" | "classic" | "fluent" | "fluentLight" | "liquid";
 export type GlassBlur = "frosted" | "clear";
 
 export interface VialsConfig {
@@ -112,3 +112,10 @@ export const KIND_LABELS: Record<ItemKind, string> = {
     file: "File",
     special: "System item",
 };
+
+/** The desktop wallpaper and how Windows lays it out (WallpaperStyle: 0 center, 2 stretch, 6 fit, 10 fill, 22 span). */
+export interface WallpaperInfo {
+    dataUrl: string;
+    style: number;
+    tile: boolean;
+}

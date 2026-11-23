@@ -2,6 +2,7 @@
 description = "Everything the Vials UI needs"
 permissions = [
     "allow-get-config",
+    "allow-get-wallpaper",
     "allow-set-config",
     "allow-list-items",
     "allow-item-icon",

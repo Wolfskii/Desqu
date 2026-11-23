@@ -22,6 +22,7 @@ const COMMANDS: &[&str] = &[
     "paste_into_vial",
     "focus_vial",
     "get_monitors",
+    "get_wallpaper",
     "desktop_status",
     "module_start",
     "module_stop",

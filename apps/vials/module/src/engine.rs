@@ -598,7 +598,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
             .skip_taskbar(true)
             .always_on_bottom(true)
             .focusable(false)
-            .shadow(cfg.theme != VialTheme::Classic)
+            .shadow(!matches!(cfg.theme, VialTheme::Classic | VialTheme::Liquid))
             .transparent(true)
             .visible(false)
             .build();
@@ -617,7 +617,7 @@ fn sync_windows<R: Runtime>(app: &AppHandle<R>, cfg: &VialsConfig, jobs: &Sender
                     }
                     _ => {}
                 });
-                apply_theme_effects(&window, cfg);
+                style_window(&window, cfg);
                 // With "Show desktop icons" off the vial stays hidden until the icons come back.
                 let icons_on = app.try_state::<ModuleState>().map(|s| s.icons_visible.load(Ordering::Relaxed));
                 if icons_on.unwrap_or(true) {
@@ -870,7 +870,9 @@ fn apply_glass<R: Runtime>(window: &tauri::WebviewWindow<R>, blur: GlassBlur, ti
 
 /// Gives an existing vial window the configured look (the same properties it is built with).
 fn style_window<R: Runtime>(window: &tauri::WebviewWindow<R>, cfg: &VialsConfig) {
-    if cfg.theme == VialTheme::Classic {
+    // Classic is a plain panel; Liquid draws its own glass in the page, so the window has no material,
+    // shadow or rounded corners of its own (a shadow would show as a square behind the glass).
+    if matches!(cfg.theme, VialTheme::Classic | VialTheme::Liquid) {
         let _ = window.set_effects(None::<tauri::utils::config::WindowEffectsConfig>);
         let _ = window.set_shadow(false);
         if let Ok(hwnd) = window.hwnd() {
@@ -888,6 +890,8 @@ fn apply_theme_effects<R: Runtime>(window: &tauri::WebviewWindow<R>, cfg: &Vials
         VialTheme::Glass => apply_glass(window, cfg.glass_blur, cfg.glass_tint),
         VialTheme::Fluent => apply_fluent(window, true),
         VialTheme::FluentLight => apply_fluent(window, false),
+        // Popups (menus) keep the plain glass; vial windows never get here for Liquid.
+        VialTheme::Liquid => apply_glass(window, cfg.glass_blur, cfg.glass_tint),
         VialTheme::Classic => {}
     }
 }

@@ -4,6 +4,7 @@
   import { onDestroy, onMount, tick } from "svelte";
   import { api } from "./api";
   import ItemIcon from "./components/ItemIcon.svelte";
+  import LiquidGlass from "./components/LiquidGlass.svelte";
   import { vials } from "./state.svelte";
 
   let { vialId }: { vialId: string } = $props();
@@ -12,6 +13,7 @@
   const items = $derived(vial ? vials.itemsOf(vial) : []);
 
   let dropping = $state(false);
+  let liquidFailed = $state(false);
   let unlistenDrop: (() => void) | null = null;
 
   onMount(() => {
@@ -292,6 +294,8 @@
   class="vial"
   class:dropping
   class:glass={vials.config?.theme === "glass"}
+  class:liquid={vials.config?.theme === "liquid"}
+  class:liquidFallback={liquidFailed}
   class:fluent={vials.config?.theme === "fluent"}
   class:fluentLight={vials.config?.theme === "fluentLight"}
   role="presentation"
@@ -303,6 +307,9 @@
   }}
   onpointerup={takeKeyboard}
 >
+  {#if vials.config?.theme === "liquid"}
+    <LiquidGlass tint={(vials.config?.glassTint ?? 20) / 100} bind:failed={liquidFailed} />
+  {/if}
   <header data-tauri-drag-region>
     {#if editing}
       <input
@@ -582,6 +589,50 @@
   .fluentLight .notice {
     background: rgba(0, 0, 0, 0.03);
     border-top-color: transparent;
+  }
+
+  /* Liquid theme: the glass itself is the canvas behind the content (LiquidGlass.svelte); the window has
+     no material, so the CSS only supplies text colour, hairline structure and a fallback fill. */
+  .vial.liquid {
+    position: relative;
+    isolation: isolate;
+    color: rgba(255, 255, 255, 0.96);
+    border: none;
+    border-radius: 14px;
+    background: transparent;
+  }
+  .vial.liquid.liquidFallback {
+    background: linear-gradient(160deg, rgba(60, 70, 90, 0.78), rgba(24, 28, 38, 0.82));
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+  .vial.liquid.dropping {
+    box-shadow: inset 0 0 0 2px rgba(170, 210, 255, 0.85);
+  }
+  .liquid header {
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  }
+  .liquid .title:hover {
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .liquid .open:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.34);
+  }
+  .liquid .open.selected {
+    background: rgba(120, 175, 255, 0.3);
+    border-color: rgba(170, 210, 255, 0.7);
+  }
+  .liquid .label {
+    color: rgba(255, 255, 255, 0.96);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+  }
+  .liquid .notice {
+    background: rgba(255, 255, 255, 0.1);
+    border-top-color: rgba(255, 255, 255, 0.14);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
 
   /* Glass theme: the blur comes from the window itself; this is the light on top of it. */

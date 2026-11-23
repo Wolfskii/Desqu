@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ModuleStatus } from "@desqu/ui";
-import type { DesktopStatus, ItemInfo, MonitorInfo, VialsConfig } from "./types";
+import type { DesktopStatus, ItemInfo, MonitorInfo, VialsConfig, WallpaperInfo } from "./types";
 
 const PLUGIN = "plugin:vials-module";
 
@@ -32,6 +32,7 @@ export const api = {
     copyItems: (itemIds: string[], cut: boolean) => invoke<void>(`${PLUGIN}|copy_items`, { itemIds, cut }),
     pasteIntoVial: (vialId: string) => invoke<number>(`${PLUGIN}|paste_into_vial`, { vialId }),
     focusVial: (vialId: string) => invoke<void>(`${PLUGIN}|focus_vial`, { vialId }),
+    getWallpaper: () => invoke<WallpaperInfo>(`${PLUGIN}|get_wallpaper`),
     getMonitors: () => invoke<MonitorInfo[]>(`${PLUGIN}|get_monitors`),
     desktopStatus: () => invoke<DesktopStatus>(`${PLUGIN}|desktop_status`),
     moduleStart: () => invoke<void>(`${PLUGIN}|module_start`),

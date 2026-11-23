@@ -451,6 +451,18 @@
           "markdownDescription": "Denies the get_monitors command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_wallpaper command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-wallpaper",
+          "markdownDescription": "Enables the get_wallpaper command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_wallpaper command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-wallpaper",
+          "markdownDescription": "Denies the get_wallpaper command without any pre-configured scope."
+        },
+        {
           "description": "Enables the item_icon command without any pre-configured scope.",
           "type": "string",
           "const": "allow-item-icon",
@@ -643,10 +655,10 @@
           "markdownDescription": "Denies the sort_vial_items command without any pre-configured scope."
         },
         {
-          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-items-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-open-rules`\n- `allow-open-vial-menu`\n- `allow-set-vial-folders-first`\n- `allow-move-into-folder`\n- `allow-sort-vial-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
+          "description": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-get-wallpaper`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-items-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-open-rules`\n- `allow-open-vial-menu`\n- `allow-set-vial-folders-first`\n- `allow-move-into-folder`\n- `allow-sort-vial-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-items-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-open-rules`\n- `allow-open-vial-menu`\n- `allow-set-vial-folders-first`\n- `allow-move-into-folder`\n- `allow-sort-vial-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
+          "markdownDescription": "Everything the Vials UI needs\n#### This default permission set includes:\n\n- `allow-get-config`\n- `allow-get-wallpaper`\n- `allow-set-config`\n- `allow-list-items`\n- `allow-item-icon`\n- `allow-assign-item`\n- `allow-open-item`\n- `allow-create-vial-from-menu`\n- `allow-dismiss-menu`\n- `allow-menu-ready`\n- `allow-begin-rename`\n- `allow-end-rename`\n- `allow-drop-items`\n- `allow-drag-items-out`\n- `allow-show-item-menu`\n- `allow-copy-items`\n- `allow-open-rules`\n- `allow-open-vial-menu`\n- `allow-set-vial-folders-first`\n- `allow-move-into-folder`\n- `allow-sort-vial-items`\n- `allow-paste-into-vial`\n- `allow-focus-vial`\n- `allow-get-monitors`\n- `allow-desktop-status`\n- `allow-module-start`\n- `allow-module-stop`\n- `allow-module-status`"
         }
       ]
     }

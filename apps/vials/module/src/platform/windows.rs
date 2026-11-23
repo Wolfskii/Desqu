@@ -578,6 +578,67 @@ pub(crate) fn round_corners(hwnd: isize, round: bool) {
     }
 }
 
+// ------------------------------------------------------------------------------- wallpaper
+
+use ::windows::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_SZ};
+
+fn desktop_reg_string(name: &str) -> Option<String> {
+    let key: Vec<u16> = "Control Panel\\Desktop\0".encode_utf16().collect();
+    let value: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut buf = [0u16; 64];
+    let mut len = (buf.len() * 2) as u32;
+    // SAFETY: the buffers outlive the call and `len` is their size in bytes.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            ::windows::core::PCWSTR(key.as_ptr()),
+            ::windows::core::PCWSTR(value.as_ptr()),
+            RRF_RT_REG_SZ,
+            None,
+            Some(buf.as_mut_ptr() as *mut std::ffi::c_void),
+            Some(&mut len),
+        )
+    };
+    if status.0 != 0 {
+        return None;
+    }
+    let n = (len as usize / 2).saturating_sub(1).min(buf.len());
+    Some(String::from_utf16_lossy(&buf[..n]))
+}
+
+/// The current wallpaper file and its layout. Windows keeps the picture actually shown (also from a
+/// slideshow) as `TranscodedWallpaper`; the configured path is the fallback.
+pub(crate) fn wallpaper() -> Result<(std::path::PathBuf, u32, bool), String> {
+    let transcoded = std::env::var_os("APPDATA")
+        .map(|a| std::path::PathBuf::from(a).join("Microsoft\\Windows\\Themes\\TranscodedWallpaper"))
+        .filter(|p| p.is_file());
+    let path = match transcoded {
+        Some(p) => p,
+        None => {
+            let mut buf = [0u16; 520];
+            // SAFETY: the buffer is 520 u16 = the MAX_PATH*2 bytes SPI_GETDESKWALLPAPER is given.
+            unsafe {
+                ::windows::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
+                    ::windows::Win32::UI::WindowsAndMessaging::SPI_GETDESKWALLPAPER,
+                    buf.len() as u32,
+                    Some(buf.as_mut_ptr() as *mut std::ffi::c_void),
+                    ::windows::Win32::UI::WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            let p = std::path::PathBuf::from(String::from_utf16_lossy(&buf[..n]));
+            if !p.is_file() {
+                return Err("the desktop has no wallpaper picture".into());
+            }
+            p
+        }
+    };
+    let style = desktop_reg_string("WallpaperStyle").and_then(|s| s.parse().ok()).unwrap_or(10);
+    let tile = desktop_reg_string("TileWallpaper").is_some_and(|s| s == "1");
+    Ok((path, style, tile))
+}
+
 // ------------------------------------------------------------ "Show desktop icons" on or off
 
 use ::windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};

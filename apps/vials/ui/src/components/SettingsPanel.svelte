@@ -35,11 +35,30 @@
         }}
       >
         <option value="glass">Glass</option>
+        <option value="liquid">Liquid glass</option>
         <option value="fluent">Fluent (dark)</option>
         <option value="fluentLight">Fluent (light)</option>
         <option value="classic">Classic</option>
       </select>
     </SettingsRow>
+    {#if (vials.config?.theme ?? "glass") === "liquid"}
+      <SettingsRow label="Glass tint" description="Lower is clearer. Applied when you let go of the slider. Liquid glass redraws your wallpaper behind each vial, so windows or icons behind a vial are not shown through it.">
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="5"
+          value={vials.config?.glassTint ?? 20}
+          disabled={!vials.config}
+          aria-label="Glass tint"
+          onchange={(e) => {
+            if (!vials.config) return;
+            vials.config.glassTint = Number(e.currentTarget.value);
+            vials.scheduleSave(true);
+          }}
+        />
+      </SettingsRow>
+    {/if}
     {#if (vials.config?.theme ?? "glass") === "glass"}
       <SettingsRow label="Glass blur" description="Frosted is Windows acrylic (strong blur with a fine grain). Clear is a plain blur without grain.">
         <select

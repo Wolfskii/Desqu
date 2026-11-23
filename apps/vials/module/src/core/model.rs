@@ -130,6 +130,9 @@ pub enum VialTheme {
     Fluent,
     /// Fluent with its light surface and colours.
     FluentLight,
+    /// Liquid glass: the wallpaper is redrawn behind the vial with a refraction shader (bent edges,
+    /// highlights), which Windows' own blur cannot do. Popups use the plain Glass look.
+    Liquid,
 }
 
 /// What the Glass look blurs the desktop with.

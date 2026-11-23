@@ -5,6 +5,7 @@ Everything the Vials UI needs
 #### This default permission set includes the following:
 
 - `allow-get-config`
+- `allow-get-wallpaper`
 - `allow-set-config`
 - `allow-list-items`
 - `allow-item-icon`
@@ -375,6 +376,32 @@ Enables the get_monitors command without any pre-configured scope.
 <td>
 
 Denies the get_monitors command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:allow-get-wallpaper`
+
+</td>
+<td>
+
+Enables the get_wallpaper command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vials-module:deny-get-wallpaper`
+
+</td>
+<td>
+
+Denies the get_wallpaper command without any pre-configured scope.
 
 </td>
 </tr>

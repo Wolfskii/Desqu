@@ -24,8 +24,17 @@ pub fn debug_run_value_name(exe_stem: &str, debug: bool) -> Option<String> {
     debug.then(|| format!("{exe_stem}-debug"))
 }
 
+/// A debug build must never keep a start-up entry, whatever the settings say.
+pub fn effective_enabled(wanted: bool, debug: bool) -> bool {
+    wanted && !debug
+}
+
 /// Brings the OS entry in line with `enabled`; does nothing when it already is.
+///
+/// Debug builds never enable it: they load the dev server (`devUrl`), so a sign-in launch of a
+/// debug exe shows a "can't reach localhost" page. They only remove a leftover entry.
 pub fn sync<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), String> {
+    let enabled = effective_enabled(enabled, cfg!(debug_assertions));
     let mgr = app.autolaunch();
     let current = mgr.is_enabled().map_err(|e| e.to_string())?;
     if enabled == current {
@@ -42,6 +51,7 @@ pub fn sync<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), String>
 /// Like [`sync`], but when enabled it always rewrites the entry once, so a 0.1.0 entry without
 /// `--autostart` (or pointing at an old exe path) is replaced.
 pub fn sync_at_startup<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), String> {
+    let enabled = effective_enabled(enabled, cfg!(debug_assertions));
     if enabled {
         let mgr = app.autolaunch();
         // A failed disable only means there was nothing to remove.
@@ -60,6 +70,13 @@ mod tests {
     fn debug_builds_never_share_the_release_value_name() {
         assert_eq!(debug_run_value_name("screenbound", true).as_deref(), Some("screenbound-debug"));
         assert_ne!(debug_run_value_name("screenbound", true).unwrap().to_lowercase(), "screenbound");
+    }
+
+    #[test]
+    fn debug_builds_never_enable_startup() {
+        assert!(!effective_enabled(true, true));
+        assert!(effective_enabled(true, false));
+        assert!(!effective_enabled(false, false));
     }
 
     #[test]

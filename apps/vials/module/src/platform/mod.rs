@@ -8,7 +8,7 @@ mod windows;
 pub(crate) use desqu_desktop::CutPasteWatcher;
 #[cfg(windows)]
 pub(crate) use self::windows::{send_to_bottom, watch_cut_paste, 
-    cursor_position, drag_items, mark_as_tool_window, round_corners, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
+    cursor_position, drag_items, mark_as_tool_window, round_corners, wallpaper, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
 };
 
 #[cfg(not(windows))]
@@ -58,6 +58,11 @@ pub(crate) fn drag_items(_paths: &[String]) -> Result<DragEnd, String> {
 
 #[cfg(not(windows))]
 pub(crate) fn show_item_menu(_path: &str) -> Result<(), String> {
+    Err("Vials is only available on Windows".into())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn wallpaper() -> Result<(std::path::PathBuf, u32, bool), String> {
     Err("Vials is only available on Windows".into())
 }
 

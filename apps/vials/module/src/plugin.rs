@@ -47,6 +47,7 @@ pub fn init<R: Runtime>(options: ModuleOptions) -> TauriPlugin<R> {
             commands::paste_into_vial,
             commands::focus_vial,
             commands::get_monitors,
+            commands::get_wallpaper,
             commands::desktop_status,
             commands::module_start,
             commands::module_stop,

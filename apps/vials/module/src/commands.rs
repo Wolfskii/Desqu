@@ -262,6 +262,30 @@ pub async fn get_monitors<R: Runtime>(app: AppHandle<R>) -> CmdResult<Vec<Monito
         .collect())
 }
 
+/// The desktop wallpaper for the Liquid look: the image as a data URL and how Windows lays it out.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WallpaperInfo {
+    pub data_url: String,
+    /// Windows' `WallpaperStyle`: 0 center, 2 stretch, 6 fit, 10 fill, 22 span.
+    pub style: u32,
+    pub tile: bool,
+}
+
+#[tauri::command]
+pub async fn get_wallpaper() -> CmdResult<WallpaperInfo> {
+    let (path, style, tile) = crate::platform::wallpaper()?;
+    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read the wallpaper: {e}"))?;
+    let mime = if bytes.starts_with(&[0x89, b'P']) {
+        "image/png"
+    } else if bytes.starts_with(b"BM") {
+        "image/bmp"
+    } else {
+        "image/jpeg"
+    };
+    Ok(WallpaperInfo { data_url: format!("data:{mime};base64,{}", b64::encode(&bytes)), style, tile })
+}
+
 #[tauri::command]
 pub async fn desktop_status(state: State<'_, ModuleState>) -> CmdResult<DesktopStatus> {
     let layer = state.layer().ok();
