@@ -5,14 +5,16 @@ version: "3"
 
 tasks:
   desqu:
-    desc: Run the Desqu GPUI shell (it starts the modules that are on)
-    dir: apps/desqu-gpui
+    desc: Run the whole Desqu GPUI shell locally, no install (it starts the modules that are on)
     interactive: true
     cmds:
-      - cargo build --release --manifest-path ../vials-gpui/Cargo.toml
-      - cargo build --release --manifest-path ../workspaces-gpui/Cargo.toml
-      - cargo build --release --manifest-path ../screenbound-gpui/Cargo.toml
-      - cargo run --release
+      - cargo build --release --manifest-path apps/vials-gpui/Cargo.toml
+      - cargo build --release --manifest-path apps/workspaces-gpui/Cargo.toml
+      - cargo build --release --manifest-path apps/screenbound-gpui/Cargo.toml
+      - cargo build --release --manifest-path apps/desqu-gpui/Cargo.toml
+      # Desqu starts the modules from the folder it runs in, so put them next to it (build output, not tracked).
+      - pwsh -NoProfile -File scripts/stage-gpui-modules.ps1
+      - apps/desqu-gpui/target/release/desqu-gpui.exe
 
   vials:
     desc: Run Vials (GPUI) on your real desktop (hides vial items there; they come back on quit)
