@@ -80,7 +80,8 @@ pub fn place_at_bottom(hwnd: HWND, rect: &PixelRect) {
 pub fn make_popup(hwnd: HWND) {
     // SAFETY: our own window.
     unsafe {
-        leave_taskbar(hwnd, 0);
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW.0 as isize);
         let pref = DWMWCP_ROUND;
         let _ = DwmSetWindowAttribute(
             hwnd,
