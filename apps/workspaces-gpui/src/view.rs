@@ -140,7 +140,7 @@ impl Render for WorkspacesView {
                 .child(div().flex().flex_wrap().gap_1().children(
                     entries.iter().filter(|e| !e.removed).map(|e| {
                         let id = e.id.clone();
-                        button(format!("{}", e.name), false).id(SharedString::from(format!("first-{id}"))).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        button(e.name.clone(), false).id(SharedString::from(format!("first-{id}"))).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                             if let Err(err) = this.engine.answer_first_run(Some(&id)) {
                                 this.note = err;
                             }
