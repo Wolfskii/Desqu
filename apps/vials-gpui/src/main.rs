@@ -229,7 +229,9 @@ fn main() {
 
         // The tray icon, second launches, and the mouse on the desktop.
         let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
-        let tray = tray::start(&ID, &TRAY_MENU, event_tx.clone()).map_err(|e| eprintln!("no tray icon: {e}")).ok();
+        // `--no-tray-icon`: the Desqu shell shows the icon and tells this app what to do.
+        let started = if std::env::args().any(|a| a == "--no-tray-icon") { tray::start_hidden(&ID, event_tx.clone()) } else { tray::start(&ID, &TRAY_MENU, event_tx.clone()) };
+        let tray = started.map_err(|e| eprintln!("no tray icon: {e}")).ok();
         if action.is_some() {
             let _ = event_tx.send(tray::Event::Action(action.clone().unwrap_or_default()));
         }

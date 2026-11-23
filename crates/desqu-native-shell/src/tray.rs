@@ -38,6 +38,8 @@ struct State {
     labels: Vec<String>,
     tag: usize,
     taskbar_created: u32,
+    /// False when another program (the Desqu shell) shows the icon: this one only receives actions.
+    show_icon: bool,
 }
 
 static STATE: OnceLock<State> = OnceLock::new();
@@ -168,7 +170,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPA
             LRESULT(0)
         }
         WM_DESTROY => LRESULT(0),
-        m if state.is_some_and(|s| s.taskbar_created == m) => {
+        m if state.is_some_and(|s| s.show_icon && s.taskbar_created == m) => {
             // Explorer restarted: its tray is empty again.
             add_icon(hwnd, TOOLTIP.get().map_or("Desqu", String::as_str));
             LRESULT(0)
@@ -183,13 +185,23 @@ static TOOLTIP: OnceLock<String> = OnceLock::new();
 /// Starts the tray icon (tooltip = the app's name, menu = `labels`) and the window that receives
 /// actions from second launches.
 pub fn start(id: &Identity, labels: &[&str], events: Sender<Event>) -> Result<Tray, String> {
+    start_with(id, labels, events, true)
+}
+
+/// Like [`start`] but without an icon: the window that receives actions from second launches exists
+/// (so the app can be told to show, pause or quit), and something else, the Desqu shell, owns the tray.
+pub fn start_hidden(id: &Identity, events: Sender<Event>) -> Result<Tray, String> {
+    start_with(id, &[], events, false)
+}
+
+fn start_with(id: &Identity, labels: &[&str], events: Sender<Event>, show_icon: bool) -> Result<Tray, String> {
     let class = id.window_class();
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<isize, String>>();
     let _ = TOOLTIP.set(id.name.to_string());
     let tooltip = id.name.to_string();
     // SAFETY: registered once per process; the callback only uses the shared state.
     let taskbar_created = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
-    let _ = STATE.set(State { sink: Mutex::new(events), labels: labels.iter().map(|l| l.to_string()).collect(), tag: id.data_tag(), taskbar_created });
+    let _ = STATE.set(State { sink: Mutex::new(events), labels: labels.iter().map(|l| l.to_string()).collect(), tag: id.data_tag(), taskbar_created, show_icon });
     std::thread::Builder::new()
         .name("tray".into())
         .spawn(move || {
@@ -220,7 +232,9 @@ pub fn start(id: &Identity, labels: &[&str], events: Sender<Event>) -> Result<Tr
                         return;
                     }
                 };
-                add_icon(hwnd, &tooltip);
+                if show_icon {
+                    add_icon(hwnd, &tooltip);
+                }
                 let _ = ready_tx.send(Ok(hwnd.0 as isize));
                 let mut msg = MSG::default();
                 while GetMessageW(&mut msg, None, 0, 0).as_bool() {

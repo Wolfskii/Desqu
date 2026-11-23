@@ -94,6 +94,7 @@ impl Runtime {
         shared.refresh();
         let worker = shared.clone();
         let join = std::thread::Builder::new().name("screenbound-snapshot".into()).spawn(move || worker.refresh_loop()).map_err(|e| e.to_string())?;
+        #[allow(clippy::arc_with_non_send_sync)] // only used on the UI thread
         Ok(Arc::new(Self { shared, _subscription: subscription, refresher: Mutex::new(Some(join)) }))
     }
 
