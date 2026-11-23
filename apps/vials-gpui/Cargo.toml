@@ -14,8 +14,7 @@ winresource = "0.1"
 [dependencies]
 gpui = "0.2.2"
 raw-window-handle = "0.6"
-serde_json = "1"
-ureq = { version = "2", default-features = false, features = ["tls"] }
+desqu-native-shell = { path = "../../crates/desqu-native-shell" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
 vials-core = { path = "../../crates/vials-core" }
 desqu-desktop = { path = "../../crates/desqu-desktop" }

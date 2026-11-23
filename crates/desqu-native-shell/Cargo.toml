@@ -1,0 +1,31 @@
+[package]
+name = "desqu-native-shell"
+version = "0.1.0"
+description = "What every Desqu GPUI app shares with Windows: one running copy, a tray icon with a menu, start with Windows, update check. No UI framework."
+authors = ["Desqu contributors"]
+edition = "2021"
+rust-version = "1.80"
+
+# Standalone: only the GPUI apps use it, so the Tauri workspace and its CI never build it.
+[workspace]
+
+[lib]
+name = "desqu_native_shell"
+
+[dependencies]
+serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]

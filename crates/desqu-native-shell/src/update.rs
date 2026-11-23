@@ -5,10 +5,6 @@
 
 use std::time::Duration;
 
-/// Where the manifest lives. Not published yet for this build: until it is, a check reports that it
-/// could not reach one, and says so.
-pub const MANIFEST_URL: &str = "https://wolfskii.github.io/Desqu/updates/vials-gpui/latest.json";
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
     pub version: String,

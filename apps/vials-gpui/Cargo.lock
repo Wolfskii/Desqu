@@ -1290,6 +1290,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "desqu-native-shell"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "ureq",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5931,11 +5940,10 @@ name = "vials-gpui"
 version = "0.4.0"
 dependencies = [
  "desqu-desktop",
+ "desqu-native-shell",
  "gpui",
  "image",
  "raw-window-handle",
- "serde_json",
- "ureq",
  "vials-core",
  "vials-platform",
  "windows 0.62.2",

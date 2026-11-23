@@ -6,16 +6,13 @@
 //! paste, new, delete), new desktop files are sorted into vials by the rules, and a moved vial
 //! saves its place.
 
-mod autostart;
 mod engine;
 mod field;
 mod liquid;
 mod menu;
 mod rules_window;
 mod settings;
-mod update;
 mod theme;
-mod tray;
 mod view;
 mod win;
 
@@ -33,10 +30,19 @@ use vials_core::gesture;
 use vials_core::layout::{self, MonitorRef};
 use vials_core::model::{Vial, VialsConfig};
 
+use desqu_native_shell::{tray, Identity};
 use engine::Engine;
 use menu::MenuEntry;
 use view::{bump, Live, Placement, Revision, ViewInit, VialView};
 use vials_platform::{MouseEvent, MouseWatcher};
+
+/// Who this app is to Windows (names of its mutex, tray window and startup entry are derived from it).
+pub const ID: Identity = Identity { name: "Vials", key: "VialsGpui" };
+/// Where the update manifest lives. Not published yet for this build: until it is, a check says it
+/// could not reach one.
+pub const MANIFEST_URL: &str = "https://wolfskii.github.io/Desqu/updates/vials-gpui/latest.json";
+/// The tray menu: the order is what `Event::Menu(index)` refers to.
+const TRAY_MENU: [&str; 3] = ["New vial", "Settings", "Quit Vials"];
 
 fn config_path() -> PathBuf {
     let mut args = std::env::args().skip(1);
@@ -139,11 +145,11 @@ fn main() {
     // Live mode is one running copy: a second launch (for example the desktop's "Create vial here"
     // entry, which runs `--action=create-vial`) hands its action to the first and exits.
     let _single = if live_mode {
-        match tray::single_instance() {
+        match tray::single_instance(&ID) {
             Some(s) => Some(s),
             None => {
                 if let Some(action) = &action {
-                    if !tray::forward_action(action) {
+                    if !tray::forward_action(&ID, action) {
                         eprintln!("the running copy did not take the action");
                     }
                 } else {
@@ -223,7 +229,7 @@ fn main() {
 
         // The tray icon, second launches, and the mouse on the desktop.
         let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
-        let tray = tray::start(event_tx.clone()).map_err(|e| eprintln!("no tray icon: {e}")).ok();
+        let tray = tray::start(&ID, &TRAY_MENU, event_tx.clone()).map_err(|e| eprintln!("no tray icon: {e}")).ok();
         if action.is_some() {
             let _ = event_tx.send(tray::Event::Action(action.clone().unwrap_or_default()));
         }
@@ -248,14 +254,14 @@ fn main() {
             loop {
                 while let Ok(event) = event_rx.try_recv() {
                     match event {
-                        tray::Event::Quit => {
+                        tray::Event::Menu(2) => {
                             let _ = cx.update(|cx| cx.quit());
                         }
-                        tray::Event::Settings => {
+                        tray::Event::Menu(1) => {
                             let (engine, revision) = (engine.clone(), revision.clone());
                             let _ = cx.update(|cx| settings::open(cx, engine, revision));
                         }
-                        tray::Event::NewVial => {
+                        tray::Event::Menu(0) => {
                             if engine.create_vial_at(None).is_some() {
                                 let revision = revision.clone();
                                 let _ = cx.update(|cx| bump(&revision, cx));
@@ -278,7 +284,7 @@ fn main() {
                         tray::Event::Action(name) if name == "quit" => {
                             let _ = cx.update(|cx| cx.quit());
                         }
-                        tray::Event::Action(_) => {}
+                        tray::Event::Action(_) | tray::Event::Menu(_) => {}
                     }
                 }
                 while let Ok(event) = mouse_rx.try_recv() {
