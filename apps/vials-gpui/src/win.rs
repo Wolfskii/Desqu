@@ -10,7 +10,7 @@ use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, H
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNORMAL, WS_EX_NOACTIVATE,
+    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_BOTTOM, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
 };
 
@@ -57,8 +57,7 @@ pub fn monitors() -> Vec<MonitorRef> {
 pub fn make_vial_window(hwnd: HWND) {
     // SAFETY: our own window; plain style and attribute writes.
     unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | (WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0) as isize);
+        leave_taskbar(hwnd, WS_EX_NOACTIVATE.0);
         let pref = DWMWCP_ROUND;
         let _ = DwmSetWindowAttribute(
             hwnd,
@@ -81,8 +80,7 @@ pub fn place_at_bottom(hwnd: HWND, rect: &PixelRect) {
 pub fn make_popup(hwnd: HWND) {
     // SAFETY: our own window.
     unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW.0 as isize);
+        leave_taskbar(hwnd, 0);
         let pref = DWMWCP_ROUND;
         let _ = DwmSetWindowAttribute(
             hwnd,
@@ -144,5 +142,20 @@ pub fn open_path(path: &str) {
     // SAFETY: NUL-terminated buffers that outlive the call.
     unsafe {
         ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+    }
+}
+
+/// Gives a window the tool-window style and takes it off the taskbar and Task View. The taskbar only
+/// re-reads a window's styles when it is shown, so the window is hidden and shown again (never activated).
+fn leave_taskbar(hwnd: HWND, extra_style: u32) {
+    // SAFETY: our own window.
+    unsafe {
+        let visible = ShowWindow(hwnd, SW_HIDE).as_bool();
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let ex = (ex | (WS_EX_TOOLWINDOW.0 | extra_style) as isize) & !(WS_EX_APPWINDOW.0 as isize);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+        if visible {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
     }
 }
