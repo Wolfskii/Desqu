@@ -2,7 +2,7 @@
 
 Same scenario for both: 3 vials of the same size and place, blurred (acrylic) window, rounded corners,
 20 s idle, then 10 s of scripted dragging (all three windows moved at ~60 Hz). Windows 11 26300, 5120x1440,
-release builds. Two runs each (`results/*.json`); the table shows the average. Reproduce with `measure.ps1`.
+release builds. Two runs each; the table shows the average. Raw files and screenshots are not kept: reproduce with `measure.ps1`.
 
 | | Tauri + Svelte (now) | GPUI spike | Winner |
 | --- | --- | --- | --- |
@@ -30,5 +30,5 @@ Fair-comparison notes:
 ## Phase 1 of the real port (`apps/vials-gpui`, reads the real config, real icons)
 
 One run, same harness: first window 0.5 s, 1 process, ~21 MB private RAM, ~27 MB GPU memory, 68 threads,
-idle CPU 0.9-1.7 % of one core. Screenshot: `results/vials-gpui.png`. Still read-only: no editing,
+idle CPU 0.9-1.7 % of one core. Still read-only: no editing,
 no hiding of desktop items, no tray (see `docs/gpui-migration.md`).
