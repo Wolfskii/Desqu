@@ -26,6 +26,8 @@ pub enum Event {
     Action(String),
     /// "New vial" in the tray menu.
     NewVial,
+    /// "Settings" in the tray menu.
+    Settings,
     /// "Quit" in the tray menu.
     Quit,
 }
@@ -34,6 +36,7 @@ const CLASS: PCWSTR = w!("VialsGpuiTrayWindow");
 const TRAY_MESSAGE: u32 = WM_APP + 1;
 const CMD_NEW: usize = 1;
 const CMD_QUIT: usize = 2;
+const CMD_SETTINGS: usize = 3;
 const COPYDATA_ID: usize = 0x5649_414C; // "VIAL"
 
 static SINK: OnceLock<Mutex<Sender<Event>>> = OnceLock::new();
@@ -114,6 +117,7 @@ fn show_menu(hwnd: HWND) {
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return };
         let _ = AppendMenuW(menu, MF_STRING, CMD_NEW, w!("New vial"));
+        let _ = AppendMenuW(menu, MF_STRING, CMD_SETTINGS, w!("Settings"));
         let _ = AppendMenuW(menu, MF_STRING, CMD_QUIT, w!("Quit Vials"));
         let mut at = POINT::default();
         let _ = GetCursorPos(&mut at);
@@ -123,6 +127,7 @@ fn show_menu(hwnd: HWND) {
         let _ = DestroyMenu(menu);
         match cmd.0 as usize {
             CMD_NEW => send(Event::NewVial),
+            CMD_SETTINGS => send(Event::Settings),
             CMD_QUIT => send(Event::Quit),
             _ => {}
         }

@@ -417,6 +417,10 @@ impl VialView {
         }
         {
             let live = live.clone();
+            entries.push(MenuEntry::new("Settings", move |cx| crate::settings::open(cx, live.engine.clone(), live.revision.clone())));
+        }
+        {
+            let live = live.clone();
             entries.push(MenuEntry::new("Delete vial", move |cx| {
                 if live.engine.delete_vial(&live.vial_id) {
                     bump(&live.revision, cx);

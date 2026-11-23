@@ -291,6 +291,29 @@ impl Engine {
         self.create_vial(PixelRect { left: x, top: y, right: x + size.0, bottom: y + size.1 })
     }
 
+    /// Changes the settings (anything but the vials themselves). Returns whether something changed. Turning
+    /// "hide items on the desktop" on or off hides or shows the vials' items at once.
+    pub fn edit_settings(&self, edit: impl FnOnce(&mut VialsConfig)) -> bool {
+        let before = self.config();
+        let changed = self.apply(|cfg| {
+            edit(cfg);
+            *cfg != before
+        });
+        if changed {
+            let after = self.config();
+            if after.hide_on_desktop {
+                self.ensure_hidden();
+            } else {
+                let _ = self.layer.show(&after.assigned_ids());
+            }
+            if after.context_menu != before.context_menu {
+                let exe = std::env::current_exe().ok();
+                let _ = vials_platform::set_context_menu(if after.context_menu { exe.as_deref().and_then(|p| p.to_str()) } else { None });
+            }
+        }
+        changed
+    }
+
     /// How vials look right now.
     pub fn look(&self) -> crate::theme::Theme {
         let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());

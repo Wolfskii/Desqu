@@ -8,6 +8,7 @@
 
 mod engine;
 mod menu;
+mod settings;
 mod theme;
 mod tray;
 mod view;
@@ -245,6 +246,10 @@ fn main() {
                         tray::Event::Quit => {
                             let _ = cx.update(|cx| cx.quit());
                         }
+                        tray::Event::Settings => {
+                            let (engine, revision) = (engine.clone(), revision.clone());
+                            let _ = cx.update(|cx| settings::open(cx, engine, revision));
+                        }
                         tray::Event::NewVial => {
                             if engine.create_vial_at(None).is_some() {
                                 let revision = revision.clone();
@@ -256,6 +261,10 @@ fn main() {
                                 let revision = revision.clone();
                                 let _ = cx.update(|cx| bump(&revision, cx));
                             }
+                        }
+                        tray::Event::Action(name) if name == "settings" => {
+                            let (engine, revision) = (engine.clone(), revision.clone());
+                            let _ = cx.update(|cx| settings::open(cx, engine, revision));
                         }
                         tray::Event::Action(name) if name == "quit" => {
                             let _ = cx.update(|cx| cx.quit());
