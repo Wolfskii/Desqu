@@ -1,5 +1,6 @@
 //! OS-specific window tweaks. Native code lives only here.
 
+pub mod facts;
 #[cfg(windows)]
 pub mod clipboard;
 #[cfg(windows)]

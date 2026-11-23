@@ -9,13 +9,15 @@ use std::sync::{Arc, Mutex};
 
 use desqu_desktop::DesktopLayer;
 use vials_core::layout::{self, MonitorRef};
-use vials_core::model::{PixelRect, VialsConfig};
+use vials_core::model::{PixelRect, Vial, VialsConfig};
+use vials_core::{clip, rules, sort};
 
 pub struct Engine {
     layer: Arc<dyn DesktopLayer>,
     config: Mutex<VialsConfig>,
     path: PathBuf,
     monitors: Vec<MonitorRef>,
+    watch: Mutex<Option<desqu_desktop::Subscription>>,
 }
 
 impl Engine {
@@ -27,7 +29,7 @@ impl Engine {
             desqu_desktop::DesktopError::OwnedElsewhere => "another Vials or Desqu already owns the desktop".to_string(),
             other => other.to_string(),
         })?;
-        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors });
+        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None) });
         engine.hide_vial_items();
         Ok(engine)
     }
@@ -75,6 +77,7 @@ impl Engine {
     }
 
     /// The items of one vial, in order.
+    #[cfg(test)]
     pub fn vial_items(&self, vial_id: &str) -> Vec<String> {
         let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
         cfg.vial(vial_id).map(|v| v.items.clone()).unwrap_or_default()
@@ -154,6 +157,147 @@ impl Engine {
         self.config.lock().unwrap_or_else(|e| e.into_inner()).vial_of(id).map(|v| v.id.clone())
     }
 
+    /// A copy of the vials as they are now (the window manager compares it with the open windows).
+    pub fn vials(&self) -> Vec<Vial> {
+        self.config.lock().unwrap_or_else(|e| e.into_inner()).vials.iter().filter(|v| !v.inbox).cloned().collect()
+    }
+
+    /// Calls `notify` (on another thread) whenever the desktop's files change.
+    pub fn watch(&self, notify: impl Fn() + Send + 'static) {
+        match self.layer.subscribe(Box::new(move |_| notify())) {
+            Ok(sub) => *self.watch.lock().unwrap_or_else(|e| e.into_inner()) = Some(sub),
+            Err(e) => eprintln!("cannot watch the desktop: {e}"),
+        }
+    }
+
+    /// Takes the desktop's current state into account: new items that match a rule go into their vial,
+    /// vials with a sort keep their order. Returns whether anything changed.
+    pub fn reconcile(&self) -> bool {
+        let Ok(items) = self.layer.items() else { return false };
+        // The desktop keeps listing a deleted file for a few seconds: never put such a ghost in a vial.
+        let items: Vec<_> = items.into_iter().filter(|i| i.id.starts_with("::") || Path::new(&i.id).exists()).collect();
+        let names: std::collections::HashMap<&str, &str> = items.iter().map(|i| (i.id.as_str(), i.name.as_str())).collect();
+        let changed = self.apply(|cfg| {
+            let assignments = rules::assign_new_items(cfg, &items);
+            for (item, vial) in &assignments {
+                cfg.assign(item, Some(vial));
+            }
+            let reordered = sort::apply_orders(cfg, |id| vials_platform::facts::item_facts(id, names.get(id).copied()));
+            !assignments.is_empty() || reordered
+        });
+        // A file that has just appeared may not take the hidden attribute the first time: say it again
+        // for everything that should be hidden and is not.
+        self.ensure_hidden();
+        changed
+    }
+
+    /// Hides the items of vials that are not hidden yet (idempotent).
+    fn ensure_hidden(&self) {
+        let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        if !cfg.hide_on_desktop {
+            return;
+        }
+        let Ok(hidden) = self.layer.hidden() else { return };
+        let hidden: HashSet<String> = hidden.into_iter().collect();
+        let missing: Vec<String> = cfg.assigned_ids().into_iter().filter(|id| !hidden.contains(id)).collect();
+        if !missing.is_empty() {
+            let _ = self.layer.hide(&missing);
+        }
+    }
+
+    /// Orders a vial's items by name, type, modified or size, and keeps that order as items change.
+    pub fn sort_vial(&self, vial_id: &str, key: &str, descending: bool) -> Result<(), String> {
+        let parsed = sort::SortKey::parse(key).ok_or("unknown sort order")?;
+        let names: std::collections::HashMap<String, String> =
+            self.layer.items().map_err(|e| e.to_string())?.into_iter().map(|i| (i.id, i.name)).collect();
+        let mut result = Err("that vial no longer exists".to_string());
+        self.apply(|cfg| {
+            let Some(vial) = cfg.vials.iter_mut().find(|v| v.id == vial_id && !v.inbox) else { return false };
+            let facts: Vec<_> =
+                vial.items.iter().map(|id| vials_platform::facts::item_facts(id, names.get(id).map(String::as_str))).collect();
+            vial.items = sort::sorted_with(&facts, parsed, descending, vial.folders_first);
+            vial.sort_key = Some(key.to_string());
+            vial.sort_desc = descending;
+            result = Ok(());
+            true
+        });
+        result
+    }
+
+    pub fn set_folders_first(&self, vial_id: &str, on: bool) {
+        let names: std::collections::HashMap<String, String> =
+            self.layer.items().map(|v| v.into_iter().map(|i| (i.id, i.name)).collect()).unwrap_or_default();
+        self.apply(|cfg| {
+            let Some(vial) = cfg.vials.iter_mut().find(|v| v.id == vial_id && !v.inbox) else { return false };
+            vial.folders_first = on;
+            sort::apply_orders(cfg, |id| vials_platform::facts::item_facts(id, names.get(id).map(String::as_str)));
+            true
+        });
+    }
+
+    /// Ctrl+V: the clipboard's files come to the Desktop (moved when cut, copied otherwise, by
+    /// Explorer's own file operation) and go into the vial. Returns how many the vial received. Blocks
+    /// until the file operation is done: call it off the UI thread.
+    pub fn paste(&self, vial_id: &str) -> Result<usize, String> {
+        if self.config.lock().unwrap_or_else(|e| e.into_inner()).vial(vial_id).is_none() {
+            return Err("that vial no longer exists".into());
+        }
+        let folders: Vec<String> = desqu_desktop::desktop_folders().iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        let target = folders.first().cloned().ok_or("the Desktop folder was not found")?;
+        let ids: Vec<String> = self.layer.items().map_err(|e| e.to_string())?.into_iter().map(|i| i.id).collect();
+        // A thread of its own: the file operation needs a COM apartment and shows its own dialogs.
+        let items = std::thread::spawn(move || -> Result<Vec<String>, String> {
+            let clipboard = vials_platform::clipboard::files()?.ok_or("There are no files on the clipboard")?;
+            let plan = clip::plan_paste(&clipboard.paths, clipboard.cut, &folders);
+            let mut items = clip::matching_ids(&plan.adopt, &ids);
+            items.extend(vials_platform::clipboard::transfer(&plan.copy_here, false, &target, true)?);
+            items.extend(vials_platform::clipboard::transfer(&plan.transfer, clipboard.cut, &target, false)?);
+            if clipboard.cut {
+                vials_platform::clipboard::clear();
+            }
+            Ok(items)
+        })
+        .join()
+        .map_err(|_| "the paste thread panicked".to_string())??;
+        let count = items.len();
+        if count > 0 {
+            self.apply(|cfg| items.iter().fold(false, |c, id| cfg.assign(id, Some(vial_id)) | c));
+        }
+        Ok(count)
+    }
+
+    /// A new empty vial at a screen rectangle (physical pixels).
+    pub fn create_vial(&self, rect: PixelRect) -> Option<String> {
+        let monitor = layout::monitor_containing(&rect, &self.monitors)?;
+        let normalized = layout::to_normalized(&rect, &monitor.bounds);
+        let name = monitor.name.clone();
+        let mut id = None;
+        self.apply(|cfg| {
+            id = Some(cfg.add_vial(normalized, Some(name)));
+            true
+        });
+        id
+    }
+
+    /// Deletes a vial; its items are back on the desktop.
+    pub fn delete_vial(&self, vial_id: &str) -> bool {
+        self.apply(|cfg| cfg.delete_vial(vial_id))
+    }
+
+    pub fn rename_vial(&self, vial_id: &str, name: &str) -> bool {
+        self.apply(|cfg| cfg.rename_vial(vial_id, name))
+    }
+
+    pub fn set_collapsed(&self, vial_id: &str, collapsed: bool) {
+        self.apply(|cfg| match cfg.vials.iter_mut().find(|v| v.id == vial_id) {
+            Some(v) if v.collapsed != collapsed => {
+                v.collapsed = collapsed;
+                true
+            }
+            _ => false,
+        });
+    }
+
     /// Puts every hidden item back on the desktop.
     pub fn restore(&self) {
         let _ = self.layer.show_all();
@@ -166,8 +310,11 @@ impl Drop for Engine {
     }
 }
 
-/// Needs the real desktop and no other Vials running, and creates two throw-away files on the
-/// Desktop (removed again): `cargo test --release -- --ignored --test-threads=1`.
+/// Need the real desktop and no other Vials running, and create throw-away files on the Desktop
+/// (removed again). The desktop layer is process-wide and a second one started right after the
+/// first was torn down does not see new files, so run each test in its own process, and wait a little
+/// between runs (right after another test deleted its files, Explorer can take a minute to list new ones):
+/// `cargo test --release drop_remove -- --ignored` and `cargo test --release rules_sort -- --ignored`.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,8 +335,8 @@ mod tests {
     #[ignore = "uses the real desktop"]
     fn drop_remove_and_drag_settle_move_items_between_a_vial_and_the_desktop() {
         let desktop = PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join("Desktop");
-        let a = desktop.join("zz-vials-engine-a.txt");
-        let b = desktop.join("zz-vials-engine-b.txt");
+        let a = desktop.join(format!("zz-vials-engine-a-{}.txt", std::process::id()));
+        let b = desktop.join(format!("zz-vials-engine-b-{}.txt", std::process::id()));
         std::fs::write(&a, "a").unwrap();
         std::fs::write(&b, "b").unwrap();
         let dir = std::env::temp_dir().join(format!("vials-engine-test-{}", std::process::id()));
@@ -246,6 +393,115 @@ mod tests {
         });
         unhide_and_delete(&a);
         unhide_and_delete(&b);
+        let _ = std::fs::remove_dir_all(&dir);
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    #[test]
+    #[ignore = "uses the real desktop and the clipboard"]
+    fn rules_sort_paste_and_the_vial_lifecycle_work_together() {
+        use vials_core::model::{ItemMatcher, SortRule};
+        let desktop = PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join("Desktop");
+        let rule_file = desktop.join(format!("zz-vials-rule-b-{}.zzvtest", std::process::id()));
+        let rule_file2 = desktop.join(format!("zz-vials-rule-a-{}.zzvtest", std::process::id()));
+        let source = std::env::temp_dir().join(format!("zz-vials-paste-{}.txt", std::process::id()));
+        std::fs::write(&source, "pasted").unwrap();
+        let dir = std::env::temp_dir().join(format!("vials-engine-test2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join("config.json");
+        let mut cfg = VialsConfig::default();
+        cfg.vials.push(Vial {
+            id: "vial-1".into(),
+            name: "t".into(),
+            monitor: None,
+            rect: NormalizedRect { x: 0.1, y: 0.1, width: 0.1, height: 0.1 },
+            items: vec![],
+            collapsed: false,
+            inbox: false,
+            sort_key: None,
+            sort_desc: false,
+            folders_first: false,
+        });
+        cfg.rules.push(SortRule {
+            id: "r1".into(),
+            name: "test".into(),
+            enabled: true,
+            matcher: ItemMatcher::Extension("zzvtest".into()),
+            target_vial: "vial-1".into(),
+        });
+        cfg.save(&cfg_path).unwrap();
+        let pasted: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let engine = Engine::start(&cfg_path, cfg, crate::win::monitors()).expect("engine");
+            std::fs::write(&rule_file, "b").unwrap();
+            std::fs::write(&rule_file2, "a").unwrap();
+
+            // Auto-sort: new desktop files that match the rule join the vial (the desktop needs a moment).
+            let mut got = 0;
+            for _ in 0..120 {
+                engine.reconcile();
+                got = engine.vial_items("vial-1").len();
+                if got == 2 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            assert_eq!(got, 2, "both files match the rule");
+            for _ in 0..20 {
+                engine.reconcile();
+                if hidden(&rule_file) && hidden(&rule_file2) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+            assert!(hidden(&rule_file) && hidden(&rule_file2));
+
+            // Sort by name: a before b, and the order is kept.
+            engine.sort_vial("vial-1", "name", false).unwrap();
+            let names: Vec<String> = engine.vial_items("vial-1").iter().map(|i| crate::view::display_name(i)).collect();
+            assert!(names[0].contains("rule-a") && names[1].contains("rule-b"), "{names:?}");
+            engine.sort_vial("vial-1", "name", true).unwrap();
+            assert!(crate::view::display_name(&engine.vial_items("vial-1")[0]).contains("rule-b"));
+            assert!(engine.sort_vial("vial-1", "nonsense", false).is_err());
+
+            // Paste: a file copied to the clipboard arrives on the Desktop and in the vial.
+            vials_platform::clipboard::put_files(&[source.to_string_lossy().into_owned()], false).unwrap();
+            assert_eq!(engine.paste("vial-1").unwrap(), 1);
+            let ids = engine.vial_items("vial-1");
+            assert_eq!(ids.len(), 3, "{ids:?}");
+            let new = ids.iter().find(|i| i.contains("zz-vials-paste")).expect("pasted item is in the vial");
+            *pasted.lock().unwrap() = Some(PathBuf::from(new));
+            assert!(Path::new(new).exists() && Path::new(new).starts_with(&desktop));
+
+            // Vial lifecycle.
+            let rect = PixelRect { left: 200, top: 200, right: 700, bottom: 600 };
+            let id = engine.create_vial(rect).expect("a new vial on a monitor");
+            assert_eq!(engine.vials().len(), 2);
+            assert!(engine.rename_vial(&id, "Renamed"));
+            engine.set_collapsed(&id, true);
+            let saved = VialsConfig::load(&cfg_path).unwrap();
+            let v = saved.vial(&id).unwrap();
+            assert_eq!((v.name.as_str(), v.collapsed), ("Renamed", true));
+            assert!(engine.delete_vial("vial-1"));
+            assert!(!hidden(&rule_file), "deleting a vial gives its items back to the desktop");
+            assert_eq!(engine.vials().len(), 1);
+        }));
+        for p in [&rule_file, &rule_file2] {
+            unhide_and_delete(p);
+        }
+        let stem = source.file_stem().unwrap().to_string_lossy().into_owned();
+        if let Ok(entries) = std::fs::read_dir(&desktop) {
+            for entry in entries.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(&stem)) {
+                unhide_and_delete(&entry.path());
+            }
+        }
+        if let Some(p) = pasted.lock().unwrap().take() {
+            unhide_and_delete(&p);
+        }
+        let _ = std::fs::remove_file(&source);
         let _ = std::fs::remove_dir_all(&dir);
         if let Err(e) = result {
             std::panic::resume_unwind(e);

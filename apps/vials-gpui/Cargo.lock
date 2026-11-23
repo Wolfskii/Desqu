@@ -5927,6 +5927,7 @@ name = "vials-platform"
 version = "0.3.0"
 dependencies = [
  "desqu-desktop",
+ "vials-core",
  "windows 0.62.2",
  "windows-core 0.62.2",
 ]

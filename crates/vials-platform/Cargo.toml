@@ -11,6 +11,7 @@ name = "vials_platform"
 
 [dependencies]
 desqu-desktop = { path = "../desqu-desktop" }
+vials-core = { path = "../vials-core" }
 
 [target.'cfg(windows)'.dependencies]
 windows-core = "0.62"

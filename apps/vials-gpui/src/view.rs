@@ -1,21 +1,30 @@
-//! One vial's window content: header (drag area, name, collapse), then a grid of its items.
+//! One vial's window content: header (name, collapse), then a grid of its items.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
 use gpui::{
-    div, img, prelude::*, px, rgba, white, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
+    div, img, prelude::*, px, rgba, white, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
     ImageFormat, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
-    Render, SharedString, Window, WindowControlArea,
+    Render, SharedString, Window,
 };
 use vials_core::model::PixelRect;
 
 use crate::engine::Engine;
+use crate::menu::{self, MenuEntry};
 use crate::win;
 
-/// Bumped whenever the config changed (an item came or left a vial), so every vial window reloads.
+/// Bumped whenever the config changed (an item came or left a vial, a vial was added...), so every
+/// vial window reloads and the set of windows is brought in line.
 pub struct Revision(pub u64);
+
+pub fn bump(revision: &Entity<Revision>, cx: &mut App) {
+    revision.update(cx, |r, cx| {
+        r.0 += 1;
+        cx.notify();
+    });
+}
 
 /// What a vial window needs to change things; absent in the read-only viewer.
 #[derive(Clone)]
@@ -37,8 +46,16 @@ pub struct Placement {
     pub collapsed_height: i32,
 }
 
-/// Pointer movement (px) before a press on an item turns into a drag.
+/// Pointer movement (px) before a press turns into a drag.
 const DRAG_THRESHOLD: f32 = 5.0;
+
+/// A press on the title: a click renames, a drag moves the window.
+struct HeaderPress {
+    cursor: (i32, i32),
+    window: PixelRect,
+    placement: PixelRect,
+    moved: bool,
+}
 
 pub struct VialView {
     name: SharedString,
@@ -47,6 +64,12 @@ pub struct VialView {
     icons_requested: HashSet<String>,
     selected: Option<usize>,
     press: Option<(usize, Point<Pixels>)>,
+    header_press: Option<HeaderPress>,
+    /// The name being typed while the vial is renamed.
+    editing: Option<String>,
+    /// Nothing typed yet: the old name is shown selected, and typing replaces it.
+    rename_fresh: bool,
+    wants_keyboard: bool,
     collapsed: bool,
     placement: Placement,
     save_gen: u64,
@@ -74,32 +97,45 @@ impl VialView {
         live: Option<Live>,
         cx: &mut Context<Self>,
     ) -> Self {
-        if let Some(live) = live.clone() {
-            // A moved or resized window is saved once it has stayed still for a moment.
-            let (engine, vial_id) = (live.engine.clone(), live.vial_id.clone());
-            cx.observe_window_bounds(window, move |this, window, cx| {
-                let Some(hwnd) = win::hwnd(window) else { return };
-                this.save_gen += 1;
-                let generation = this.save_gen;
-                let (engine, vial_id) = (engine.clone(), vial_id.clone());
-                cx.spawn(async move |this, cx| {
-                    cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
-                    if this.update(cx, |view, _| view.save_gen == generation).unwrap_or(false) {
-                        if let Some(rect) = win::window_rect(hwnd) {
-                            engine.persist_rect(&vial_id, rect);
-                        }
+        // Keeps the full-size rectangle current when the user resizes the window, and (live) saves a moved
+        // or resized window once it has stayed still for a moment.
+        let saver = live.clone();
+        cx.observe_window_bounds(window, move |this, window, cx| {
+            let Some(hwnd) = win::hwnd(window) else { return };
+            if let Some(now) = win::window_rect(hwnd) {
+                if this.collapsed {
+                    this.placement.rect.left = now.left;
+                    this.placement.rect.top = now.top;
+                    this.placement.rect.right = now.right;
+                } else {
+                    this.placement.rect = now;
+                }
+            }
+            let Some(live) = saver.clone() else { return };
+            this.save_gen += 1;
+            let generation = this.save_gen;
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                if this.update(cx, |view, _| view.save_gen == generation).unwrap_or(false) {
+                    if let Some(rect) = win::window_rect(hwnd) {
+                        live.engine.persist_rect(&live.vial_id, rect);
                     }
-                })
-                .detach();
+                }
             })
             .detach();
+        })
+        .detach();
+        if let Some(live) = live.clone() {
             // Items that came or left (any vial window, or the desktop) show up here too.
             cx.observe(&live.revision, |this, _, cx| this.reload(cx)).detach();
             // The window only takes the keyboard while it is being used.
-            cx.observe_window_activation(window, |_, window, _| {
+            cx.observe_window_activation(window, |this, window, cx| {
                 if !window.is_window_active() {
                     if let Some(hwnd) = win::hwnd(window) {
                         win::release_keyboard(hwnd);
+                    }
+                    if this.editing.take().is_some() {
+                        cx.notify();
                     }
                 }
             })
@@ -112,6 +148,10 @@ impl VialView {
             icons_requested: HashSet::new(),
             selected: None,
             press: None,
+            header_press: None,
+            editing: None,
+            rename_fresh: false,
+            wants_keyboard: false,
             collapsed,
             placement,
             save_gen: 0,
@@ -139,8 +179,11 @@ impl VialView {
 
     fn reload(&mut self, cx: &mut Context<Self>) {
         let Some(live) = &self.live else { return };
-        let ids = live.engine.vial_items(&live.vial_id);
-        self.set_items(ids, cx);
+        if let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) {
+            self.name = vial.name.clone().into();
+            let ids = vial.items;
+            self.set_items(ids, cx);
+        }
         cx.notify();
     }
 
@@ -193,10 +236,7 @@ impl VialView {
     /// Tells every vial window that the config changed.
     fn announce(&self, cx: &mut Context<Self>) {
         if let Some(live) = &self.live {
-            live.revision.update(cx, |r, cx| {
-                r.0 += 1;
-                cx.notify();
-            });
+            bump(&live.revision, cx);
         }
     }
 
@@ -209,10 +249,14 @@ impl VialView {
             }
             win::place_at_bottom(hwnd, &r);
         }
+        if let Some(live) = &self.live {
+            live.engine.set_collapsed(&live.vial_id, self.collapsed);
+        }
         cx.notify();
     }
 
-    /// A click in the vial gives it the keyboard (for Delete, Ctrl+C); it hands it back when it loses focus.
+    /// A click in the vial gives it the keyboard (for typing a name, Delete, Ctrl+C); it hands it back
+    /// when it loses focus.
     fn take_keyboard(&mut self, window: &mut Window) {
         if self.live.is_none() {
             return;
@@ -275,19 +319,186 @@ impl VialView {
         .detach();
     }
 
+    /// Ctrl+V: files from the clipboard come to the Desktop and into this vial. The file operation
+    /// blocks, so it runs off the UI thread.
+    fn paste(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        cx.spawn(async move |this, cx| {
+            let engine = live.engine.clone();
+            let vial = live.vial_id.clone();
+            let result = cx.background_executor().spawn(async move { engine.paste(&vial) }).await;
+            if matches!(result, Ok(n) if n > 0) {
+                let _ = this.update(cx, |view, cx| view.announce(cx));
+            }
+        })
+        .detach();
+    }
+
+    fn begin_rename(&mut self, cx: &mut Context<Self>) {
+        if self.live.is_none() {
+            return;
+        }
+        self.editing = Some(self.name.to_string());
+        self.rename_fresh = true;
+        self.wants_keyboard = true;
+        cx.notify();
+    }
+
+    fn finish_rename(&mut self, save: bool, cx: &mut Context<Self>) {
+        let Some(text) = self.editing.take() else { return };
+        if save {
+            if let Some(live) = &self.live {
+                if live.engine.rename_vial(&live.vial_id, &text) {
+                    self.announce(cx);
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// The vial's own menu: rename, sort, folders first, new vial, delete.
+    fn open_vial_menu(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) else { return };
+        let Some(at) = win::cursor_position() else { return };
+        let weak = cx.weak_entity();
+
+        let rename = {
+            let weak = weak.clone();
+            MenuEntry::new("Rename", move |cx| {
+                let _ = weak.update(cx, |view, cx| view.begin_rename(cx));
+            })
+        };
+        let mut entries = vec![rename, MenuEntry::separator()];
+        for (key, label) in [("name", "Sort by name"), ("type", "Sort by type"), ("modified", "Sort by date modified"), ("size", "Sort by size")] {
+            let on = vial.sort_key.as_deref() == Some(key);
+            let descending = on && !vial.sort_desc; // choosing the active sort again reverses it
+            let live = live.clone();
+            let label = if on { format!("{label} ({})", if vial.sort_desc { "descending" } else { "ascending" }) } else { label.to_string() };
+            entries.push(
+                MenuEntry::new(label, move |cx| {
+                    let _ = live.engine.sort_vial(&live.vial_id, key, descending);
+                    bump(&live.revision, cx);
+                })
+                .checked(on),
+            );
+        }
+        {
+            let live = live.clone();
+            let on = !vial.folders_first;
+            entries.push(
+                MenuEntry::new("Folders first", move |cx| {
+                    live.engine.set_folders_first(&live.vial_id, on);
+                    bump(&live.revision, cx);
+                })
+                .checked(vial.folders_first),
+            );
+        }
+        entries.push(MenuEntry::separator());
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New vial here", move |cx| {
+                let scale = win::monitors()
+                    .iter()
+                    .find(|m| at.0 >= m.bounds.left && at.0 < m.bounds.right && at.1 >= m.bounds.top && at.1 < m.bounds.bottom)
+                    .map_or(1.0, |m| m.scale);
+                let (w, h) = ((380.0 * scale) as i32, (260.0 * scale) as i32);
+                let rect = PixelRect { left: at.0, top: at.1, right: at.0 + w, bottom: at.1 + h };
+                if live.engine.create_vial(rect).is_some() {
+                    bump(&live.revision, cx);
+                }
+            }));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("Delete vial", move |cx| {
+                if live.engine.delete_vial(&live.vial_id) {
+                    bump(&live.revision, cx);
+                }
+            }));
+        }
+        menu::open(cx, at, entries);
+    }
+
     fn on_key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) {
-        let Some(id) = self.selected.and_then(|i| self.items.get(i)).map(|it| it.id.clone()) else { return };
         let k = &e.keystroke;
+        if let Some(text) = self.editing.as_mut() {
+            match k.key.as_str() {
+                "enter" => self.finish_rename(true, cx),
+                "escape" => self.finish_rename(false, cx),
+                "backspace" => {
+                    if std::mem::take(&mut self.rename_fresh) {
+                        text.clear();
+                    } else {
+                        text.pop();
+                    }
+                    cx.notify();
+                }
+                _ => {
+                    if let Some(typed) = k.key_char.as_ref().filter(|_| !k.modifiers.control && !k.modifiers.alt) {
+                        if std::mem::take(&mut self.rename_fresh) {
+                            text.clear();
+                        }
+                        if text.chars().count() < 80 {
+                            text.push_str(typed);
+                            cx.notify();
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        if k.modifiers.control && k.key == "v" {
+            self.paste(cx);
+            return;
+        }
+        let Some(id) = self.selected.and_then(|i| self.items.get(i)).map(|it| it.id.clone()) else { return };
         if k.key == "delete" {
             self.remove(&id, cx);
         } else if k.modifiers.control && (k.key == "c" || k.key == "x") {
             let _ = vials_platform::clipboard::put_files(&[id], k.key == "x");
         }
     }
+
+    fn on_mouse_move(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let left = e.pressed_button == Some(MouseButton::Left);
+        if let Some(press) = self.header_press.as_mut() {
+            if !left {
+                self.header_press = None;
+            } else if let (Some(now), Some(hwnd)) = (win::cursor_position(), win::hwnd(window)) {
+                let (dx, dy) = (now.0 - press.cursor.0, now.1 - press.cursor.1);
+                if press.moved || ((dx * dx + dy * dy) as f32).sqrt() > DRAG_THRESHOLD {
+                    press.moved = true;
+                    let mut r = press.window;
+                    r.left += dx;
+                    r.right += dx;
+                    r.top += dy;
+                    r.bottom += dy;
+                    win::place_at_bottom(hwnd, &r);
+                }
+            }
+            return;
+        }
+        if let Some((index, start)) = self.press {
+            if left {
+                let (dx, dy) = (f32::from(e.position.x - start.x), f32::from(e.position.y - start.y));
+                if (dx * dx + dy * dy).sqrt() > DRAG_THRESHOLD {
+                    self.press = None;
+                    self.start_drag(index, cx);
+                }
+            } else {
+                self.press = None;
+            }
+        }
+    }
 }
 
 impl Render for VialView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.wants_keyboard {
+            self.wants_keyboard = false;
+            self.take_keyboard(window);
+        }
         let chevron = div()
             .id("collapse")
             .w(px(30.))
@@ -300,7 +511,22 @@ impl Render for VialView {
             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.toggle_collapsed(window, cx)))
             .child(if self.collapsed { "v" } else { "^" });
 
+        let title = match &self.editing {
+            Some(text) => div()
+                .px_2()
+                .h(px(24.))
+                .flex()
+                .items_center()
+                .rounded(px(4.))
+                .border_1()
+                .border_color(rgba(0xaad2ffd9))
+                .bg(rgba(0x00000040))
+                .child(if self.rename_fresh { div().px_1().rounded(px(2.)).bg(rgba(0x78afff80)).child(text.clone()).into_any_element() } else { div().child(format!("{text}|")).into_any_element() })
+                .into_any_element(),
+            None => div().child(self.name.clone()).into_any_element(),
+        };
         let header = div()
+            .id("header")
             .h(px(34.))
             .flex_none()
             .flex()
@@ -308,24 +534,67 @@ impl Render for VialView {
             .border_b_1()
             .border_color(rgba(0xffffff24))
             .child(
-                // The drag area: Windows treats it as a title bar, so the window moves with the mouse.
+                // Press and drag moves the window, a plain click renames it, right click opens the menu.
                 div()
+                    .id("title")
                     .flex_1()
                     .h_full()
                     .px_3()
                     .flex()
                     .items_center()
-                    .window_control_area(WindowControlArea::Drag)
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
-                    .child(self.name.clone()),
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, window, _| {
+                            if this.editing.is_some() {
+                                return;
+                            }
+                            if let (Some(cursor), Some(hwnd)) = (win::cursor_position(), win::hwnd(window)) {
+                                if let Some(rect) = win::window_rect(hwnd) {
+                                    this.header_press = Some(HeaderPress { cursor, window: rect, placement: this.placement.rect, moved: false });
+                                }
+                            }
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseUpEvent, _, cx| {
+                            if let Some(press) = this.header_press.take() {
+                                if press.moved {
+                                    // Keep the full-size rectangle where the drag ended.
+                                    let now = win::cursor_position().unwrap_or(press.cursor);
+                                    let (dx, dy) = (now.0 - press.cursor.0, now.1 - press.cursor.1);
+                                    let mut r = press.placement;
+                                    r.left += dx;
+                                    r.right += dx;
+                                    r.top += dy;
+                                    r.bottom += dy;
+                                    this.placement.rect = r;
+                                } else {
+                                    this.begin_rename(cx);
+                                }
+                            }
+                        }),
+                    )
+                    .on_mouse_down(MouseButton::Right, cx.listener(|this, _: &MouseDownEvent, _, cx| this.open_vial_menu(cx)))
+                    .child(title),
             )
             .child(chevron);
 
         let selected = self.selected;
         let live = self.live.is_some();
-        let grid = div().flex_1().min_h_0().p_2().flex().flex_wrap().content_start().gap_1().children(
-            self.items.iter().enumerate().map(|(i, item)| {
+        let grid = div()
+            .id("grid")
+            .flex_1()
+            .min_h_0()
+            .p_2()
+            .flex()
+            .flex_wrap()
+            .content_start()
+            .gap_1()
+            .on_mouse_down(MouseButton::Right, cx.listener(|this, _: &MouseDownEvent, _, cx| this.open_vial_menu(cx)))
+            .children(self.items.iter().enumerate().map(|(i, item)| {
                 let id = item.id.clone();
                 let icon = match self.icons.get(&item.id) {
                     Some(image) => img(image.clone()).size(px(32.)).into_any_element(),
@@ -363,6 +632,7 @@ impl Render for VialView {
                         cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                             this.selected = Some(i);
                             this.item_menu(i, cx);
+                            cx.stop_propagation();
                             cx.notify();
                         }),
                     )
@@ -394,27 +664,19 @@ impl Render for VialView {
                                 .child("x"),
                         )
                     })
-            }),
-        );
+            }));
 
         div()
             .id("vial")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| this.on_key(e, cx)))
-            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
-                if let Some((index, start)) = this.press {
-                    if e.pressed_button == Some(MouseButton::Left) {
-                        let (dx, dy) = (f32::from(e.position.x - start.x), f32::from(e.position.y - start.y));
-                        if (dx * dx + dy * dy).sqrt() > DRAG_THRESHOLD {
-                            this.press = None;
-                            this.start_drag(index, cx);
-                        }
-                    } else {
-                        this.press = None;
-                    }
-                }
-            }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _: &MouseUpEvent, _, _| this.press = None))
+            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| this.on_mouse_move(e, window, cx)))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseUpEvent, _, _| {
+                    this.press = None;
+                }),
+            )
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.drop_paths(paths, cx)))
             .drag_over::<ExternalPaths>(|s, _, _, _| s.border_color(rgba(0xaad2ffd9)).bg(rgba(0x78afff30)))
             .size_full()

@@ -263,6 +263,47 @@ impl VialsConfig {
         true
     }
 
+    /// Adds an empty vial at `rect` on `monitor` and returns its id. Names and ids are the smallest unused.
+    pub fn add_vial(&mut self, rect: NormalizedRect, monitor: Option<String>) -> String {
+        let id = crate::gesture::next_id(self.vials.iter().map(|v| v.id.as_str()));
+        let name = crate::gesture::next_name(self.vials.iter().map(|v| v.name.as_str()));
+        self.vials.push(Vial {
+            id: id.clone(),
+            name,
+            monitor,
+            rect: rect.sanitized(),
+            items: Vec::new(),
+            collapsed: false,
+            inbox: false,
+            sort_key: None,
+            sort_desc: false,
+            folders_first: false,
+        });
+        id
+    }
+
+    /// Deletes a vial; its items go back on the desktop. The built-in Desktop vial cannot be deleted.
+    pub fn delete_vial(&mut self, id: &str) -> bool {
+        let before = self.vials.len();
+        self.vials.retain(|v| v.id != id || v.inbox);
+        self.vials.len() != before
+    }
+
+    /// Renames a vial (trimmed, 1..=80 characters). Returns whether the name changed.
+    pub fn rename_vial(&mut self, id: &str, name: &str) -> bool {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 80 {
+            return false;
+        }
+        match self.vials.iter_mut().find(|v| v.id == id && !v.inbox) {
+            Some(v) if v.name != name => {
+                v.name = name.to_string();
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Every item id held by any vial.
     pub fn assigned_ids(&self) -> Vec<String> {
         self.vials.iter().flat_map(|v| v.items.iter().cloned()).collect()
@@ -490,6 +531,23 @@ mod tests {
         let cfg: VialsConfig = serde_json::from_str(r#"{"theme":"fluent"}"#).unwrap();
         assert_eq!(cfg.theme, VialTheme::Fluent);
         assert!(serde_json::to_string(&cfg).unwrap().contains("\"theme\":\"fluent\""));
+    }
+
+    #[test]
+    fn vials_can_be_added_renamed_and_deleted() {
+        let mut cfg = VialsConfig::default();
+        let rect = NormalizedRect { x: 0.1, y: 0.1, width: 0.2, height: 0.2 };
+        let a = cfg.add_vial(rect, Some("D1".into()));
+        let b = cfg.add_vial(rect, None);
+        assert_eq!((a.as_str(), b.as_str()), ("vial-1", "vial-2"));
+        assert_eq!(cfg.vial("vial-2").unwrap().name, "Vial 2");
+        assert!(cfg.rename_vial("vial-1", "  Work  "));
+        assert!(!cfg.rename_vial("vial-1", "Work"), "same name: no change");
+        assert!(!cfg.rename_vial("vial-1", "   "), "empty names are refused");
+        cfg.assign("C:/f.txt", Some("vial-1"));
+        assert!(cfg.delete_vial("vial-1"));
+        assert!(cfg.vial_of("C:/f.txt").is_none(), "its items are free again");
+        assert!(!cfg.delete_vial("vial-1"));
     }
 
     #[test]

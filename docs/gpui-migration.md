@@ -20,8 +20,8 @@ The UI is the only thing that changes. Everything that is not UI stays Rust and 
 | --- | --- | --- |
 | 1 | Read-only viewer: real config, real positions, real icons, blur, rounded, tool window, drag by header, collapse, double-click opens | done |
 | 2 | Own engine for the GPUI app (not a refactor of the Tauri one, to keep it shipping safely): `--live` owns the desktop layer, hides items of vials, restores on exit or from the journal after a crash, saves window moves. Test: `spikes/gpui-vials/live-test.ps1` | done |
-| 3a | Editing, first half: drop files in, take an item out (x on hover, Delete), drag out to Explorer and the desktop, Explorer's item menu (right-click), Ctrl+C / Ctrl+X, window takes the keyboard only while used. Engine logic is tested (`cargo test --release -- --ignored --test-threads=1` in `apps/vials-gpui`); drop, drag and menu still need a hand test | done, hand test pending |
-| 3b | Editing, second half: paste (Ctrl+V), sort, auto-sort rules, rename a vial (needs a text field), new / delete vial | todo |
+| 3a | Editing, first half: drop files in, take an item out (x on hover, Delete), drag out to Explorer and the desktop, Explorer's item menu (right-click), Ctrl+C / Ctrl+X, window takes the keyboard only while used | done, drop and drag-out still need a hand test |
+| 3b | Editing, second half: the vial menu (right-click title or empty space: rename, sort by name/type/date/size, folders first, new vial, delete vial), rename by clicking the title, move by dragging the title, Ctrl+V paste, auto-sort by rules on desktop changes. Tested with real windows: `spikes/gpui-vials/ui-smoke.ps1` (moves your pointer for a few seconds) and the ignored engine tests | done |
 | 4 | Create-by-dragging-a-box (mouse hook), desktop right-click entry, tray icon | todo |
 | 5 | Settings window, rules window, themes (Glass, Classic, Fluent) | todo |
 | 6 | Liquid glass: wallpaper shader needs a custom wgpu pass; GPUI does not expose one | todo, hardest |

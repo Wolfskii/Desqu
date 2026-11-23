@@ -108,9 +108,50 @@ pub fn sorted_with(items: &[ItemFacts], key: SortKey, descending: bool, folders_
     here.into_iter().chain(gone).map(|i| i.id.clone()).collect()
 }
 
+/// Keeps every vial's items in the order of the sort chosen for it (and its folders-first setting), so
+/// items that arrive later land where the sort puts them. `facts` reads one item (see the platform
+/// crate). Returns whether any vial's order changed.
+pub fn apply_orders(cfg: &mut crate::model::VialsConfig, facts: impl Fn(&str) -> ItemFacts) -> bool {
+    let mut changed = false;
+    for vial in cfg.vials.iter_mut().filter(|v| !v.inbox) {
+        let Some(key) = vial.sort_key.as_deref().and_then(SortKey::parse) else { continue };
+        let all: Vec<ItemFacts> = vial.items.iter().map(|id| facts(id)).collect();
+        let order = sorted_with(&all, key, vial.sort_desc, vial.folders_first);
+        if order != vial.items {
+            vial.items = order;
+            changed = true;
+        }
+    }
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_orders_reorders_only_vials_that_have_a_sort() {
+        use crate::model::{NormalizedRect, Vial, VialsConfig};
+        let vial = |id: &str, key: Option<&str>, items: &[&str]| Vial {
+            id: id.into(),
+            name: id.into(),
+            monitor: None,
+            rect: NormalizedRect { x: 0.0, y: 0.0, width: 0.1, height: 0.1 },
+            items: items.iter().map(|s| s.to_string()).collect(),
+            collapsed: false,
+            inbox: false,
+            sort_key: key.map(str::to_string),
+            sort_desc: false,
+            folders_first: false,
+        };
+        let mut cfg = VialsConfig::default();
+        cfg.vials = vec![vial("a", Some("name"), &["c.txt", "a.txt", "b.txt"]), vial("b", None, &["z.txt", "y.txt"])];
+        let facts = |id: &str| file(id, "txt", 1, 1);
+        assert!(apply_orders(&mut cfg, facts));
+        assert_eq!(cfg.vials[0].items, ["a.txt", "b.txt", "c.txt"]);
+        assert_eq!(cfg.vials[1].items, ["z.txt", "y.txt"]);
+        assert!(!apply_orders(&mut cfg, facts), "already in order: nothing changes");
+    }
 
     fn file(id: &str, ext: &str, modified: u64, size: u64) -> ItemFacts {
         ItemFacts {
