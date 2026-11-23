@@ -38,6 +38,7 @@ fn config_path() -> PathBuf {
 }
 
 fn main() {
+    desqu_native_shell::stdio::protect();
     let action = std::env::args().find_map(|a| a.strip_prefix("--action=").map(str::to_string));
     let autostarted = std::env::args().any(|a| a == "--autostart");
     // One running copy: a second launch asks it to show its window (or to do its `--action`).

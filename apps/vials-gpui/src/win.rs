@@ -137,13 +137,19 @@ pub fn window_rect_of(raw: isize) -> Option<PixelRect> {
     window_rect(HWND(raw as *mut std::ffi::c_void))
 }
 
-/// Opens a file, folder or shortcut like a double click on the desktop.
+/// Opens a file, folder or shortcut like a double click on the desktop. ShellExecute runs its own
+/// message loop while it waits, which re-enters GPUI's window procedure in the middle of an event and
+/// aborts the program ("RefCell already borrowed"), so it runs on a thread of its own.
 pub fn open_path(path: &str) {
     let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
-    // SAFETY: NUL-terminated buffers that outlive the call.
-    unsafe {
-        ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
-    }
+    std::thread::spawn(move || {
+        // SAFETY: a COM apartment for this thread, and NUL-terminated buffers that outlive the call.
+        unsafe {
+            let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
+            ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+            windows::Win32::System::Com::CoUninitialize();
+        }
+    });
 }
 
 /// Gives a window the tool-window style and takes it off the taskbar and Task View. The taskbar only
