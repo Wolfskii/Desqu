@@ -3,7 +3,7 @@
 
 use screenbound_module::core::browser::{normalize_host, FullscreenMode, SitePattern, SiteRule};
 use screenbound_module::core::config::{AppConfig, AppGroup};
-use screenbound_module::core::rules::{Action, Matcher, RuleScope, WindowRule};
+use screenbound_module::core::rules::{Action, BorderlessTarget, Matcher, RuleScope, WindowRule};
 use screenbound_module::core::window::ChromeMode;
 
 const COLORS: [&str; 6] = ["#5b9cff", "#47c28a", "#f2a65a", "#e06c8b", "#a78bfa", "#4fd1d9"];
@@ -76,8 +76,15 @@ pub fn scope_label(cfg: &AppConfig, scope: &RuleScope) -> String {
 
 /// A rule that keeps fullscreen windows of the chosen apps inside a zone. Returns its id.
 pub fn add_rule(cfg: &mut AppConfig, name: &str, scope: &Scope, zone_id: &str, chrome: ChromeMode) -> Option<String> {
+    if !cfg.zones.iter().any(|z| z.id == zone_id) {
+        return None;
+    }
+    push_rule(cfg, name, scope, Action::FullscreenZone { zone_id: zone_id.to_string(), chrome, use_snapped_zone: true })
+}
+
+fn push_rule(cfg: &mut AppConfig, name: &str, scope: &Scope, action: Action) -> Option<String> {
     let name = name.trim();
-    if name.is_empty() || !cfg.zones.iter().any(|z| z.id == zone_id) {
+    if name.is_empty() {
         return None;
     }
     let scope = match scope {
@@ -92,9 +99,26 @@ pub fn add_rule(cfg: &mut AppConfig, name: &str, scope: &Scope, zone_id: &str, c
         enabled: true,
         matcher: Matcher::Any(vec![]),
         scope: Some(scope),
-        actions: vec![Action::FullscreenZone { zone_id: zone_id.to_string(), chrome, use_snapped_zone: true }],
+        actions: vec![action],
     });
     Some(id)
+}
+
+/// Where a borderless window is placed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fill {
+    Monitor,
+    Zone,
+}
+
+/// A rule that turns a windowed (framed) window of the chosen apps into a borderless one filling the
+/// monitor or the zone. Returns its id.
+pub fn add_borderless_rule(cfg: &mut AppConfig, name: &str, scope: &Scope, fill: Fill, topmost: bool) -> Option<String> {
+    let target = match fill {
+        Fill::Monitor => BorderlessTarget::Monitor,
+        Fill::Zone => BorderlessTarget::Zone { zone_id: cfg.zones.first()?.id.clone() },
+    };
+    push_rule(cfg, name, scope, Action::Borderless { target, topmost })
 }
 
 pub fn delete_rule(cfg: &mut AppConfig, id: &str) -> bool {
@@ -124,7 +148,13 @@ pub fn rule_summary(cfg: &AppConfig, rule: &WindowRule) -> String {
                 let zone = cfg.zones.iter().find(|z| &z.id == zone_id).map_or("a zone that is gone", |z| z.name.as_str());
                 format!("fullscreen goes into {zone}{}", if *chrome == ChromeMode::Hide { " without title bar" } else { "" })
             }
-            _ => "makes a windowed app borderless".to_string(),
+            Action::Borderless { target, topmost } => {
+                let place = match target {
+                    BorderlessTarget::Monitor => "the monitor".to_string(),
+                    BorderlessTarget::Zone { zone_id } => cfg.zones.iter().find(|z| &z.id == zone_id).map_or("a zone that is gone".to_string(), |z| z.name.clone()),
+                };
+                format!("a windowed app becomes borderless over {place}{}", if *topmost { ", kept on top" } else { "" })
+            }
         })
         .collect();
     format!("{who}: {}", what.join("; "))
@@ -267,6 +297,11 @@ mod tests {
         assert_eq!(rule_summary(&cfg, rule), "group Games: fullscreen goes into 75% Left without title bar");
         assert!(set_rule_enabled(&mut cfg, &id, false) && !set_rule_enabled(&mut cfg, &id, false));
         assert!(delete_rule(&mut cfg, &id) && !delete_rule(&mut cfg, &id));
+        let b = add_borderless_rule(&mut cfg, "Windowed games", &Scope::All, Fill::Zone, true).unwrap();
+        let rule = cfg.rules.iter().find(|r| r.id == b).unwrap();
+        assert_eq!(rule_summary(&cfg, rule), "every app that is on: a windowed app becomes borderless over 75% Left, kept on top");
+        assert!(add_borderless_rule(&mut cfg, "Monitor", &Scope::All, Fill::Monitor, false).is_some());
+        assert!(add_borderless_rule(&mut cfg, "", &Scope::All, Fill::Monitor, false).is_none());
         assert!(cfg.clone().validated().is_ok());
     }
 

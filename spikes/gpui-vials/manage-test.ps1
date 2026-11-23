@@ -63,9 +63,9 @@ try {
     Click 136 79
     Snap 3
     $res.rulesTab = $true
-    Click 238 187; Click 160 257; TypeText 'gamerule'; Click 339 257
+    Click 238 187; Click 358 248; Click 211 284; Click 160 320; TypeText "gamerule"; Click 339 320
     $rule = @((Cfg).rules) | Where-Object { $_.name -like 'gamerule*' } | Select-Object -First 1
-    $res.rule = if ($rule) { "$($rule.scope.type): $(($rule.scope.group_ids) -join ',')" } else { 'none' }
+    $res.rule = if ($rule) { "$($rule.scope.type): $(($rule.scope.group_ids) -join [char]44) -> $($rule.actions[0].type) $($rule.actions[0].target.type)" } else { 'none' }
     Snap 4
     Click 208 79
     Snap 5

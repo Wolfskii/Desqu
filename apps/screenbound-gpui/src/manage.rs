@@ -34,7 +34,16 @@ struct ManageView {
     site: Entity<TextField>,
     scope: Scope,
     chrome: ChromeMode,
+    effect: Effect,
+    fill: m::Fill,
+    topmost: bool,
     site_mode: FullscreenMode,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Effect {
+    Fullscreen,
+    Borderless,
 }
 
 fn now_ms() -> u64 {
@@ -149,17 +158,29 @@ impl Render for ManageView {
                         }))
                     });
                 let scope = self.scope.clone();
-                let chrome = self.chrome;
+                let (chrome, effect, fill, topmost) = (self.chrome, self.effect, self.fill, self.topmost);
                 div()
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .child(dim("Rules keep fullscreen windows of the apps inside the zone."))
+                    .child(dim("Rules say what happens to the windows of the apps that are on."))
                     .child(div().id("rules-list").max_h(px(230.)).overflow_y_scroll().flex().flex_col().children(list))
                     .child(rule_line())
                     .child(div().text_sm().child("New rule for"))
                     .child(div().flex().flex_wrap().gap_1().children(scopes))
+                    .child(div().text_sm().child("does this"))
                     .child(
+                        row()
+                            .child(button("Fullscreen stays in the zone", effect == Effect::Fullscreen).id("fx-full").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.effect = Effect::Fullscreen;
+                                cx.notify();
+                            })))
+                            .child(button("Windowed app becomes borderless", effect == Effect::Borderless).id("fx-border").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.effect = Effect::Borderless;
+                                cx.notify();
+                            }))),
+                    )
+                    .child(if effect == Effect::Fullscreen {
                         row()
                             .child(button("Keep the title bar", chrome == ChromeMode::Keep).id("keep").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                                 this.chrome = ChromeMode::Keep;
@@ -168,15 +189,37 @@ impl Render for ManageView {
                             .child(button("Hide the title bar", chrome == ChromeMode::Hide).id("hide").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                                 this.chrome = ChromeMode::Hide;
                                 cx.notify();
-                            }))),
-                    )
+                            })))
+                    } else {
+                        row()
+                            .child(button("Fill the monitor", fill == m::Fill::Monitor).id("fill-mon").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.fill = m::Fill::Monitor;
+                                cx.notify();
+                            })))
+                            .child(button("Fill the zone", fill == m::Fill::Zone).id("fill-zone").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.fill = m::Fill::Zone;
+                                cx.notify();
+                            })))
+                            .child(button("Keep on top", topmost).id("topmost").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.topmost = !this.topmost;
+                                cx.notify();
+                            })))
+                    })
                     .child(row().child(div().w(px(260.)).child(self.name.clone())).child(button("Add rule", false).id("radd").on_click(cx.listener(
                         move |this, _: &ClickEvent, _, cx| {
                             let name = this.name.read(cx).text().to_string();
                             let (scope, zone) = (scope.clone(), zone.clone());
-                            if let Some(zone) = zone {
-                                this.rt.change(move |c| m::add_rule(c, &name, &scope, &zone, chrome).is_some());
-                                this.name.update(cx, |f, cx| f.clear(cx));
+                            match effect {
+                                Effect::Fullscreen => {
+                                    if let Some(zone) = zone {
+                                        this.rt.change(move |c| m::add_rule(c, &name, &scope, &zone, chrome).is_some());
+                                        this.name.update(cx, |f, cx| f.clear(cx));
+                                    }
+                                }
+                                Effect::Borderless => {
+                                    this.rt.change(move |c| m::add_borderless_rule(c, &name, &scope, fill, topmost).is_some());
+                                    this.name.update(cx, |f, cx| f.clear(cx));
+                                }
                             }
                             cx.notify();
                         },
@@ -334,7 +377,7 @@ pub fn open(cx: &mut App, rt: Arc<Runtime>) {
                     }
                 })
                 .detach();
-                ManageView { rt, tab: Tab::Groups, name, site, scope: Scope::All, chrome: ChromeMode::Keep, site_mode: FullscreenMode::Zone }
+                ManageView { rt, tab: Tab::Groups, name, site, scope: Scope::All, chrome: ChromeMode::Keep, effect: Effect::Fullscreen, fill: m::Fill::Monitor, topmost: false, site_mode: FullscreenMode::Zone }
             })
         },
     );
