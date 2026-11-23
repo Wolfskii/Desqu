@@ -93,7 +93,9 @@ fn add_icon(hwnd: HWND) {
         let mut nid = NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, ..Default::default() };
         nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
         nid.uCallbackMessage = TRAY_MESSAGE;
-        nid.hIcon = LoadIconW(None, IDI_APPLICATION).unwrap_or_default();
+        // The icon embedded by build.rs (resource 1); the stock application icon if it is missing.
+        let instance = GetModuleHandleW(None).unwrap_or_default();
+        nid.hIcon = LoadIconW(Some(instance.into()), PCWSTR(1 as *const u16)).or_else(|_| LoadIconW(None, IDI_APPLICATION)).unwrap_or_default();
         for (i, c) in "Vials".encode_utf16().enumerate() {
             nid.szTip[i] = c;
         }
