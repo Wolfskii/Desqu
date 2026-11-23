@@ -209,6 +209,24 @@ impl Engine {
         self.change(|c| c.remove_workspace(desktop_id))
     }
 
+    /// Ties one desktop item to a virtual desktop, or with `None` shows it on every desktop.
+    pub fn assign_item(&self, item_id: &str, desktop_id: Option<&str>) -> Result<bool, String> {
+        let target = match desktop_id {
+            None => None,
+            Some(id) => Some(self.desktop_named(id)?),
+        };
+        Ok(self.change(|c| c.assign(item_id, target.as_ref().map(|(id, name)| (id.as_str(), name.as_str())))))
+    }
+
+    /// The desktop items no virtual desktop owns (they show everywhere), by name.
+    pub fn shared_items(&self) -> Vec<String> {
+        let cfg = self.config();
+        let mut ids: Vec<String> = self.layer.items().map(|items| items.into_iter().map(|i| i.id).collect()).unwrap_or_default();
+        ids.retain(|id| cfg.owner_of(id).is_none());
+        ids.sort_by_key(|id| id.rsplit(['\\', '/']).next().unwrap_or(id).to_lowercase());
+        ids
+    }
+
     fn desktop_named(&self, id: &str) -> Result<(String, String), String> {
         let desktops = (self.desktops)();
         let index = desktops.list.iter().position(|d| d.id == id).ok_or("that virtual desktop does not exist")?;
@@ -448,6 +466,13 @@ mod tests {
             }
             assert!(!hidden(&mine));
             let (entries, any) = engine.entries();
+            // One item can be tied to a desktop by hand, and shows everywhere again when released.
+            let key = mine.to_string_lossy().to_string();
+            assert!(engine.assign_item(&key, Some(B)).unwrap());
+            assert_eq!(engine.config().owner_of(&key), Some(B));
+            assert!(engine.assign_item("x", Some("{CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC}")).is_err());
+            assert!(engine.assign_item(&key, None).unwrap());
+            assert!(engine.shared_items().contains(&key));
             assert!(any && entries.len() == 2 && entries[1].current && entries[1].items.len() == 1, "{entries:?}");
             engine.stop();
             assert!(!hidden(&theirs), "stopping puts everything back");

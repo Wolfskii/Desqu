@@ -47,6 +47,8 @@ struct WorkspacesView {
     note: String,
     update_note: String,
     update_url: Option<String>,
+    /// The item whose desktop is being chosen.
+    picked: Option<String>,
 }
 
 impl WorkspacesView {
@@ -114,7 +116,7 @@ fn card(entry: &DesktopEntry, cx: &mut Context<WorkspacesView>) -> gpui::Div {
         })
         .when(count > 0, |d| {
             d.child(div().flex().flex_wrap().gap_1().children(entry.items.iter().take(24).map(|i| {
-                div().text_xs().px_2().py(px(2.)).rounded(px(4.)).bg(rgba(0xffffff14)).child(item_label(i))
+                chip(i, cx)
             })))
         })
 }
@@ -154,6 +156,46 @@ impl Render for WorkspacesView {
                 })))
         });
 
+        // Click an item to choose its desktop: any virtual desktop, or all of them.
+        let chooser = self.picked.clone().map(|item| {
+            let buttons = entries.iter().filter(|e| !e.removed).map(|e| {
+                let (id, item) = (e.id.clone(), item.clone());
+                button(e.name.clone(), false).id(SharedString::from(format!("to-{id}"))).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.note = this.engine.assign_item(&item, Some(&id)).err().unwrap_or_default();
+                    this.picked = None;
+                    cx.notify();
+                }))
+            });
+            let everywhere = item.clone();
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .p_3()
+                .rounded(px(8.))
+                .border_1()
+                .border_color(rgba(0xaad2ffb4))
+                .bg(rgba(0x78afff18))
+                .child(div().text_sm().child(format!("Show \"{}\" on:", item_label(&item))))
+                .child(div().flex().flex_wrap().gap_1().children(buttons))
+                .child(div().flex().gap_1().child(button("Every desktop", false).id("to-all").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.note = this.engine.assign_item(&everywhere, None).err().unwrap_or_default();
+                    this.picked = None;
+                    cx.notify();
+                }))).child(button("Cancel", false).id("to-cancel").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                    this.picked = None;
+                    cx.notify();
+                }))))
+        });
+        let shared = self.engine.shared_items();
+        let shared_section = (!shared.is_empty() && any_desktops).then(|| {
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(div().text_xs().text_color(rgba(0xffffff80)).child(format!("On every desktop ({}). Click one to tie it to a desktop:", shared.len())))
+                .child(div().flex().flex_wrap().gap_1().children(shared.iter().take(30).map(|i| chip(i, cx))))
+        });
         let on = cfg.auto_assign_new;
         let autostart_on = desqu_native_shell::autostart::is_enabled(&crate::ID);
 
@@ -187,6 +229,8 @@ impl Render for WorkspacesView {
                     .gap_2()
                     .children(entries.iter().map(|e| card(e, cx))),
             )
+            .when_some(chooser, |d, c| d.child(c))
+            .when_some(shared_section, |d, s| d.child(s))
             .when_some(problem.or_else(|| (!self.note.is_empty()).then(|| self.note.clone())), |d, p| {
                 d.child(div().text_xs().text_color(rgba(0xffb870ff)).child(p))
             })
@@ -265,7 +309,7 @@ pub fn open(cx: &mut App, engine: Arc<Engine>) {
                     }
                 })
                 .detach();
-                WorkspacesView { engine: engine.clone(), note: String::new(), update_note: String::new(), update_url: None }
+                WorkspacesView { engine: engine.clone(), note: String::new(), update_note: String::new(), update_url: None, picked: None }
             })
         },
     );
@@ -274,6 +318,23 @@ pub fn open(cx: &mut App, engine: Arc<Engine>) {
     }
 }
 
+/// One item of a desktop: click it to choose another desktop for it.
+fn chip(item: &str, cx: &mut Context<WorkspacesView>) -> impl IntoElement {
+    let id = item.to_string();
+    div()
+        .id(SharedString::from(format!("item-{item}")))
+        .text_xs()
+        .px_2()
+        .py(px(2.))
+        .rounded(px(4.))
+        .bg(rgba(0xffffff14))
+        .hover(|s| s.bg(rgba(0xffffff30)))
+        .child(item_label(item))
+        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+            this.picked = Some(id.clone());
+            cx.notify();
+        }))
+}
 #[cfg(test)]
 mod tests {
     use super::item_label;
