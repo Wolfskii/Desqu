@@ -94,8 +94,17 @@ pub fn unregister_host() -> Result<(), String> {
 
 impl Runtime {
     /// Starts the engine with its config and journal in `dir`.
-    pub fn start(dir: &Path, version: &str) -> Result<Arc<Self>, String> {
+    /// `legacy` is the pre-rebrand settings folder: its config is copied once if there is none yet, and
+    /// its journal is read to put windows back that an old crash left constrained.
+    pub fn start(dir: &Path, version: &str, legacy: Option<&Path>) -> Result<Arc<Self>, String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        if let Some(legacy) = legacy {
+            match screenbound_module::migrate::migrate_config(legacy, &dir.join("config.json")) {
+                Ok(true) => eprintln!("copied settings from {}", legacy.display()),
+                Ok(false) => {}
+                Err(e) => eprintln!("settings migration failed: {e}"),
+            }
+        }
         // The notifier needs the shared state, which needs the engine handle, which needs the notifier:
         // a cell breaks the circle.
         let cell: Arc<std::sync::OnceLock<Arc<Shared>>> = Arc::new(std::sync::OnceLock::new());
@@ -108,7 +117,7 @@ impl Runtime {
         let paths = EnginePaths {
             config: dir.join("config.json"),
             journal: dir.join("managed-windows.json"),
-            legacy_journal: None,
+            legacy_journal: legacy.map(|d| d.join(screenbound_module::migrate::LEGACY_JOURNAL_FILE)),
             identity: HostIdentity { product: Product::Screenbound, app_version: version.to_string() },
         };
         let platform = platform::create();

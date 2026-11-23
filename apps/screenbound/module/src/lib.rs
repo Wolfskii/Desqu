@@ -8,7 +8,6 @@ pub mod core;
 pub mod engine;
 #[cfg(feature = "tauri-plugin")]
 pub mod legacy;
-#[cfg(feature = "tauri-plugin")]
 pub mod migrate;
 pub mod platform;
 #[cfg(feature = "tauri-plugin")]

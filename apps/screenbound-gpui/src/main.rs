@@ -63,7 +63,9 @@ fn main() {
     if matches!(action.as_deref(), Some("quit" | "pause" | "resume")) {
         return;
     }
-    let rt = match Runtime::start(&config_dir(), env!("CARGO_PKG_VERSION")) {
+    // The pre-rebrand settings folder is only looked at for the real settings location, never for a test folder.
+    let legacy = if arg_value("--config-dir").is_none() { std::env::var_os("APPDATA").map(|a| screenbound_module::migrate::legacy_dir(std::path::Path::new(&a))) } else { None };
+    let rt = match Runtime::start(&config_dir(), env!("CARGO_PKG_VERSION"), legacy.as_deref()) {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("Screenbound could not start: {e}");
