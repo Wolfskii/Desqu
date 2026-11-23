@@ -6,7 +6,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
 
 use windows::core::{w, HSTRING, PCWSTR};
-use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
@@ -50,8 +50,18 @@ fn send(event: Event) {
     }
 }
 
-/// Held for as long as this is the running copy.
-pub struct SingleInstance(#[allow(dead_code)] HANDLE);
+/// Held for as long as this is the running copy; letting go of it (dropping it) frees the name again, which
+/// is what lets a program only *ask* whether a copy is running.
+pub struct SingleInstance(HANDLE);
+
+impl Drop for SingleInstance {
+    fn drop(&mut self) {
+        // SAFETY: the handle was created by `single_instance` and is closed once.
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
 
 /// `Some` for the first copy; `None` when another one is already running.
 pub fn single_instance(id: &Identity) -> Option<SingleInstance> {
@@ -60,6 +70,7 @@ pub fn single_instance(id: &Identity) -> Option<SingleInstance> {
     unsafe {
         let handle = CreateMutexW(None, true, PCWSTR(name.as_ptr())).ok()?;
         if GetLastError() == ERROR_ALREADY_EXISTS {
+            let _ = CloseHandle(handle);
             return None;
         }
         Some(SingleInstance(handle))

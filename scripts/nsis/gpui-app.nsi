@@ -62,9 +62,20 @@ Section "Install"
   SetOutPath "$INSTDIR"
   !insertmacro QuitRunningCopy
   File "${EXE}"
+  ; Programs that travel with it (the Desqu shell carries its modules): /DEXE2=<path> /DEXEFILE2=<name>, up to 4.
+  !ifdef EXE2
+    File "${EXE2}"
+  !endif
+  !ifdef EXE3
+    File "${EXE3}"
+  !endif
+  !ifdef EXE4
+    File "${EXE4}"
+  !endif
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\${EXEFILE}" "${EXTRA_ARGS}" "$INSTDIR\${EXEFILE}" 0
+  ; Its own shortcut name, so installing or removing this never touches the Tauri build's shortcut.
+  CreateShortcut "$SMPROGRAMS\${APP} (GPUI).lnk" "$INSTDIR\${EXEFILE}" "${EXTRA_ARGS}" "$INSTDIR\${EXEFILE}" 0
 
   WriteRegStr HKCU "Software\${KEY}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "${APP} (GPUI)"
@@ -81,9 +92,18 @@ SectionEnd
 Section "Uninstall"
   !insertmacro QuitRunningCopy
   Delete "$INSTDIR\${EXEFILE}"
+  !ifdef EXEFILE2
+    Delete "$INSTDIR\${EXEFILE2}"
+  !endif
+  !ifdef EXEFILE3
+    Delete "$INSTDIR\${EXEFILE3}"
+  !endif
+  !ifdef EXEFILE4
+    Delete "$INSTDIR\${EXEFILE4}"
+  !endif
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
-  Delete "$SMPROGRAMS\${APP}.lnk"
+  Delete "$SMPROGRAMS\${APP} (GPUI).lnk"
   ; What the app itself may have added: its start-with-Windows entry and, for Vials, the desktop's right-click entry.
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${KEY}"
   !ifdef DESKTOP_MENU_KEY
