@@ -47,7 +47,7 @@ impl SettingsView {
     }
 }
 
-fn button(label: impl Into<SharedString>, active: bool) -> gpui::Stateful<gpui::Div> {
+pub fn button(label: impl Into<SharedString>, active: bool) -> gpui::Stateful<gpui::Div> {
     let label: SharedString = label.into();
     div()
         .id(label.clone())
@@ -168,6 +168,13 @@ impl Render for SettingsView {
             .child(toggle("Sort new desktop items", "Put new files into a vial by its rules", cfg.auto_sort, |c, v| c.auto_sort = v))
             .child(toggle("Hide items on the desktop", "Items in a vial leave the desktop", cfg.hide_on_desktop, |c, v| c.hide_on_desktop = v))
             .child(toggle("Create vials by dragging a box", "Drag over empty desktop", cfg.create_on_drag, |c, v| c.create_on_drag = v))
+            .child(
+                div().flex().gap_2().pt_3().child(
+                    button("Edit rules", false).id("edit-rules").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        crate::rules_window::open(cx, this.engine.clone(), this.revision.clone());
+                    })),
+                ),
+            )
             .child(toggle("Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, |c, v| c.context_menu = v))
     }
 }

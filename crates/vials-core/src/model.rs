@@ -304,6 +304,43 @@ impl VialsConfig {
         }
     }
 
+    /// Adds a rule at the end of the list (rules are tried in order) and returns its id. `None` when the
+    /// vial does not exist.
+    pub fn add_rule(&mut self, name: &str, matcher: ItemMatcher, target_vial: &str) -> Option<String> {
+        self.vial(target_vial)?;
+        let taken: Vec<&str> = self.rules.iter().map(|r| r.id.as_str()).collect();
+        let id = (1..).map(|n| format!("rule-{n}")).find(|id| !taken.contains(&id.as_str()))?;
+        self.rules.push(SortRule { id: id.clone(), name: name.trim().to_string(), enabled: true, matcher, target_vial: target_vial.to_string() });
+        Some(id)
+    }
+
+    pub fn delete_rule(&mut self, id: &str) -> bool {
+        let before = self.rules.len();
+        self.rules.retain(|r| r.id != id);
+        self.rules.len() != before
+    }
+
+    pub fn set_rule_enabled(&mut self, id: &str, enabled: bool) -> bool {
+        match self.rules.iter_mut().find(|r| r.id == id) {
+            Some(r) if r.enabled != enabled => {
+                r.enabled = enabled;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Moves a rule up (`-1`) or down (`1`) the list. Returns whether it moved.
+    pub fn move_rule(&mut self, id: &str, delta: i32) -> bool {
+        let Some(from) = self.rules.iter().position(|r| r.id == id) else { return false };
+        let to = from as i32 + delta;
+        if to < 0 || to as usize >= self.rules.len() || delta == 0 {
+            return false;
+        }
+        self.rules.swap(from, to as usize);
+        true
+    }
+
     /// Every item id held by any vial.
     pub fn assigned_ids(&self) -> Vec<String> {
         self.vials.iter().flat_map(|v| v.items.iter().cloned()).collect()
@@ -548,6 +585,21 @@ mod tests {
         assert!(cfg.delete_vial("vial-1"));
         assert!(cfg.vial_of("C:/f.txt").is_none(), "its items are free again");
         assert!(!cfg.delete_vial("vial-1"));
+    }
+
+    #[test]
+    fn rules_can_be_added_toggled_moved_and_deleted() {
+        let mut cfg = VialsConfig::default();
+        cfg.add_vial(NormalizedRect { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, None);
+        assert_eq!(cfg.add_rule("pdfs", ItemMatcher::Extension("pdf".into()), "nope"), None, "the vial must exist");
+        let a = cfg.add_rule("pdfs", ItemMatcher::Extension("pdf".into()), "vial-1").unwrap();
+        let b = cfg.add_rule("docs", ItemMatcher::Extension("docx".into()), "vial-1").unwrap();
+        assert_eq!((a.as_str(), b.as_str()), ("rule-1", "rule-2"));
+        assert!(cfg.set_rule_enabled(&a, false) && !cfg.set_rule_enabled(&a, false));
+        assert!(cfg.move_rule(&b, -1) && cfg.rules[0].id == b);
+        assert!(!cfg.move_rule(&b, -1), "already first");
+        assert!(cfg.delete_rule(&a) && !cfg.delete_rule(&a));
+        assert_eq!(cfg.add_rule("again", ItemMatcher::Extension("x".into()), "vial-1").as_deref(), Some("rule-1"), "ids are reused");
     }
 
     #[test]

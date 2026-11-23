@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use desqu_desktop::DesktopItem;
+use desqu_desktop::{DesktopItem, ItemKind};
 
 use super::model::{ItemMatcher, SortRule, VialsConfig};
 
@@ -62,6 +62,98 @@ impl ItemMatcher {
     }
 }
 
+/// The kinds of condition a rule can be made of in the rules window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConditionKind {
+    Contains,
+    StartsWith,
+    EndsWith,
+    Pattern,
+    Extension,
+    Kind,
+}
+
+impl ConditionKind {
+    pub const ALL: [ConditionKind; 6] = [
+        ConditionKind::Contains,
+        ConditionKind::StartsWith,
+        ConditionKind::EndsWith,
+        ConditionKind::Pattern,
+        ConditionKind::Extension,
+        ConditionKind::Kind,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ConditionKind::Contains => "name contains",
+            ConditionKind::StartsWith => "name starts with",
+            ConditionKind::EndsWith => "name ends with",
+            ConditionKind::Pattern => "name matches pattern",
+            ConditionKind::Extension => "has the extension",
+            ConditionKind::Kind => "is a",
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            ConditionKind::Contains => "Android",
+            ConditionKind::StartsWith => "Report",
+            ConditionKind::EndsWith => "Studio",
+            ConditionKind::Pattern => "*.txt or Report*",
+            ConditionKind::Extension => "pdf, docx",
+            ConditionKind::Kind => "",
+        }
+    }
+}
+
+pub fn kind_label(kind: ItemKind) -> &'static str {
+    match kind {
+        ItemKind::Shortcut => "shortcut",
+        ItemKind::Folder => "folder",
+        ItemKind::App => "app",
+        ItemKind::File => "file",
+        ItemKind::Special => "system item",
+    }
+}
+
+/// A condition as a matcher, or `None` while it is not filled in. Several extensions (`pdf, docx`)
+/// make one matcher that accepts any of them.
+pub fn build_matcher(kind: ConditionKind, text: &str, item_kind: ItemKind) -> Option<ItemMatcher> {
+    let text = text.trim();
+    let nonempty = |m: fn(String) -> ItemMatcher| (!text.is_empty()).then(|| m(text.to_string()));
+    match kind {
+        ConditionKind::Contains => nonempty(ItemMatcher::NameContains),
+        ConditionKind::StartsWith => nonempty(ItemMatcher::NameStartsWith),
+        ConditionKind::EndsWith => nonempty(ItemMatcher::NameEndsWith),
+        ConditionKind::Pattern => nonempty(ItemMatcher::NameGlob),
+        ConditionKind::Kind => Some(ItemMatcher::Kind(item_kind)),
+        ConditionKind::Extension => {
+            let mut list: Vec<String> =
+                text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').map(|x| x.trim_start_matches('.').to_lowercase()).filter(|x| !x.is_empty()).collect();
+            list.dedup();
+            match list.len() {
+                0 => None,
+                1 => Some(ItemMatcher::Extension(list.remove(0))),
+                _ => Some(ItemMatcher::Any(list.into_iter().map(ItemMatcher::Extension).collect())),
+            }
+        }
+    }
+}
+
+/// A matcher in words, for the list of rules.
+pub fn describe(matcher: &ItemMatcher) -> String {
+    match matcher {
+        ItemMatcher::Extension(e) => format!("has the extension {e}"),
+        ItemMatcher::Kind(k) => format!("is a {}", kind_label(*k)),
+        ItemMatcher::NameGlob(p) => format!("name matches {p}"),
+        ItemMatcher::NameContains(t) => format!("name contains {t}"),
+        ItemMatcher::NameStartsWith(t) => format!("name starts with {t}"),
+        ItemMatcher::NameEndsWith(t) => format!("name ends with {t}"),
+        ItemMatcher::Any(list) => list.iter().map(describe).collect::<Vec<_>>().join(" or "),
+        ItemMatcher::All(list) => list.iter().map(describe).collect::<Vec<_>>().join(" and "),
+    }
+}
+
 /// The first enabled rule that matches `item` and points at a vial that exists.
 pub fn first_match<'a>(cfg: &'a VialsConfig, item: &DesktopItem) -> Option<&'a SortRule> {
     cfg.rules
@@ -87,8 +179,31 @@ pub fn assign_new_items(cfg: &VialsConfig, items: &[DesktopItem]) -> Vec<(String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn conditions_become_matchers_only_when_filled_in() {
+        assert_eq!(build_matcher(ConditionKind::Contains, "  ", ItemKind::File), None);
+        assert_eq!(build_matcher(ConditionKind::Contains, " Android ", ItemKind::File), Some(ItemMatcher::NameContains("Android".into())));
+        assert_eq!(build_matcher(ConditionKind::Kind, "", ItemKind::Folder), Some(ItemMatcher::Kind(ItemKind::Folder)));
+        assert_eq!(build_matcher(ConditionKind::Extension, ".PDF", ItemKind::File), Some(ItemMatcher::Extension("pdf".into())));
+        assert_eq!(
+            build_matcher(ConditionKind::Extension, "pdf, .docx;pdf", ItemKind::File),
+            Some(ItemMatcher::Any(vec![ItemMatcher::Extension("pdf".into()), ItemMatcher::Extension("docx".into()), ItemMatcher::Extension("pdf".into())])),
+            "adjacent duplicates only are dropped"
+        );
+        assert_eq!(build_matcher(ConditionKind::Extension, " , ", ItemKind::File), None);
+    }
+
+    #[test]
+    fn matchers_are_described_in_words() {
+        assert_eq!(describe(&ItemMatcher::Extension("pdf".into())), "has the extension pdf");
+        assert_eq!(describe(&ItemMatcher::Kind(ItemKind::Folder)), "is a folder");
+        let any = ItemMatcher::Any(vec![ItemMatcher::Extension("a".into()), ItemMatcher::NameContains("b".into())]);
+        assert_eq!(describe(&any), "has the extension a or name contains b");
+    }
+
     use crate::model::{NormalizedRect, Vial};
-    use desqu_desktop::{ItemKind, Point};
+    use desqu_desktop::Point;
 
     fn item(id: &str, name: &str, kind: ItemKind) -> DesktopItem {
         DesktopItem {

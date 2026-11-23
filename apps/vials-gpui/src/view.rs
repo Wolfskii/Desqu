@@ -81,6 +81,16 @@ pub struct VialView {
     material_dirty: bool,
 }
 
+/// Everything a vial window starts from.
+pub struct ViewInit {
+    pub name: String,
+    pub ids: Vec<String>,
+    pub collapsed: bool,
+    pub placement: Placement,
+    pub live: Option<Live>,
+    pub theme: Theme,
+}
+
 /// What the desktop calls an item: the file name, without the extension of shortcut-like types.
 pub fn display_name(id: &str) -> String {
     let p = Path::new(id);
@@ -92,16 +102,9 @@ pub fn display_name(id: &str) -> String {
 }
 
 impl VialView {
-    pub fn new(
-        window: &mut Window,
-        name: &str,
-        ids: Vec<String>,
-        collapsed: bool,
-        placement: Placement,
-        live: Option<Live>,
-        theme: Theme,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(window: &mut Window, init: ViewInit, cx: &mut Context<Self>) -> Self {
+        let ViewInit { name, ids, collapsed, placement, live, theme } = init;
+        let name = name.as_str();
         // Keeps the full-size rectangle current when the user resizes the window, and (live) saves a moved
         // or resized window once it has stayed still for a moment.
         let saver = live.clone();
@@ -414,6 +417,10 @@ impl VialView {
                     bump(&live.revision, cx);
                 }
             }));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("Rules", move |cx| crate::rules_window::open(cx, live.engine.clone(), live.revision.clone())));
         }
         {
             let live = live.clone();

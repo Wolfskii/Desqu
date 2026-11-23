@@ -7,7 +7,9 @@
 //! saves its place.
 
 mod engine;
+mod field;
 mod menu;
+mod rules_window;
 mod settings;
 mod theme;
 mod tray;
@@ -30,7 +32,7 @@ use vials_core::model::{Vial, VialsConfig};
 
 use engine::Engine;
 use menu::MenuEntry;
-use view::{bump, Live, Placement, Revision, VialView};
+use view::{bump, Live, Placement, Revision, ViewInit, VialView};
 use vials_platform::{MouseEvent, MouseWatcher};
 
 fn config_path() -> PathBuf {
@@ -87,7 +89,7 @@ impl Shell {
                     ..Default::default()
                 },
                 move |window, cx| {
-                    cx.new(|cx| VialView::new(window, &name, items, collapsed, Placement { rect, collapsed_height }, live, look, cx))
+                    cx.new(|cx| VialView::new(window, ViewInit { name, ids: items, collapsed, placement: Placement { rect, collapsed_height }, live, theme: look }, cx))
                 },
             )
             .ok()?;
@@ -265,6 +267,10 @@ fn main() {
                         tray::Event::Action(name) if name == "settings" => {
                             let (engine, revision) = (engine.clone(), revision.clone());
                             let _ = cx.update(|cx| settings::open(cx, engine, revision));
+                        }
+                        tray::Event::Action(name) if name == "rules" => {
+                            let (engine, revision) = (engine.clone(), revision.clone());
+                            let _ = cx.update(|cx| rules_window::open(cx, engine, revision));
                         }
                         tray::Event::Action(name) if name == "quit" => {
                             let _ = cx.update(|cx| cx.quit());

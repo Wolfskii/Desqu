@@ -314,6 +314,32 @@ impl Engine {
         changed
     }
 
+    /// Adds a rule (tried after the existing ones). Desktop items that already match it and sit in no vial
+    /// are sorted at once.
+    pub fn add_rule(&self, name: &str, matcher: vials_core::model::ItemMatcher, vial_id: &str) -> bool {
+        let added = self.apply(|cfg| cfg.add_rule(name, matcher, vial_id).is_some());
+        if added {
+            self.reconcile();
+        }
+        added
+    }
+
+    pub fn delete_rule(&self, id: &str) -> bool {
+        self.apply(|cfg| cfg.delete_rule(id))
+    }
+
+    pub fn set_rule_enabled(&self, id: &str, enabled: bool) -> bool {
+        let changed = self.apply(|cfg| cfg.set_rule_enabled(id, enabled));
+        if changed && enabled {
+            self.reconcile();
+        }
+        changed
+    }
+
+    pub fn move_rule(&self, id: &str, delta: i32) -> bool {
+        self.apply(|cfg| cfg.move_rule(id, delta))
+    }
+
     /// How vials look right now.
     pub fn look(&self) -> crate::theme::Theme {
         let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
