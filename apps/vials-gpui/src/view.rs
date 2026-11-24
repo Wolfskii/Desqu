@@ -598,7 +598,10 @@ impl VialView {
                 self.marquee = None;
             } else {
                 marquee.now = e.position;
-                let rect = Bounds::from_corners(marquee.start, marquee.now);
+                // Dragged up or to the left, the corners are the wrong way round: take the real top-left.
+                let top_left = gpui::point(marquee.start.x.min(marquee.now.x), marquee.start.y.min(marquee.now.y));
+                let bottom_right = gpui::point(marquee.start.x.max(marquee.now.x), marquee.start.y.max(marquee.now.y));
+                let rect = Bounds::from_corners(top_left, bottom_right);
                 let mut chosen = marquee.base.clone();
                 chosen.extend(self.bounds.borrow().iter().filter(|(_, b)| b.intersects(&rect)).map(|(i, _)| *i));
                 self.selected = chosen;
@@ -880,5 +883,58 @@ impl Render for VialView {
                 let (width, height) = (f32::from((m.start.x - m.now.x).abs()), f32::from((m.start.y - m.now.y).abs()));
                 d.child(div().absolute().left(px(left)).top(px(top)).w(px(width)).h(px(height)).border_1().border_color(rgba(t.selected_border)).bg(rgba(t.selected)))
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{point, Modifiers, TestAppContext};
+
+    fn init() -> ViewInit {
+        ViewInit {
+            name: "Test".into(),
+            ids: (0..4).map(|i| format!("C:/no/such/item{i}.txt")).collect(),
+            collapsed: false,
+            placement: Placement { rect: PixelRect { left: 0, top: 0, right: 400, bottom: 240 }, collapsed_height: 40 },
+            live: None,
+            theme: Theme::of(vials_core::model::VialTheme::Classic, 50),
+        }
+    }
+
+    #[gpui::test]
+    fn dragging_a_box_over_items_selects_them(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        cx.run_until_parked();
+        let bounds = view.read_with(cx, |v, _| v.bounds.borrow().clone());
+        assert_eq!(bounds.len(), 4, "every item reports where it is drawn: {bounds:?}");
+        let first = bounds[&0];
+        let last = bounds[&3];
+        // From empty space below the items, up over the first and last one.
+        let start = point(last.right() + px(2.), last.bottom() + px(20.));
+        let end = point(first.left() + px(4.), first.top() + px(4.));
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |v, _| v.marquee.is_some()), "the box started");
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+        let selected = view.read_with(cx, |v, _| v.selected.iter().copied().collect::<Vec<_>>());
+        assert_eq!(selected, vec![0, 1, 2, 3]);
+    }
+
+    #[gpui::test]
+    fn a_box_dragged_down_and_right_selects_only_what_it_touches(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        cx.run_until_parked();
+        let bounds = view.read_with(cx, |v, _| v.bounds.borrow().clone());
+        let (a, b) = (bounds[&0], bounds[&1]);
+        // Starts above the first item and ends inside the second: the third and fourth stay out.
+        let start = point(a.left() + px(2.), a.top() - px(6.));
+        let end = point(b.left() + px(10.), b.top() + px(10.));
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+        let selected = view.read_with(cx, |v, _| v.selected.iter().copied().collect::<Vec<_>>());
+        assert_eq!(selected, vec![0, 1]);
     }
 }
