@@ -441,13 +441,19 @@ fn main() {
                                         _ => break,
                                     }
                                 }
-                                let empty = matches!(desqu_desktop::selection_count(), Ok(0));
-                                if !empty {
+                                // A box over icons selects them: with the setting on, offer a vial that takes them.
+                                let picked = desqu_desktop::selected_items().unwrap_or_default();
+                                if !picked.is_empty() && !engine.config().offer_for_selection {
                                     return;
                                 }
                                 let _ = cx.update(|cx| {
-                                    let entry = MenuEntry::new("Create vial here", move |cx| {
-                                        if engine.create_vial(rect).is_some() {
+                                    let label = match picked.len() {
+                                        0 => "Create vial here".to_string(),
+                                        1 => "New vial with this item".to_string(),
+                                        n => format!("New vial with these {n} items"),
+                                    };
+                                    let entry = MenuEntry::new(label, move |cx| {
+                                        if engine.create_vial_with(rect, &picked).is_some() {
                                             bump(&revision, cx);
                                         }
                                     })

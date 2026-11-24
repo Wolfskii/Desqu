@@ -238,6 +238,9 @@ pub struct VialsConfig {
     /// A collapsed vial opens while the pointer is over it and closes again when the pointer leaves.
     #[serde(default)]
     pub hover_open: bool,
+    /// A box dragged over icons offers "New vial with these" (off: only a box over empty desktop offers a vial).
+    #[serde(default)]
+    pub offer_for_selection: bool,
     /// A double-click on the empty desktop hides every vial and the desktop icons; another shows them.
     #[serde(default = "yes")]
     pub quick_hide: bool,
@@ -265,6 +268,7 @@ impl Default for VialsConfig {
             create_on_drag: true,
             context_menu: true,
             quick_hide: true,
+            offer_for_selection: false,
             hover_open: false,
             theme: VialTheme::default(),
             glass_blur: GlassBlur::default(),
@@ -305,6 +309,7 @@ impl VialsConfig {
             "contextMenu" => self.context_menu = flag()?,
             "quickHide" => self.quick_hide = flag()?,
             "hoverOpen" => self.hover_open = flag()?,
+            "offerForSelection" => self.offer_for_selection = flag()?,
             other => return Err(format!("unknown setting {other}")),
         }
         Ok(())

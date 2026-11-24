@@ -701,6 +701,7 @@ impl DesquView {
                         .child(self.option_switch(kind, "hideOnDesktop", "Hide items on the desktop", "Items in a vial leave the desktop", cfg.hide_on_desktop, cx))
                         .child(self.option_switch(kind, "createOnDrag", "Create vials by dragging a box", "Drag over empty desktop", cfg.create_on_drag, cx))
                         .child(self.option_switch(kind, "contextMenu", "Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, cx))
+                        .child(self.option_switch(kind, "offerForSelection", "Offer a vial for selected icons", "A box dragged over icons offers \"New vial with these\"", cfg.offer_for_selection, cx))
                         .child(self.option_switch(kind, "hoverOpen", "Open collapsed vials on hover", "A collapsed vial opens while the pointer is over it", cfg.hover_open, cx))
                         .child(self.option_switch(kind, "quickHide", "Quick-hide", "Double-click the empty desktop to hide or show all vials and icons", cfg.quick_hide, cx))
                         .child(

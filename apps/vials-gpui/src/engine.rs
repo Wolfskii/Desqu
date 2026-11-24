@@ -138,6 +138,13 @@ impl Engine {
         self.apply(|cfg| ids.iter().fold(false, |changed, id| cfg.assign(id, Some(vial_id)) | changed))
     }
 
+    /// A new vial in `rect` holding the desktop items `ids` (those that really are on the desktop).
+    pub fn create_vial_with(&self, rect: PixelRect, ids: &[String]) -> Option<String> {
+        let vial = self.create_vial(rect)?;
+        self.drop_items(&vial, ids);
+        Some(vial)
+    }
+
     /// Takes an item out of its vial: it is back on the desktop.
     pub fn remove_item(&self, id: &str) -> bool {
         if self.vial_id_of(id).is_some_and(|v| self.is_locked(&v)) {

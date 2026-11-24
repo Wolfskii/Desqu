@@ -22,6 +22,10 @@ pub(crate) fn selection_count() -> DesktopResult<usize> {
     Err(DesktopError::Unsupported)
 }
 
+pub(crate) fn selected_items() -> DesktopResult<Vec<String>> {
+    Err(DesktopError::Unsupported)
+}
+
 pub(crate) fn icon_png_standalone(_id: &str, _size: u32) -> DesktopResult<Vec<u8>> {
     Err(DesktopError::Unsupported)
 }

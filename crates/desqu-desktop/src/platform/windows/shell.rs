@@ -21,7 +21,7 @@ use windows::Win32::UI::Shell::{
     SHChangeNotify, SHCNE_ATTRIBUTES, SHCNE_CREATE, SHCNE_DELETE, SHCNE_MKDIR, SHCNE_RMDIR, SHCNF_FLUSHNOWAIT, SHCNF_PATHW,
 };
 use windows::Win32::UI::Shell::{
-    FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemImageFactory,
+    FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemArray, IShellItemImageFactory,
     IShellWindows, SHCreateItemFromIDList, SHCreateItemFromParsingName, SHGetKnownFolderPath, ShellWindows,
     KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY, SIIGBF, SIIGBF_ICONONLY, SVGIO_ALLVIEW, SVGIO_SELECTION,
     SWC_DESKTOP, SWFO_NEEDDISPATCH,
@@ -150,6 +150,26 @@ unsafe fn display_name(item: &IShellItem, kind: SIGDN) -> String {
         }
         Err(_) => String::new(),
     }
+}
+
+/// The ids (absolute parsing names) of the items selected in the desktop view right now.
+pub(super) unsafe fn selected_ids(view: &IFolderView2) -> DesktopResult<Vec<String>> {
+    // Nothing selected is an error ("element not found") rather than an empty array.
+    let array: IShellItemArray = match view.GetSelection(false) {
+        Ok(array) => array,
+        Err(e) if e.code().0 as u32 == 0x8007_0490 => return Ok(Vec::new()),
+        Err(e) => return Err(native("GetSelection", e)),
+    };
+    let count = array.GetCount().map_err(|e| native("GetCount", e))?;
+    let mut ids = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let item = array.GetItemAt(i).map_err(|e| native("GetItemAt", e))?;
+        let id = display_name(&item, SIGDN_DESKTOPABSOLUTEPARSING);
+        if !id.is_empty() {
+            ids.push(id);
+        }
+    }
+    Ok(ids)
 }
 
 /// How many items are selected in the desktop view right now.

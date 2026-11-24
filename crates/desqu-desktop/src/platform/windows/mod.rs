@@ -298,6 +298,20 @@ pub(crate) fn selection_count() -> DesktopResult<usize> {
         .map_err(|_| DesktopError::Native { op: "selection", message: "thread panicked".into() })?
 }
 
+/// The ids of the desktop items that are selected right now. Read-only, takes no lock.
+pub(crate) fn selected_items() -> DesktopResult<Vec<String>> {
+    std::thread::Builder::new()
+        .name("desqu-desktop-selected".into())
+        .spawn(move || {
+            with_com(|| {
+                // SAFETY: on a COM thread of its own.
+                unsafe { shell::selected_ids(&shell::desktop_view()?) }
+            })
+        })?
+        .join()
+        .map_err(|_| DesktopError::Native { op: "selected", message: "thread panicked".into() })?
+}
+
 fn with_com<T>(f: impl FnOnce() -> T) -> T {
     // SAFETY: balanced with CoUninitialize below; this thread owns its apartment.
     let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok();
