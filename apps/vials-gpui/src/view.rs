@@ -823,7 +823,7 @@ impl Render for VialView {
                     }))
                     .child(canvas(move |b, _, _| {
                         store.borrow_mut().insert(i, b);
-                    }, |_, _, _, _| {}).absolute().size_full())
+                    }, |_, _, _, _| {}).absolute().top_0().left_0().right_0().bottom_0())
                     .child(icon)
                     .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(item.name.clone()))
                     .when(live, |d| {
