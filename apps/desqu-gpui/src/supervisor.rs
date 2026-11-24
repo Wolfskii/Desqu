@@ -148,11 +148,6 @@ impl Supervisor {
         }
     }
 
-    /// Brings the module's own window up.
-    pub fn open(&self, kind: Kind) -> bool {
-        tray::forward_action(&kind.identity(), kind.open_action())
-    }
-
     pub fn stop_all(&self) {
         for kind in crate::modules::ALL {
             self.stop(kind);

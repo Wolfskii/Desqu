@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use desqu_native_shell::{tray, Identity};
 use gpui::{App, Application};
 
-use modules::{Settings, ALL};
+use modules::Settings;
 use supervisor::Supervisor;
 use view::Shell;
 
@@ -77,7 +77,8 @@ fn main() {
     }
 
     let shell_for_exit = shell.clone();
-    let menu: Vec<String> = std::iter::once("Open Desqu".to_string()).chain(ALL.iter().map(|k| format!("Open {}", k.name()))).chain(std::iter::once("Quit Desqu".to_string())).collect();
+    // The apps have no window of their own under Desqu: their settings are on their pages here.
+    let menu: Vec<String> = vec!["Open Desqu".to_string(), "Quit Desqu".to_string()];
     Application::new().run(move |cx: &mut App| {
         let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
         let labels: Vec<&str> = menu.iter().map(String::as_str).collect();
@@ -86,7 +87,7 @@ fn main() {
         if !autostarted || action.as_deref() == Some("show") {
             view::open(cx, shell.clone());
         }
-        let last = ALL.len() + 1;
+        let last = 1;
         cx.spawn(async move |cx| {
             let _keep = &tray;
             loop {
@@ -99,15 +100,7 @@ fn main() {
                         tray::Event::Menu(i) if i == last => {
                             let _ = cx.update(|cx| cx.quit());
                         }
-                        tray::Event::Menu(i) => {
-                            // "Open <module>": its own window, if it is running.
-                            if let Some(kind) = ALL.get(i - 1) {
-                                let kind = *kind;
-                                std::thread::spawn(move || {
-                                    shell.supervisor.open(kind);
-                                });
-                            }
-                        }
+                        tray::Event::Menu(_) => {}
                         tray::Event::Action(name) if name == "show" => {
                             let _ = cx.update(|cx| view::open(cx, shell));
                         }

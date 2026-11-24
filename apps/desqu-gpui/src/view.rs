@@ -242,18 +242,6 @@ impl DesquView {
         cx.notify();
     }
 
-    fn open_app(&mut self, kind: Kind, cx: &mut Context<Self>) {
-        let status = self.shell.supervisor.status(kind);
-        self.note = if !matches!(status, Status::Running | Status::RunningElsewhere) {
-            format!("Turn {} on first", kind.name())
-        } else if !self.shell.supervisor.open(kind) {
-            format!("{} did not answer", kind.name())
-        } else {
-            String::new()
-        };
-        cx.notify();
-    }
-
     fn check_update(&mut self, cx: &mut Context<Self>) {
         self.update_note = "Checking...".into();
         self.update_url = None;
@@ -360,7 +348,6 @@ impl DesquView {
     fn app_card(&self, kind: Kind, settings: &Settings, cx: &mut Context<Self>) -> gpui::Div {
         let status = self.shell.supervisor.status(kind);
         let (on, start) = self.switches(kind, settings, cx);
-        let alive = matches!(status, Status::Running | Status::RunningElsewhere);
         card()
             .when(status == Status::Missing, |d| d.opacity(0.6))
             .child(
@@ -394,12 +381,7 @@ impl DesquView {
                     .child(on),
             )
             .child(dim(kind.description()))
-            .child(
-                div().flex().items_center().justify_between().gap(px(10.)).child(start).child(
-                    button(SharedString::from(format!("open-{}", kind.name())), "Open", alive)
-                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.open_app(kind, cx))),
-                ),
-            )
+            .child(start)
     }
 
     fn home(&self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
@@ -447,7 +429,6 @@ impl DesquView {
     fn app_page(&self, kind: Kind, cx: &mut Context<Self>) -> gpui::Div {
         let settings = self.settings();
         let status = self.shell.supervisor.status(kind);
-        let alive = matches!(status, Status::Running | Status::RunningElsewhere);
         let (on, start) = self.switches(kind, &settings, cx);
         let explain = match status {
             Status::Running => format!("{} is running. Its settings are below; its own window has the rest.", kind.name()),
@@ -479,10 +460,6 @@ impl DesquView {
                         div()
                             .flex()
                             .gap(px(8.))
-                            .child(
-                                button(SharedString::from(format!("page-open-{}", kind.name())), format!("Open {}", kind.name()), alive)
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.open_app(kind, cx))),
-                            )
                             .child(button("page-log", "Show its log", true).on_click(move |_, _, _| open_path(&crate::supervisor::log_path(kind)))),
                     ),
             )

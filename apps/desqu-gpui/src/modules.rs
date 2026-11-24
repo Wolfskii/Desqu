@@ -57,13 +57,6 @@ impl Kind {
         args
     }
 
-    /// The action that brings the module's own window up.
-    pub fn open_action(self) -> &'static str {
-        match self {
-            Kind::Vials => "settings",
-            _ => "show",
-        }
-    }
 }
 
 /// Saved in the user's config folder: which modules are on, and which of those start at sign-in.
@@ -195,8 +188,6 @@ mod tests {
         }
         assert!(Kind::Vials.start_args().contains(&"--live"), "Vials only works with the desktop");
         assert!(!Kind::Workspaces.start_args().contains(&"--live"));
-        assert_eq!(Kind::Vials.open_action(), "settings");
-        assert_eq!(Kind::Screenbound.open_action(), "show");
     }
 
     #[test]
