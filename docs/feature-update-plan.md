@@ -51,7 +51,7 @@ progress log in the same commit as the work.
 | P2-05 | [x] | Saved layouts, one per screen setup, switched on dock/undock | M | |
 | P2-06 | [x] | Recent files vial | M | Windows Recent list |
 | P2-07 | [x] | Cleanup rule: untouched items move to an Archive vial or folder | M | |
-| P2-08 | [ ] | Note and link items | M | |
+| P2-08 | [x] | Note and link items | M | |
 | P2-09 | [ ] | Wallpaper-derived vial colour | M | |
 | P2-10 | [ ] | Workspaces: startup sets per desktop | M | |
 | P2-11 | [ ] | Workspaces: wallpaper per desktop (Windows 10) | M | |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P2-08 notes and links: "New notes vial here" makes a portal over a folder of the program (APPDATA/.../notes); in it "New note" makes and opens an empty text file, "New link from the clipboard" (shown when a web address is on the clipboard) makes a .url file named after the site. They are plain files: they open in the default program and drag out like any file. Tests for the helpers and for new notes. Hand test: the clipboard read and the opening.
 - P2-07 archive vial: "New archive vial here (not changed for 30 days)" makes a vial named Archive with the age rule from P1-06, and the rules are looked at again every ten minutes (an item gets old without any event). Done as a vial, not as a mover of files: nothing is moved on disk. Hand test: a file older than 30 days on the desktop.
 - P2-06 recent files vial: "New recent files vial here" in the vial menu makes a portal that shows Windows' Recent list (up to 50 shortcuts, newest first, filtered by search, nothing dropped into it). Test for the ordering and the limit (temp folder with set times). Hand test: with your real Recent list.
 - P2-05 saved layouts: vial menu "Layouts..." saves where the vials sit ("Layout N") and brings back or deletes a saved one; the program also remembers the places per screen setup (monitor names, sizes, arrangement) and, when you dock or undock, puts the vials where they were the last time you had that setup. Locked vials stay. Tests: the setup key, save/restore/delete, docking back and forth. Hand test: really docking and undocking.

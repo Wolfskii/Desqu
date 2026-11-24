@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ::windows::core::PWSTR;
 use ::windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, HWND};
 use ::windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED};
-use ::windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+use ::windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData};
 use ::windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use ::windows::Win32::UI::Shell::{FileOpenDialog, IFileOpenDialog, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, SIGDN_FILESYSPATH};
 
@@ -42,6 +42,31 @@ pub fn put_text(text: &str) -> Result<(), String> {
         })();
         let _ = CloseClipboard();
         result
+    }
+}
+
+/// The text on the clipboard, if there is any.
+pub fn get_text() -> Option<String> {
+    // SAFETY: the clipboard is opened and closed here; the memory is locked only while it is read.
+    unsafe {
+        OpenClipboard(None).ok()?;
+        let text = (|| {
+            let handle = GetClipboardData(CF_UNICODETEXT).ok()?;
+            let memory = HGLOBAL(handle.0);
+            let at = GlobalLock(memory) as *const u16;
+            if at.is_null() {
+                return None;
+            }
+            let mut len = 0;
+            while *at.add(len) != 0 {
+                len += 1;
+            }
+            let text = String::from_utf16_lossy(std::slice::from_raw_parts(at, len));
+            let _ = GlobalUnlock(memory);
+            Some(text)
+        })();
+        let _ = CloseClipboard();
+        text
     }
 }
 

@@ -374,6 +374,15 @@ impl Engine {
 
     /// Adds a rule (tried after the existing ones). Desktop items that already match it and sit in no vial
     /// are sorted at once.
+    /// A vial that shows the folder of notes and links, named Notes.
+    pub fn create_notes_at(&self, point: Option<(i32, i32)>) -> Option<String> {
+        let folder = vials_core::notes::folder();
+        std::fs::create_dir_all(&folder).ok()?;
+        let vial = self.create_portal_at(point, &folder.to_string_lossy())?;
+        self.rename_vial(&vial, "Notes");
+        Some(vial)
+    }
+
     /// A vial named "Archive" with a rule that sends it whatever has not been changed for `days` days.
     pub fn create_archive_at(&self, point: Option<(i32, i32)>, days: u32) -> Option<String> {
         let vial = self.create_vial_at(point)?;

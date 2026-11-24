@@ -976,7 +976,27 @@ impl VialView {
             entries.push(MenuEntry::separator());
         }
         if let Some(source) = vial.source.clone() {
+            if vials_core::notes::is_notes(&source) {
+                let w = weak.clone();
+                entries.push(MenuEntry::new("New note", move |cx| {
+                    let _ = w.update(cx, |view, cx| view.new_note(cx));
+                }));
+                if vials_platform::actions::get_text().is_some_and(|t| vials_core::notes::looks_like_url(&t)) {
+                    let w = weak.clone();
+                    entries.push(MenuEntry::new("New link from the clipboard", move |cx| {
+                        let _ = w.update(cx, |view, cx| view.new_link(cx));
+                    }));
+                }
+            }
             entries.push(MenuEntry::new("Open the folder in Explorer", move |_| win::open_path(&source)));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New notes vial here", move |cx| {
+                if live.engine.create_notes_at(Some(at)).is_some() {
+                    bump(&live.revision, cx);
+                }
+            }));
         }
         {
             let live = live.clone();
@@ -1154,6 +1174,28 @@ impl VialView {
     /// The vial's items that exist (a path that is gone cannot be opened, copied or packed).
     fn existing_items(&self) -> Vec<String> {
         self.items.iter().filter(|i| !i.missing && !i.id.starts_with("::")).map(|i| i.id.clone()).collect()
+    }
+
+    /// A new note in the notes vial: an empty text file, opened to write in.
+    fn new_note(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()) else { return };
+        let name = vials_core::clip::unique_name(|n| dir.join(n).exists(), "Note", "txt");
+        let path = dir.join(name);
+        if std::fs::write(&path, "").is_ok() {
+            #[cfg(not(test))]
+            win::open_path(&path.to_string_lossy());
+            self.refresh_portal(cx);
+        }
+    }
+
+    /// A new link in the notes vial: a `.url` file for the web address on the clipboard.
+    fn new_link(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()) else { return };
+        let Some(url) = vials_platform::actions::get_text().filter(|t| vials_core::notes::looks_like_url(t)) else { return };
+        let name = vials_core::clip::unique_name(|n| dir.join(n).exists(), &vials_core::notes::link_name(&url), "url");
+        if std::fs::write(dir.join(name), vials_core::notes::url_file_text(&url)).is_ok() {
+            self.refresh_portal(cx);
+        }
     }
 
     /// "Open all": every item, like double-clicking each (at most 20 at once).
@@ -1723,6 +1765,23 @@ mod tests {
         assert!(view.read_with(cx, |v, _| v.masked()), "on and the pointer is elsewhere");
         view.update(cx, |v, _| v.hovered = true);
         assert!(!view.read_with(cx, |v, _| v.masked()), "the pointer is over it");
+    }
+
+    #[gpui::test]
+    fn new_notes_are_empty_text_files_in_the_notes_portal_with_free_names(cx: &mut TestAppContext) {
+        let dir = std::env::temp_dir().join(format!("desqu-notes-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        view.update(cx, |v, cx| v.set_portal_source(Some(dir.to_string_lossy().into_owned()), cx));
+        cx.run_until_parked();
+        view.update(cx, |v, cx| v.new_note(cx));
+        view.update(cx, |v, cx| v.new_note(cx));
+        cx.run_until_parked();
+        let mut names = view.read_with(cx, |v, _| v.items.iter().map(|i| i.name.to_string()).collect::<Vec<_>>());
+        names.sort();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(names, vec!["Note (2).txt", "Note.txt"]);
     }
 
     #[gpui::test]
