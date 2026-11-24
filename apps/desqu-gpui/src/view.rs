@@ -749,6 +749,32 @@ impl DesquView {
         }
     }
 
+    /// "Save a report": a zip with versions, a summary of the settings and the tail of each log, on the desktop.
+    fn save_report(&mut self, cx: &mut Context<Self>) {
+        let Some(folder) = desqu_desktop::desktop_folders().into_iter().next() else {
+            self.note = "The Desktop folder was not found".into();
+            return;
+        };
+        let supervisor = self.shell.supervisor.clone();
+        self.note = "Saving the report...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { crate::report::save(&folder, |kind| supervisor.status(kind)) }).await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(path) => {
+                        view.note = format!("Saved {}", path.display());
+                        // Show it in Explorer, selected.
+                        let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{}", path.display())).spawn();
+                    }
+                    Err(e) => view.note = format!("Could not save the report: {e}"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn settings_page(&self, cx: &mut Context<Self>) -> gpui::Div {
         let settings = self.settings();
         let starts = settings.should_autostart();
@@ -794,6 +820,13 @@ impl DesquView {
                     .child(div().flex().gap(px(24.)).child("Desqu").child(dim(env!("CARGO_PKG_VERSION"))))
                     .child(dim("Each app keeps its output in the logs folder, which helps when one stops unexpectedly."))
                     .child(div().flex().child(button("logs", "Open the logs folder", true).on_click(move |_, _, _| open_path(&logs)))),
+            )
+            .child(
+                card()
+                    .gap(px(6.))
+                    .child(card_title("Report a problem"))
+                    .child(dim("Saves a zip on your desktop to attach to a bug report: the versions, which apps are running, a summary of the settings (options and counts, not your file names) and the last lines of each app's log. Your user folder is hidden in it."))
+                    .child(div().flex().child(button("report", "Save a report", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.save_report(cx))))),
             )
             .child(div().flex().child(button("quit", "Quit Desqu and its apps", true).on_click(|_, _, cx| cx.quit())))
     }

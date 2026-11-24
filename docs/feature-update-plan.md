@@ -38,7 +38,7 @@ progress log in the same commit as the work.
 | P1-12 | [x] | Workspaces: jump hotkeys Win+Ctrl+1..9 | S | Check clashes with Windows |
 | P1-13 | [x] | Screenbound: hotkey puts the focused window in the zone | S | |
 | P1-14 | [x] | Screenbound: pause for exclusive-fullscreen games | S | |
-| P1-15 | [ ] | Desqu: diagnostics bundle ("Save a report") | S | No file names unless asked |
+| P1-15 | [x] | Desqu: diagnostics bundle ("Save a report") | S | No file names unless asked |
 
 ## Phase 2: the big Fences features
 
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P1-15 "Save a report" on Desqu's Settings page: a zip on the desktop with versions, what runs, a summary of settings (options and counts, no file names) and the last 400 lines of each log, with the user folder hidden. Tests for hiding the folder, the tail, that summaries hold no names, and a real zip. Hand test: the button and the Explorer window that opens. Phase 1 is done.
 - P1-14 games in exclusive fullscreen (Windows' D3D full screen state) are left alone (setting on by default, on the Screenbound page). Engine test with the fake platform: a fullscreen window is managed without a game and untouched with one. Hand test: with a real exclusive-fullscreen game.
 - P1-13 zone hotkey: a hotkey (off, Ctrl+Alt+Z, Win+Shift+Z or Ctrl+Alt+Space, chosen on the Screenbound page) puts the window in front into the zone, once. New shared desqu-native-shell hotkey module (text to key combination, tested) for the later hotkey items; engine test with the fake platform. Hand test: the key on real windows.
 - P1-11 desktop name note when you switch (setting "Show the desktop's name", on by default): a dark panel in the middle of the screen for 1.3 s that takes no focus and lets clicks through. Hand test: the look and position, on more than one monitor.

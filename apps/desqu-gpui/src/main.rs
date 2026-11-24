@@ -9,6 +9,7 @@
 mod app_settings;
 mod assets;
 mod modules;
+mod report;
 mod screenbound_remote;
 mod supervisor;
 mod workspaces_page;
