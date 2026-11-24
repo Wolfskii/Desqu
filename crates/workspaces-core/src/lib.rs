@@ -4,4 +4,5 @@ pub mod b64;
 pub mod jump;
 pub mod model;
 pub mod paste;
+pub mod startup;
 pub mod visibility;

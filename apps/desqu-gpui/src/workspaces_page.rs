@@ -23,6 +23,8 @@ pub struct Card {
     pub name: String,
     pub current: bool,
     pub removed: bool,
+    /// Its apps and folders open the first time you come to it in a session.
+    pub open_on_visit: bool,
     pub items: Vec<Item>,
 }
 
@@ -80,6 +82,7 @@ pub fn build(cfg: &WorkspacesConfig, desktops: &workspaces_platform::Desktops, v
             name: desktop_label(i, &d.name),
             current: desktops.current.as_deref() == Some(d.id.as_str()),
             removed: false,
+            open_on_visit: cfg.workspace(&d.id).is_some_and(|w| w.open_on_visit),
             items: cfg.workspace(&d.id).map(|w| w.items.iter().filter(|i| alive(i)).map(item).collect()).unwrap_or_default(),
         })
         .collect();
@@ -89,6 +92,7 @@ pub fn build(cfg: &WorkspacesConfig, desktops: &workspaces_platform::Desktops, v
             name: if ws.name.is_empty() { "Removed desktop".into() } else { ws.name.clone() },
             current: false,
             removed: true,
+            open_on_visit: false,
             items: ws.items.iter().filter(|i| alive(i)).map(item).collect(),
         });
     }
@@ -131,6 +135,19 @@ fn assign_in_file(path: &Path, desktops: &workspaces_platform::Desktops, item: &
     };
     cfg.assign(item, target.as_ref().map(|(id, name)| (id.as_str(), name.as_str())));
     cfg.save(path).map_err(|e| e.to_string())
+}
+
+/// Turns "open its items the first time you come here" on or off for a desktop.
+pub fn set_open_on_visit(running: bool, desktop: &str, on: bool) -> Result<(), String> {
+    if running && tray::forward_action(&Kind::Workspaces.identity(), &format!("open-on-visit:{desktop}:{on}")) {
+        return Ok(());
+    }
+    let path = crate::app_settings::workspaces_path();
+    let desktops = workspaces_platform::desktops().unwrap_or_default();
+    let index = desktops.list.iter().position(|d| d.id == desktop).ok_or("that virtual desktop does not exist")?;
+    let mut cfg = WorkspacesConfig::load(&path).map_err(|e| e.to_string())?;
+    cfg.set_open_on_visit((desktop, &desktop_label(index, &desktops.list[index].name)), on);
+    cfg.save(&path).map_err(|e| e.to_string())
 }
 
 /// Shows everything a desktop holds on every desktop, and forgets the desktop.

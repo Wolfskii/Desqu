@@ -637,6 +637,24 @@ impl DesquView {
                                 )
                             }),
                     )
+                    .when(!c.removed, |d| {
+                        let (desktop, on) = (c.id.clone(), c.open_on_visit);
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(10.))
+                                .child(
+                                    switch(SharedString::from(format!("visit-{desktop}")), on_off(on), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                        if let Err(e) = crate::workspaces_page::set_open_on_visit(this.workspaces_running(), &desktop, !on) {
+                                            this.note = e;
+                                        }
+                                        this.refresh_soon(cx);
+                                    })),
+                                )
+                                .child(dim("Open its apps and folders the first time I come here")),
+                        )
+                    })
                     .when(c.removed, |d| d.child(dim("This desktop no longer exists, so its items are shown everywhere again.")))
                     .when(!c.removed && count == 0, |d| d.child(dim("Nothing is tied to this desktop yet. Click an item below to tie it here.")))
                     .when(count > 0, |d| d.child(div().flex().flex_wrap().gap(px(6.)).children(c.items.iter().take(40).map(|i| self.item_chip(i, cx))))),

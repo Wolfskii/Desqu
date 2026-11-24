@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use desqu_desktop::{DesktopError, DesktopLayer, Subscription};
 use workspaces_core::model::{desktop_label, vial_item, vial_of, WorkspacesConfig};
-use workspaces_core::{jump, paste, visibility};
+use workspaces_core::{jump, paste, startup, visibility};
 use workspaces_platform::{ClipboardWatcher, CutPasteWatcher, Desktops, HotkeyWatcher, SwitchWatcher, TaskViewWatcher};
 
 /// The desktop view shows a new item several seconds after the file appears.
@@ -74,6 +74,8 @@ pub struct Engine {
     on_switch: Mutex<Option<SwitchCallback>>,
     /// The desktop the last look found you on.
     last_desktop: Mutex<Option<String>>,
+    /// The desktops whose items were opened already in this session.
+    opened: Mutex<HashSet<String>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -140,6 +142,7 @@ impl Engine {
             hotkeys: Mutex::new(None),
             on_switch: Mutex::new(None),
             last_desktop: Mutex::new(None),
+            opened: Mutex::new(HashSet::new()),
         });
 
         let mut subs = Vec::new();
@@ -236,6 +239,12 @@ impl Engine {
         });
         self.apply_jump_hotkeys();
         changed
+    }
+
+    /// Turns "open its items the first time you come here" on or off for a desktop.
+    pub fn set_open_on_visit(&self, desktop_id: &str, on: bool) -> Result<bool, String> {
+        let (id, name) = self.desktop_named(desktop_id)?;
+        Ok(self.change(|c| c.set_open_on_visit((&id, &name), on)))
     }
 
     pub fn set_show_name(&self, on: bool) -> bool {
@@ -525,6 +534,19 @@ impl Engine {
         // Switched to another desktop: say which one (the first look is not a switch).
         if let Some(cur) = current.as_deref() {
             let before = lock(&self.last_desktop).replace(cur.to_string());
+            // The first time you come to a desktop that asks for it, its apps and folders are opened.
+            if before.as_deref().is_some_and(|b| b != cur) {
+                let config = self.config();
+                if startup::first_visit(&mut lock(&self.opened), config.workspace(cur)) {
+                    let items = config.workspace(cur).map(startup::items_to_open).unwrap_or_default();
+                    std::thread::spawn(move || {
+                        for item in items {
+                            let _ = std::process::Command::new("explorer.exe").arg(&item).spawn();
+                            std::thread::sleep(Duration::from_millis(400));
+                        }
+                    });
+                }
+            }
             if before.as_deref().is_some_and(|b| b != cur) && self.config().show_name {
                 let index = desktops.list.iter().position(|d| d.id == cur).unwrap_or(0);
                 let name = desktop_label(index, desktops.list.get(index).map_or("", |d| d.name.as_str()));

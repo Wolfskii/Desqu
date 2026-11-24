@@ -21,6 +21,9 @@ pub struct Workspace {
     /// Desktop item ids (absolute parsing names) that belong to this desktop.
     #[serde(default)]
     pub items: Vec<String>,
+    /// The first time you come to this desktop in a session, its apps and folders are opened.
+    #[serde(default)]
+    pub open_on_visit: bool,
 }
 
 impl Workspace {
@@ -29,6 +32,7 @@ impl Workspace {
             desktop_id: desktop_id.to_string(),
             name: name.to_string(),
             items: Vec::new(),
+            open_on_visit: false,
         }
     }
 }
@@ -171,6 +175,24 @@ impl WorkspacesConfig {
     }
 
     /// Forgets a workspace: its items are shown on every desktop again. Returns whether it existed.
+    /// Turns "open its items the first time you come here" on or off for a desktop (which then has a
+    /// workspace even with no items). Returns whether anything changed.
+    pub fn set_open_on_visit(&mut self, desktop: (&str, &str), on: bool) -> bool {
+        if !self.workspaces.iter().any(|w| w.desktop_id == desktop.0) {
+            if !on {
+                return false;
+            }
+            self.workspaces.push(Workspace::new(desktop.0, desktop.1));
+        }
+        match self.workspaces.iter_mut().find(|w| w.desktop_id == desktop.0) {
+            Some(ws) if ws.open_on_visit != on => {
+                ws.open_on_visit = on;
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn remove_workspace(&mut self, desktop_id: &str) -> bool {
         let before = self.workspaces.len();
         self.workspaces.retain(|w| w.desktop_id != desktop_id);
@@ -225,6 +247,18 @@ impl WorkspacesConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_open_on_visit_choice_makes_a_workspace_and_an_old_config_has_it_off() {
+        let mut cfg = WorkspacesConfig::default();
+        assert!(!cfg.set_open_on_visit((ID, "Work"), false), "nothing to turn off");
+        assert!(cfg.set_open_on_visit((ID, "Work"), true));
+        assert!(cfg.workspace(ID).unwrap().open_on_visit);
+        assert!(!cfg.set_open_on_visit((ID, "Work"), true));
+        assert!(cfg.set_open_on_visit((ID, "Work"), false));
+        let old: Workspace = serde_json::from_str(&format!(r#"{{"desktopId":"{ID}","items":[]}}"#)).unwrap();
+        assert!(!old.open_on_visit);
+    }
+
     #[test]
     fn an_old_config_gets_the_new_options_at_their_defaults() {
         let cfg: WorkspacesConfig = serde_json::from_str(r#"{"version":1,"workspaces":[]}"#).unwrap();

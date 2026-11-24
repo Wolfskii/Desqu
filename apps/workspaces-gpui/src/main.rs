@@ -140,6 +140,13 @@ fn main() {
                                 }
                             }
                         }
+                        tray::Event::Action(name) if name.starts_with("open-on-visit:") => {
+                            if let Some((desktop, on)) = name.trim_start_matches("open-on-visit:").rsplit_once(':') {
+                                if let Err(e) = engine.set_open_on_visit(desktop, on == "true") {
+                                    eprintln!("could not change {desktop}: {e}");
+                                }
+                            }
+                        }
                         tray::Event::Action(name) if name.starts_with("release-desktop:") => {
                             engine.release_desktop(name.trim_start_matches("release-desktop:"));
                         }
