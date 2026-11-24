@@ -14,7 +14,7 @@ use windows::core::GUID;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
 use windows::Win32::UI::Shell::{IVirtualDesktopManager, VirtualDesktopManager};
-use workspaces_core::model::{vial_of, WorkspacesConfig};
+use workspaces_core::model::{desktop_label, vial_item, vial_of, WorkspacesConfig};
 
 /// How the Workspaces app names itself to Windows.
 const WORKSPACES: Identity = Identity { name: "Workspaces", key: "WorkspacesGpui" };
@@ -36,6 +36,32 @@ pub fn workspaces_config_path() -> PathBuf {
 /// Whether the Workspaces app is running (its single-instance mutex is taken).
 pub fn workspaces_running() -> bool {
     tray::single_instance(&WORKSPACES).is_none()
+}
+
+/// What a vial's right-click menu offers while Workspaces runs: (label, checked, target), where the
+/// target is a virtual desktop id or `all`. `None` when Workspaces is not running or Windows has only
+/// one virtual desktop.
+pub fn menu_choices(vial_id: &str) -> Option<Vec<(String, bool, String)>> {
+    if !workspaces_running() {
+        return None;
+    }
+    let list = workspaces_platform::desktops().ok()?.list;
+    if list.is_empty() {
+        return None;
+    }
+    let cfg = WorkspacesConfig::load(&workspaces_config_path()).unwrap_or_default();
+    let owner = cfg.owner_of(&vial_item(vial_id)).map(str::to_string);
+    let mut out = vec![("Show on every desktop".to_string(), owner.is_none(), "all".to_string())];
+    for (i, d) in list.iter().enumerate() {
+        out.push((format!("Show on {}", desktop_label(i, &d.name)), owner.as_deref() == Some(d.id.as_str()), d.id.clone()));
+    }
+    Some(out)
+}
+
+/// Asks the running Workspaces to tie the vial to a virtual desktop (or `all`). It is Workspaces that
+/// keeps the setting; the vial follows within a second.
+pub fn assign(vial_id: &str, target: &str) -> bool {
+    tray::forward_action(&WORKSPACES, &format!("assign-vial:{vial_id}:{target}"))
 }
 
 /// `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` as a GUID.

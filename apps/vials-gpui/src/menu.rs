@@ -111,7 +111,7 @@ impl Render for MenuView {
                 .rounded(px(6.))
                 .text_sm()
                 .when(single, |d| d.px_3().gap(px(10.)).font_weight(FontWeight::MEDIUM))
-                .when(!single, |d| d.px_2().gap_2().child(div().w(px(14.)).text_xs().child(if e.checked { "v" } else { "" })))
+                .when(!single, |d| d.px_2().gap_2().child(div().w(px(14.)).text_xs().child(if e.checked { "\u{2713}" } else { "" })))
                 .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(rgba(0xffffff2a))))
                 .when(!enabled, |d| d.opacity(0.45))
                 .when_some(e.icon, |d, icon| d.child(icon_element(icon)))

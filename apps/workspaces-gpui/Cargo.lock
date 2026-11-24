@@ -5944,6 +5944,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vials-platform"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "vials-core",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
+]
+
+[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6849,6 +6859,7 @@ dependencies = [
  "desqu-native-shell",
  "gpui",
  "vials-core",
+ "vials-platform",
  "winresource",
  "workspaces-core",
  "workspaces-platform",

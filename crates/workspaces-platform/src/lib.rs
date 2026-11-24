@@ -6,6 +6,10 @@
 use serde::Serialize;
 
 #[cfg(windows)]
+mod extras;
+#[cfg(windows)]
+pub use extras::{clipboard_has_files, set_paste_entry, ClipboardWatcher, TaskViewWatcher};
+#[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 use self::windows as imp;

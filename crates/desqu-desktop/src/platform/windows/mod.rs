@@ -37,6 +37,7 @@ enum Command {
     Hidden { owner: String, reply: Reply<Vec<String>> },
     SetSurface { owner: String, on: bool, reply: Reply<()> },
     SurfaceActive(Reply<bool>),
+    Veil { owner: String, on: bool, reply: Reply<()> },
     Shutdown,
 }
 
@@ -48,6 +49,8 @@ struct State {
     surface: Option<String>,
     /// Surface mode: the ids each owner wants hidden.
     claims: HashMap<String, HashSet<String>>,
+    /// The owner that switched the desktop's icons off for a moment (see [`DesktopLayer::veil`]).
+    veil: Option<String>,
     notifier: Arc<Notifier>,
 }
 
@@ -351,7 +354,7 @@ impl Drop for Host {
 
 fn worker(rx: Receiver<Command>, path: PathBuf, notifier: Arc<Notifier>) {
     let mut state =
-        State { journal: Journal::load(&path), path, surface: None, claims: HashMap::new(), notifier };
+        State { journal: Journal::load(&path), path, surface: None, claims: HashMap::new(), veil: None, notifier };
     // A journal at startup is a previous run's leftovers (crash or kill): put everything back.
     if let Err(e) = restore_all(&mut state) {
         tracing::warn!("could not restore desktop items left by a previous run: {e}");
@@ -395,6 +398,9 @@ fn worker(rx: Receiver<Command>, path: PathBuf, notifier: Arc<Notifier>) {
             }
             Command::SurfaceActive(reply) => {
                 let _ = reply.send(Ok(state.surface.is_some()));
+            }
+            Command::Veil { owner, on, reply } => {
+                let _ = reply.send(veil(&mut state, &owner, on));
             }
             Command::Shutdown => break,
         }
@@ -658,7 +664,38 @@ fn show_block(state: &mut State, owner: &str, ids: &[String], screen: Point) -> 
     Ok(())
 }
 
+/// Icons off for a moment, or on again. Journaled while off so a crash cannot leave them off.
+fn veil(state: &mut State, owner: &str, on: bool) -> DesktopResult<()> {
+    if state.surface.is_some() {
+        return Ok(());
+    }
+    if on {
+        if state.veil.is_some() {
+            return Ok(());
+        }
+        // SAFETY: on the COM thread.
+        let changed = unsafe { shell::set_icons_hidden(true)? };
+        if changed {
+            state.veil = Some(owner.to_string());
+            state.journal.icons_hidden = true;
+            state.save()?;
+        }
+        return Ok(());
+    }
+    if state.veil.as_deref() != Some(owner) {
+        return Ok(());
+    }
+    state.veil = None;
+    // SAFETY: on the COM thread.
+    unsafe { shell::set_icons_hidden(false)? };
+    state.journal.icons_hidden = false;
+    state.save()
+}
+
 fn show_all(state: &mut State, owner: &str) -> DesktopResult<()> {
+    if state.veil.as_deref() == Some(owner) {
+        veil(state, owner, false)?;
+    }
     if state.surface.is_some() {
         let had = state.claims.remove(owner).is_some_and(|c| !c.is_empty());
         if state.surface.as_deref() == Some(owner) {
@@ -677,6 +714,7 @@ fn show_all(state: &mut State, owner: &str) -> DesktopResult<()> {
 }
 
 fn restore_all(state: &mut State) -> DesktopResult<()> {
+    state.veil = None;
     state.claims.clear();
     state.surface = None;
     let icons = restore_icons(&mut state.journal);
@@ -839,6 +877,10 @@ impl DesktopLayer for Handle {
 
     fn surface_active(&self) -> bool {
         self.host.call(Command::SurfaceActive).unwrap_or(false)
+    }
+
+    fn veil(&self, on: bool) -> DesktopResult<()> {
+        self.host.call(|reply| Command::Veil { owner: self.owner.clone(), on, reply })
     }
 
     fn subscribe_claims(&self, sink: ClaimSink) -> DesktopResult<Subscription> {

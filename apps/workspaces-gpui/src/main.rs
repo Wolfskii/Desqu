@@ -66,6 +66,9 @@ fn main() {
             std::process::exit(1);
         }
     };
+    // Task View hides the desktop icons while it shows; the clipboard decides whether the desktop's
+    // right-click menu offers "Paste on this workspace".
+    engine.watch_shell();
     let engine_for_exit = engine.clone();
     Application::new().run(move |cx: &mut App| {
         let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
@@ -93,6 +96,25 @@ fn main() {
                         }
                         tray::Event::Action(name) if name == "quit" => {
                             let _ = cx.update(|cx| cx.quit());
+                        }
+                        // The desktop's right-click entry: paste the copied or cut files onto this desktop.
+                        tray::Event::Action(name) if name == "paste-here" => {
+                            std::thread::spawn(move || {
+                                if let Err(e) = engine.paste_here() {
+                                    eprintln!("could not paste on this workspace: {e}");
+                                }
+                            });
+                        }
+                        // From Vials' right-click menu: `assign-vial:<vial id>:<virtual desktop id, or all>`.
+                        tray::Event::Action(name) if name.starts_with("assign-vial:") => {
+                            let rest = name.trim_start_matches("assign-vial:");
+                            if let Some((vial, target)) = rest.split_once(':') {
+                                let item = workspaces_core::model::vial_item(vial);
+                                let desktop = (target != "all").then_some(target);
+                                if let Err(e) = engine.assign_item(&item, desktop) {
+                                    eprintln!("could not tie vial {vial} to {target}: {e}");
+                                }
+                            }
                         }
                         _ => {}
                     }

@@ -55,6 +55,7 @@ pub(super) enum Request {
     Hidden,
     SetSurface { on: bool },
     SurfaceActive,
+    Veil { on: bool },
 }
 
 type Reply = Result<Value, String>;
@@ -107,6 +108,7 @@ fn dispatch(layer: &dyn DesktopLayer, request: &Request) -> Reply {
         Request::Hidden => to_value(layer.hidden()),
         Request::SetSurface { on } => to_value(layer.set_surface(*on)),
         Request::SurfaceActive => to_value(Ok::<_, DesktopError>(layer.surface_active())),
+        Request::Veil { on } => to_value(layer.veil(*on)),
     }
 }
 
@@ -479,6 +481,10 @@ impl DesktopLayer for Shared {
         self.call(Request::SurfaceActive).unwrap_or(false)
     }
 
+    fn veil(&self, on: bool) -> DesktopResult<()> {
+        self.call::<()>(Request::Veil { on })
+    }
+
     fn subscribe_claims(&self, sink: ClaimSink) -> DesktopResult<Subscription> {
         Ok(self.sinks.add(sink))
     }
@@ -512,6 +518,7 @@ mod tests {
             Request::ShowAt { id: "y".into(), screen: Point { x: -5, y: 7 } },
             Request::ShowBlock { ids: vec![], screen: Point { x: 1, y: 2 } },
             Request::SetSurface { on: true },
+            Request::Veil { on: false },
             Request::ShowAll,
         ];
         for request in all {

@@ -18,12 +18,16 @@ use std::time::{Duration, Instant};
 use desqu_desktop::{DesktopError, DesktopLayer, Subscription};
 use workspaces_core::model::{desktop_label, vial_item, vial_of, WorkspacesConfig};
 use workspaces_core::{paste, visibility};
-use workspaces_platform::{CutPasteWatcher, Desktops, SwitchWatcher};
+use workspaces_platform::{ClipboardWatcher, CutPasteWatcher, Desktops, SwitchWatcher, TaskViewWatcher};
 
 /// The desktop view shows a new item several seconds after the file appears.
 const LAG_RECHECK: Duration = Duration::from_secs(5);
 const RETRY_DELAY: Duration = Duration::from_secs(3);
 const MAX_RETRIES: u8 = 4;
+/// The icons are never kept off longer than this, whatever Task View does.
+const VEIL_LIMIT: Duration = Duration::from_secs(15);
+/// After Task View closes, how long to wait for the virtual desktop to change.
+const VEIL_SWITCH_WAIT: Duration = Duration::from_millis(400);
 
 type DesktopsFn = Box<dyn Fn() -> Desktops + Send + Sync>;
 
@@ -32,6 +36,8 @@ enum Job {
     Switched,
     DesktopChanged,
     Pasted(Vec<String>),
+    /// Task View (Win+Tab) opened (`true`) or closed.
+    TaskView(bool),
     Stop,
 }
 
@@ -58,6 +64,8 @@ pub struct Engine {
     worker: Mutex<Option<JoinHandle<()>>>,
     _subscriptions: Mutex<Vec<Subscription>>,
     _paste: Mutex<Option<CutPasteWatcher>>,
+    /// Win+Tab and the clipboard: see [`Engine::watch_shell`].
+    _shell: Mutex<Vec<Box<dyn std::any::Any + Send>>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -120,6 +128,7 @@ impl Engine {
             worker: Mutex::new(None),
             _subscriptions: Mutex::new(Vec::new()),
             _paste: Mutex::new(None),
+            _shell: Mutex::new(Vec::new()),
         });
 
         let mut subs = Vec::new();
@@ -143,8 +152,38 @@ impl Engine {
         Ok(engine)
     }
 
+    /// Starts the two shell watchers that only the real app wants: Task View (the desktop icons are
+    /// switched off while it shows, so the icons of the desktop being left are never seen) and the
+    /// clipboard (the desktop right-click entry "Paste on this workspace" exists while files are
+    /// copied or cut).
+    pub fn watch_shell(&self) {
+        let mut watchers: Vec<Box<dyn std::any::Any + Send>> = Vec::new();
+        if let Some(jobs) = lock(&self.jobs).clone() {
+            let sink = Mutex::new(jobs);
+            match TaskViewWatcher::start(Box::new(move |open| drop(lock(&sink).send(Job::TaskView(open))))) {
+                Ok(w) => watchers.push(Box::new(w)),
+                Err(e) => eprintln!("could not watch Task View: {e}"),
+            }
+        }
+        if let Some(exe) = std::env::current_exe().ok().and_then(|p| p.to_str().map(str::to_string)) {
+            let sync = move |files: bool| {
+                if let Err(e) = workspaces_platform::set_paste_entry(files.then_some(exe.as_str())) {
+                    eprintln!("{e}");
+                }
+            };
+            sync(workspaces_platform::clipboard_has_files());
+            match ClipboardWatcher::start(Box::new(sync.clone())) {
+                Ok(w) => watchers.push(Box::new(w)),
+                Err(e) => eprintln!("could not watch the clipboard: {e}"),
+            }
+        }
+        *lock(&self._shell) = watchers;
+    }
+
     /// Ends the worker and puts every hidden item back.
     pub fn stop(&self) {
+        lock(&self._shell).clear();
+        let _ = workspaces_platform::set_paste_entry(None);
         if let Some(jobs) = lock(&self.jobs).take() {
             let _ = jobs.send(Job::Stop);
         }
@@ -238,6 +277,38 @@ impl Engine {
         Ok(self.change(|c| c.assign(item_id, target.as_ref().map(|(id, name)| (id.as_str(), name.as_str())))))
     }
 
+    /// "Paste on this workspace": the files on the clipboard come to the Desktop folder (moved when
+    /// they were cut) and belong to the virtual desktop you are on. Blocks (a file operation with its
+    /// own dialogs), so call it off the UI thread. Returns how many items were pasted.
+    pub fn paste_here(&self) -> Result<usize, String> {
+        let desktops = (self.desktops)();
+        let current = desktops.current.clone().ok_or("the current virtual desktop is not known")?;
+        let index = desktops.list.iter().position(|d| d.id == current).unwrap_or(0);
+        let name = desktop_label(index, desktops.list.get(index).map_or("", |d| d.name.as_str()));
+        let folders: Vec<String> = desqu_desktop::desktop_folders().iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        let target = folders.first().cloned().ok_or("the Desktop folder was not found")?;
+        let ids: Vec<String> = self.layer.items().map_err(|e| e.to_string())?.into_iter().map(|i| i.id).collect();
+        // A thread of its own: the file operation needs a COM apartment.
+        let items = std::thread::spawn(move || -> Result<Vec<String>, String> {
+            let clipboard = vials_platform::clipboard::files()?.ok_or("There are no files on the clipboard")?;
+            let plan = vials_core::clip::plan_paste(&clipboard.paths, clipboard.cut, &folders);
+            let mut items = vials_core::clip::matching_ids(&plan.adopt, &ids);
+            items.extend(vials_platform::clipboard::transfer(&plan.copy_here, false, &target, true)?);
+            items.extend(vials_platform::clipboard::transfer(&plan.transfer, clipboard.cut, &target, false)?);
+            if clipboard.cut {
+                vials_platform::clipboard::clear();
+            }
+            Ok(items)
+        })
+        .join()
+        .map_err(|_| "the paste thread panicked".to_string())??;
+        let count = items.len();
+        if count > 0 {
+            self.change(|cfg| items.iter().fold(false, |c, id| cfg.assign(id, Some((&current, &name))) | c));
+        }
+        Ok(count)
+    }
+
     /// The desktop items no virtual desktop owns (they show everywhere), by name, then the vials that
     /// are not tied to a desktop (a vial shows on one desktop only when it is tied to it).
     pub fn shared_items(&self) -> Vec<String> {
@@ -304,13 +375,21 @@ impl Engine {
         let mut watcher: Option<SwitchWatcher> = None;
         let mut later: Option<Instant> = None;
         let mut retries = 0u8;
+        // While Task View shows, the desktop icons are off: when that must end at the latest, and
+        // the virtual desktop Task View was opened from.
+        let mut veil_until: Option<Instant> = None;
+        let mut veil_from: Option<String> = None;
         loop {
             // The registry key only exists once Windows has more than one desktop: keep trying.
             if watcher.is_none() {
                 let sink = Mutex::new(jobs.clone());
                 watcher = workspaces_platform::watch_switches(Arc::new(move || drop(lock(&sink).send(Job::Switched)))).ok();
             }
-            let received = match later {
+            let wake = match (later, veil_until) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
+            let received = match wake {
                 Some(t) => rx.recv_timeout(t.saturating_duration_since(Instant::now())),
                 None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
             };
@@ -319,11 +398,38 @@ impl Engine {
                 Ok(Job::Stop) | Err(RecvTimeoutError::Disconnected) => break,
                 Ok(Job::Reconcile) | Ok(Job::Switched) => {}
                 Ok(Job::Pasted(paths)) => self.adopt_pasted(&paths),
+                Ok(Job::TaskView(true)) => {
+                    if veil_until.is_none() && self.layer.veil(true).is_ok() {
+                        veil_until = Some(now + VEIL_LIMIT);
+                        veil_from = (self.desktops)().current;
+                    }
+                }
+                Ok(Job::TaskView(false)) => {
+                    if veil_until.take().is_some() {
+                        // The pick that closed Task View changes the desktop a moment later: look at
+                        // what the new desktop owns before the icons come back.
+                        let started = Instant::now();
+                        while started.elapsed() < VEIL_SWITCH_WAIT && (self.desktops)().current == veil_from {
+                            std::thread::sleep(Duration::from_millis(30));
+                        }
+                        self.reconcile();
+                        let _ = self.layer.veil(false);
+                    }
+                }
                 Ok(Job::DesktopChanged) => {
                     retries = 0;
                     later = Some(now + LAG_RECHECK);
                 }
-                Err(RecvTimeoutError::Timeout) => later = None,
+                Err(RecvTimeoutError::Timeout) => {
+                    if veil_until.is_some_and(|t| now >= t) {
+                        // Task View never reported closing: never keep the icons off for good.
+                        veil_until = None;
+                        let _ = self.layer.veil(false);
+                    }
+                    if later.is_some_and(|t| now >= t) {
+                        later = None;
+                    }
+                }
             }
             let lagging = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.reconcile())).unwrap_or(true);
             if lagging && retries < MAX_RETRIES && later.is_none() {

@@ -1,11 +1,13 @@
 //! One vial's window content: header (name, collapse), then a grid of its items.
 
-use std::collections::{HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    div, img, RenderImage, prelude::*, px, rgba, App, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
+    canvas, div, img, RenderImage, prelude::*, px, rgba, App, Bounds, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
     ImageFormat, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
     Render, SharedString, Window,
 };
@@ -51,6 +53,14 @@ pub struct Placement {
 /// Pointer movement (px) before a press turns into a drag.
 const DRAG_THRESHOLD: f32 = 5.0;
 
+/// The box drawn on empty space to select several items at once.
+struct Marquee {
+    start: Point<Pixels>,
+    now: Point<Pixels>,
+    /// What was selected before (kept when Ctrl is held).
+    base: BTreeSet<usize>,
+}
+
 /// A press on the title: a click renames, a drag moves the window.
 struct HeaderPress {
     cursor: (i32, i32),
@@ -64,7 +74,10 @@ pub struct VialView {
     items: Vec<Item>,
     icons: HashMap<String, Arc<Image>>,
     icons_requested: HashSet<String>,
-    selected: Option<usize>,
+    selected: BTreeSet<usize>,
+    marquee: Option<Marquee>,
+    /// Where each item was last drawn (window coordinates): what the box is held against.
+    bounds: Rc<RefCell<HashMap<usize, Bounds<Pixels>>>>,
     press: Option<(usize, Point<Pixels>)>,
     header_press: Option<HeaderPress>,
     /// The name being typed while the vial is renamed.
@@ -161,7 +174,9 @@ impl VialView {
             items: Vec::new(),
             icons: HashMap::new(),
             icons_requested: HashSet::new(),
-            selected: None,
+            selected: BTreeSet::new(),
+            marquee: None,
+            bounds: Rc::default(),
             press: None,
             header_press: None,
             editing: None,
@@ -187,7 +202,9 @@ impl VialView {
             .iter()
             .map(|id| Item { name: display_name(id).into(), missing: !Path::new(id).exists(), id: id.clone() })
             .collect();
-        self.selected = self.selected.filter(|i| *i < self.items.len());
+        let count = self.items.len();
+        self.selected.retain(|i| *i < count);
+        self.bounds.borrow_mut().clear();
         let wanted: Vec<String> = self
             .items
             .iter()
@@ -361,7 +378,12 @@ impl VialView {
         if item.missing {
             return;
         }
-        let ids = vec![item.id.clone()];
+        // Dragging one of several selected items takes them all.
+        let ids: Vec<String> = if self.selected.contains(&index) && self.selected.len() > 1 {
+            self.selected.iter().filter_map(|i| self.items.get(*i)).filter(|it| !it.missing).map(|it| it.id.clone()).collect()
+        } else {
+            vec![item.id.clone()]
+        };
         let source = live.engine.vial_id_of(&item.id);
         cx.spawn(async move |this, cx| {
             let end = vials_platform::drag_items(&ids);
@@ -465,6 +487,21 @@ impl VialView {
             );
         }
         entries.push(MenuEntry::separator());
+        // While Workspaces runs: which virtual desktop the vial shows on (the current one is checked).
+        if let Some(choices) = crate::desktops::menu_choices(&live.vial_id) {
+            for (label, on, target) in choices {
+                let vial = live.vial_id.clone();
+                entries.push(
+                    MenuEntry::new(label, move |_| {
+                        if !crate::desktops::assign(&vial, &target) {
+                            eprintln!("Workspaces did not take the change");
+                        }
+                    })
+                    .checked(on),
+                );
+            }
+            entries.push(MenuEntry::separator());
+        }
         {
             let live = live.clone();
             entries.push(MenuEntry::new("New vial here", move |cx| {
@@ -524,16 +561,44 @@ impl VialView {
             self.paste(cx);
             return;
         }
-        let Some(id) = self.selected.and_then(|i| self.items.get(i)).map(|it| it.id.clone()) else { return };
-        if k.key == "delete" {
-            self.remove(&id, cx);
-        } else if k.modifiers.control && (k.key == "c" || k.key == "x") {
-            let _ = vials_platform::clipboard::put_files(&[id], k.key == "x");
+        if k.modifiers.control && k.key == "a" {
+            self.selected = (0..self.items.len()).collect();
+            cx.notify();
+            return;
         }
+        let ids = self.selected_ids();
+        if ids.is_empty() {
+            return;
+        }
+        if k.key == "delete" {
+            for id in &ids {
+                self.remove(id, cx);
+            }
+        } else if k.modifiers.control && (k.key == "c" || k.key == "x") {
+            let _ = vials_platform::clipboard::put_files(&ids, k.key == "x");
+        }
+    }
+
+    /// The ids of the selected items, in the order they are shown.
+    fn selected_ids(&self) -> Vec<String> {
+        self.selected.iter().filter_map(|i| self.items.get(*i)).map(|it| it.id.clone()).collect()
     }
 
     fn on_mouse_move(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
         let left = e.pressed_button == Some(MouseButton::Left);
+        if let Some(marquee) = self.marquee.as_mut() {
+            if !left {
+                self.marquee = None;
+            } else {
+                marquee.now = e.position;
+                let rect = Bounds::from_corners(marquee.start, marquee.now);
+                let mut chosen = marquee.base.clone();
+                chosen.extend(self.bounds.borrow().iter().filter(|(_, b)| b.intersects(&rect)).map(|(i, _)| *i));
+                self.selected = chosen;
+            }
+            cx.notify();
+            return;
+        }
         if let Some(press) = self.header_press.as_mut() {
             if !left {
                 self.header_press = None;
@@ -658,7 +723,8 @@ impl Render for VialView {
             )
             .child(chevron);
 
-        let selected = self.selected;
+        let selected = self.selected.clone();
+        let bounds = self.bounds.clone();
         let live = self.live.is_some();
         let grid = div()
             .id("grid")
@@ -670,7 +736,23 @@ impl Render for VialView {
             .content_start()
             .gap_1()
             .on_mouse_down(MouseButton::Right, cx.listener(|this, _: &MouseDownEvent, _, cx| this.open_vial_menu(cx)))
+            // Press on empty space and drag: a box that selects the items it touches (Ctrl adds to the selection).
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, e: &MouseDownEvent, window, cx| {
+                    if this.bounds.borrow().values().any(|b| b.contains(&e.position)) {
+                        return;
+                    }
+                    this.take_keyboard(window);
+                    let base = if e.modifiers.control { this.selected.clone() } else { BTreeSet::new() };
+                    this.selected = base.clone();
+                    this.marquee = Some(Marquee { start: e.position, now: e.position, base });
+                    cx.notify();
+                }),
+            )
             .children(self.items.iter().enumerate().map(|(i, item)| {
+                let is_selected = selected.contains(&i);
+                let store = bounds.clone();
                 let id = item.id.clone();
                 let icon = match self.icons.get(&item.id) {
                     Some(image) => img(image.clone()).size(px(32.)).into_any_element(),
@@ -691,13 +773,20 @@ impl Render for VialView {
                     .rounded(px(6.))
                     .border_1()
                     .border_color(rgba(0x00000000))
-                    .when(selected == Some(i), move |d| d.bg(rgba(t.selected)).border_color(rgba(t.selected_border)))
-                    .when(selected != Some(i), move |d| d.hover(move |s| s.bg(rgba(t.hover)).border_color(rgba(t.hover_border))))
+                    .when(is_selected, move |d| d.bg(rgba(t.selected)).border_color(rgba(t.selected_border)))
+                    .when(!is_selected, move |d| d.hover(move |s| s.bg(rgba(t.hover)).border_color(rgba(t.hover_border))))
                     .when(item.missing, |d| d.opacity(0.5))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, e: &MouseDownEvent, window, cx| {
-                            this.selected = Some(i);
+                            if e.modifiers.control {
+                                if !this.selected.remove(&i) {
+                                    this.selected.insert(i);
+                                }
+                            } else if !this.selected.contains(&i) {
+                                // Already part of a selection: keep it, so the group can be dragged.
+                                this.selected = BTreeSet::from([i]);
+                            }
                             this.press = Some((i, e.position));
                             this.take_keyboard(window);
                             cx.notify();
@@ -706,17 +795,26 @@ impl Render for VialView {
                     .on_mouse_down(
                         MouseButton::Right,
                         cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                            this.selected = Some(i);
+                            if !this.selected.contains(&i) {
+                                this.selected = BTreeSet::from([i]);
+                            }
                             this.item_menu(i, cx);
                             cx.stop_propagation();
                             cx.notify();
                         }),
                     )
-                    .on_click(cx.listener(move |_, e: &ClickEvent, _, _| {
+                    .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| {
                         if e.click_count() >= 2 {
                             win::open_path(&id);
+                        } else if !e.modifiers().control && this.selected.len() > 1 {
+                            // A plain click on one of several selected items narrows it to that one.
+                            this.selected = BTreeSet::from([i]);
+                            cx.notify();
                         }
                     }))
+                    .child(canvas(move |b, _, _| {
+                        store.borrow_mut().insert(i, b);
+                    }, |_, _, _, _| {}).absolute().size_full())
                     .child(icon)
                     .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(item.name.clone()))
                     .when(live, |d| {
@@ -749,8 +847,11 @@ impl Render for VialView {
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| this.on_mouse_move(e, window, cx)))
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(|this, _: &MouseUpEvent, _, _| {
+                cx.listener(|this, _: &MouseUpEvent, _, cx| {
                     this.press = None;
+                    if this.marquee.take().is_some() {
+                        cx.notify();
+                    }
                 }),
             )
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.drop_paths(paths, cx)))
@@ -767,5 +868,10 @@ impl Render for VialView {
             .when_some(self.liquid.clone().filter(|_| t.liquid), |d, image| d.child(img(image).absolute().top_0().left_0().size_full()))
             .child(header)
             .when(!self.collapsed, |d| d.child(grid))
+            .when_some(self.marquee.as_ref(), |d, m| {
+                let (left, top) = (f32::from(m.start.x.min(m.now.x)), f32::from(m.start.y.min(m.now.y)));
+                let (width, height) = (f32::from((m.start.x - m.now.x).abs()), f32::from((m.start.y - m.now.y).abs()));
+                d.child(div().absolute().left(px(left)).top(px(top)).w(px(width)).h(px(height)).border_1().border_color(rgba(t.selected_border)).bg(rgba(t.selected)))
+            })
     }
 }

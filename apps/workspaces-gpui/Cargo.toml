@@ -16,6 +16,7 @@ gpui = "0.2.2"
 desqu-desktop = { path = "../../crates/desqu-desktop" }
 desqu-native-shell = { path = "../../crates/desqu-native-shell" }
 vials-core = { path = "../../crates/vials-core" }
+vials-platform = { path = "../../crates/vials-platform" }
 workspaces-core = { path = "../../crates/workspaces-core" }
 workspaces-platform = { path = "../../crates/workspaces-platform" }
 
