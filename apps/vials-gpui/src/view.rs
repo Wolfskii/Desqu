@@ -74,6 +74,11 @@ pub struct VialView {
     items: Vec<Item>,
     icons: HashMap<String, Arc<Image>>,
     icons_requested: HashSet<String>,
+    /// A collapsed vial is open for the moment because the pointer is over it.
+    peeking: bool,
+    /// Where the pointer is now (over the window or not), and which "left" a delayed close belongs to.
+    hovered: bool,
+    hover_gen: u64,
     /// The vial is locked: it cannot be moved, resized, renamed or emptied by dragging.
     locked: bool,
     selected: BTreeSet<usize>,
@@ -133,12 +138,12 @@ impl VialView {
             this.hwnd = Some(hwnd.0 as isize);
             this.refresh_liquid(cx);
             // A locked vial goes back to where it was put.
-            if this.locked && !this.collapsed {
+            if this.locked && !this.shown_collapsed() {
                 win::place_at_bottom(hwnd, &this.placement.rect);
                 return;
             }
             if let Some(now) = win::window_rect(hwnd) {
-                if this.collapsed {
+                if this.shown_collapsed() {
                     this.placement.rect.left = now.left;
                     this.placement.rect.top = now.top;
                     this.placement.rect.right = now.right;
@@ -181,6 +186,9 @@ impl VialView {
             items: Vec::new(),
             icons: HashMap::new(),
             icons_requested: HashSet::new(),
+            peeking: false,
+            hovered: false,
+            hover_gen: 0,
             locked: live.as_ref().is_some_and(|l| l.engine.is_locked(&l.vial_id)),
             selected: BTreeSet::new(),
             marquee: None,
@@ -336,19 +344,62 @@ impl VialView {
         }
     }
 
-    fn toggle_collapsed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.collapsed = !self.collapsed;
+    /// Whether the window is only its title bar right now.
+    fn shown_collapsed(&self) -> bool {
+        self.collapsed && !self.peeking
+    }
+
+    /// Sizes the window for what it shows now: just the title bar, or the whole vial.
+    fn resize_window(&self, window: &Window) {
         if let Some(hwnd) = win::hwnd(window) {
             let mut r = self.placement.rect;
-            if self.collapsed {
+            if self.shown_collapsed() {
                 r.bottom = r.top + self.placement.collapsed_height;
             }
             win::place_at_bottom(hwnd, &r);
         }
+    }
+
+    fn toggle_collapsed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.collapsed = !self.collapsed;
+        self.peeking = false;
+        self.resize_window(window);
         if let Some(live) = &self.live {
             live.engine.set_collapsed(&live.vial_id, self.collapsed);
         }
         cx.notify();
+    }
+
+    /// The pointer came over or left the window: with "open on hover" a collapsed vial opens, and
+    /// closes a moment after the pointer is gone.
+    fn on_hover_change(&mut self, over: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.hovered = over;
+        self.hover_gen += 1;
+        let wanted = self.live.as_ref().is_some_and(|l| l.engine.config().hover_open);
+        if !wanted || !self.collapsed {
+            return;
+        }
+        if over {
+            if !self.peeking {
+                self.peeking = true;
+                self.resize_window(window);
+                cx.notify();
+            }
+            return;
+        }
+        let generation = self.hover_gen;
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(350)).await;
+            let _ = this.update_in(cx, |view, window, cx| {
+                // Only if the pointer has not come back (or the vial was opened for good) meanwhile.
+                if view.hover_gen == generation && !view.hovered && view.peeking {
+                    view.peeking = false;
+                    view.resize_window(window);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// A click in the vial gives it the keyboard (for typing a name, Delete, Ctrl+C); it hands it back
@@ -684,7 +735,7 @@ impl Render for VialView {
             .text_xs()
             .hover(move |s| s.bg(rgba(t.hover)))
             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.toggle_collapsed(window, cx)))
-            .child(if self.collapsed { "v" } else { "^" });
+            .child(if self.shown_collapsed() { "v" } else { "^" });
 
         let title = match &self.editing {
             Some(text) => div()
@@ -877,6 +928,7 @@ impl Render for VialView {
         div()
             .id("vial")
             .track_focus(&self.focus)
+            .on_hover(cx.listener(|this, over: &bool, window, cx| this.on_hover_change(*over, window, cx)))
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| this.on_key(e, cx)))
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| this.on_mouse_move(e, window, cx)))
             .on_mouse_up(
@@ -901,7 +953,7 @@ impl Render for VialView {
             .relative()
             .when_some(self.liquid.clone().filter(|_| t.liquid), |d, image| d.child(img(image).absolute().top_0().left_0().size_full()))
             .child(header)
-            .when(!self.collapsed, |d| d.child(grid))
+            .when(!self.shown_collapsed(), |d| d.child(grid))
             .when_some(self.marquee.as_ref(), |d, m| {
                 let (left, top) = (f32::from(m.start.x.min(m.now.x)), f32::from(m.start.y.min(m.now.y)));
                 let (width, height) = (f32::from((m.start.x - m.now.x).abs()), f32::from((m.start.y - m.now.y).abs()));

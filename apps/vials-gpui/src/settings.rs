@@ -222,6 +222,7 @@ impl Render for SettingsView {
                 ),
             )
             .child(toggle("Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, |c, v| c.context_menu = v))
+            .child(toggle("Open collapsed vials on hover", "A collapsed vial opens while the pointer is over it", cfg.hover_open, |c, v| c.hover_open = v))
             .child(toggle("Quick-hide", "Double-click the empty desktop to hide or show everything", cfg.quick_hide, |c, v| c.quick_hide = v))
             .child(
                 div().flex().gap_2().pt_3().child(
