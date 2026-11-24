@@ -204,7 +204,6 @@ impl VialView {
             .collect();
         let count = self.items.len();
         self.selected.retain(|i| *i < count);
-        self.bounds.borrow_mut().clear();
         let wanted: Vec<String> = self
             .items
             .iter()
@@ -733,6 +732,8 @@ impl Render for VialView {
 
         let selected = self.selected.clone();
         let bounds = self.bounds.clone();
+        // Redrawn items record themselves again; clearing anywhere else leaves it empty until a repaint.
+        bounds.borrow_mut().clear();
         let live = self.live.is_some();
         let grid = div()
             .id("grid")
