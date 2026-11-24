@@ -39,10 +39,19 @@ pub struct Live {
     pub vial_id: String,
 }
 
+#[derive(Clone)]
 pub struct Item {
     pub id: String,
     pub name: SharedString,
     pub missing: bool,
+    pub is_dir: bool,
+}
+
+impl Item {
+    fn of(id: &str) -> Item {
+        let meta = std::fs::metadata(id).ok();
+        Item { name: display_name(id).into(), missing: meta.is_none(), is_dir: meta.is_some_and(|m| m.is_dir()), id: id.to_string() }
+    }
 }
 
 /// Where the window sits, so collapsing can resize it in place.
@@ -102,6 +111,13 @@ pub struct VialView {
     /// The item the keyboard is on, and where a Shift range starts.
     cursor: Option<usize>,
     anchor: Option<usize>,
+    /// Everything the vial holds (or the portal's folder), and what the search lets through is `items`.
+    all_items: Vec<Item>,
+    /// The text typed into the search box; `None` while the box is closed.
+    search: Option<String>,
+    /// Which deep search of a portal is current, and what it found (`None`: look through `all_items`).
+    search_gen: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    search_results: Option<Vec<String>>,
     /// A folder portal: the folder it was made for, the one it shows now, and what that held when last looked at.
     portal: Option<PortalState>,
     /// Icon size in pixels, and whether the title is centred: from the vial's own look.
@@ -221,6 +237,10 @@ impl VialView {
             icons_requested: HashSet::new(),
             icon_size: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).map_or(32, |v| v.icon_px()),
             title_center: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).is_some_and(|v| v.title_center),
+            all_items: Vec::new(),
+            search: None,
+            search_gen: Default::default(),
+            search_results: None,
             portal: None,
             cursor: None,
             anchor: None,
@@ -354,10 +374,8 @@ impl VialView {
     }
 
     fn set_items(&mut self, ids: Vec<String>, cx: &mut Context<Self>) {
-        self.items = ids
-            .iter()
-            .map(|id| Item { name: display_name(id).into(), missing: !Path::new(id).exists(), id: id.clone() })
-            .collect();
+        self.all_items = ids.iter().map(|id| Item::of(id)).collect();
+        self.refilter();
         let count = self.items.len();
         self.selected.retain(|i| *i < count);
         let wanted: Vec<String> = self
@@ -367,6 +385,69 @@ impl VialView {
             .map(|it| it.id.clone())
             .collect();
         self.request_icons(wanted, cx);
+    }
+
+    /// What the search lets through: the portal's deep results while there are some, else the items that fit.
+    fn refilter(&mut self) {
+        let query = vials_core::search::Query::parse(self.search.as_deref().unwrap_or(""));
+        self.items = match (&self.search_results, query.is_empty()) {
+            (_, true) => self.all_items.clone(),
+            (Some(found), false) => found.iter().map(|id| Item::of(id)).collect(),
+            (None, false) => self.all_items.iter().filter(|i| query.matches(&i.name, &i.id, i.is_dir)).cloned().collect(),
+        };
+    }
+
+    /// The text of the search changed: show what fits, and in a portal look in the folders below too.
+    fn search_changed(&mut self, cx: &mut Context<Self>) {
+        self.selected.clear();
+        self.cursor = None;
+        let text = self.search.clone().unwrap_or_default();
+        let query = vials_core::search::Query::parse(&text);
+        // Any search that is still running is out of date now.
+        let generation = self.search_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        self.search_results = None;
+        self.refilter();
+        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()).filter(|_| !query.is_empty()) else {
+            cx.notify();
+            return;
+        };
+        let counter = self.search_gen.clone();
+        cx.spawn(async move |this, cx| {
+            let found = cx
+                .background_executor()
+                .spawn(async move {
+                    let current = || counter.load(std::sync::atomic::Ordering::SeqCst) != generation;
+                    vials_core::search::search_dir(&dir, &query, 300, 6, &current)
+                })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if view.search_gen.load(std::sync::atomic::Ordering::SeqCst) != generation {
+                    return;
+                }
+                view.search_results = Some(found);
+                view.refilter();
+                let wanted: Vec<String> = view.items.iter().filter(|it| !it.missing && !view.icons.contains_key(&it.id) && !view.icons_requested.contains(&it.id)).map(|it| it.id.clone()).collect();
+                view.request_icons(wanted, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Opens the search box (Ctrl+F).
+    fn open_search(&mut self, cx: &mut Context<Self>) {
+        if self.search.is_none() {
+            self.search = Some(String::new());
+        }
+        self.wants_keyboard = true;
+        cx.notify();
+    }
+
+    /// Closes the search box and shows everything again.
+    fn close_search(&mut self, cx: &mut Context<Self>) {
+        self.search = None;
+        self.search_changed(cx);
     }
 
     fn reload(&mut self, cx: &mut Context<Self>) {
@@ -746,6 +827,12 @@ impl VialView {
                 .checked(on),
             );
         }
+        {
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Search...", move |cx| {
+                let _ = w.update(cx, |view, cx| view.open_search(cx));
+            }));
+        }
         if vial.source.is_none() {
             let live = live.clone();
             let on = !vial.folders_first;
@@ -878,6 +965,33 @@ impl VialView {
                 }
             }
             return;
+        }
+        if k.modifiers.control && k.key == "f" {
+            self.open_search(cx);
+            return;
+        }
+        // While the search box is open the keys that make text go into it.
+        if let Some(text) = self.search.as_mut() {
+            match k.key.as_str() {
+                "escape" => {
+                    self.close_search(cx);
+                    return;
+                }
+                "backspace" => {
+                    text.pop();
+                    self.search_changed(cx);
+                    return;
+                }
+                _ => {
+                    if let Some(typed) = k.key_char.as_ref().filter(|_| !k.modifiers.control && !k.modifiers.alt) {
+                        if text.chars().count() < 80 {
+                            text.push_str(typed);
+                            self.search_changed(cx);
+                        }
+                        return;
+                    }
+                }
+            }
         }
         if k.modifiers.control && k.key == "v" {
             self.paste(cx);
@@ -1361,6 +1475,26 @@ impl Render for VialView {
             .relative()
             .when_some(self.liquid.clone().filter(|_| t.liquid), |d, image| d.child(img(image).absolute().top_0().left_0().size_full()))
             .child(header)
+            .when_some(self.search.clone(), |d, text| {
+                let shown = self.items.len();
+                d.child(
+                    div()
+                        .id("search")
+                        .h(px(26.))
+                        .flex_none()
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .border_b_1()
+                        .border_color(rgba(t.line))
+                        .text_xs()
+                        .child(div().text_color(rgba(0xffffff90)).child("Search"))
+                        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().child(if text.is_empty() { "type to find: words, .pdf, kind:images".to_string() } else { format!("{text}|") }))
+                        .child(div().text_color(rgba(0xffffff90)).child(format!("{shown} found")))
+                        .child(div().id("search-close").px_1().cursor_pointer().hover(move |s| s.bg(rgba(t.hover))).child("x").on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.close_search(cx)))),
+                )
+            })
             .when(!self.shown_collapsed(), |d| d.child(grid))
             .when_some(self.marquee.as_ref(), |d, m| {
                 let (left, top) = (f32::from(m.start.x.min(m.now.x)), f32::from(m.start.y.min(m.now.y)));
@@ -1439,6 +1573,57 @@ mod tests {
         view.update(cx, |v, cx| v.portal_go(std::env::temp_dir(), cx));
         cx.run_until_parked();
         assert_eq!(names(&view, cx), vec!["sub", "a.txt"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn type_text(view: &Entity<VialView>, cx: &mut gpui::VisualTestContext, text: &str) {
+        for c in text.chars() {
+            let keystroke = gpui::Keystroke { modifiers: Modifiers::none(), key: c.to_string(), key_char: Some(c.to_string()) };
+            let key = gpui::KeyDownEvent { keystroke, is_held: false };
+            view.update(cx, |v, cx| v.on_key(&key, cx));
+        }
+    }
+
+    #[gpui::test]
+    fn the_search_filters_a_vial_and_a_portal_looks_in_the_folders_below_too(cx: &mut TestAppContext) {
+        let root = std::env::temp_dir().join(format!("desqu-search-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        for f in ["report.pdf", "notes.txt", "sub/report-old.pdf"] {
+            std::fs::write(root.join(f), "x").unwrap();
+        }
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        let names = |view: &Entity<VialView>, cx: &mut gpui::VisualTestContext| {
+            let mut v = view.read_with(cx, |v, _| v.items.iter().map(|i| i.name.to_string()).collect::<Vec<_>>());
+            v.sort();
+            v
+        };
+        view.update(cx, |v, cx| v.set_portal_source(Some(root.to_string_lossy().into_owned()), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["notes.txt", "report.pdf", "sub"]);
+
+        press(&view, cx, "ctrl-f");
+        type_text(&view, cx, "report");
+        assert_eq!(names(&view, cx), vec!["report.pdf"], "the folder's own items filter at once");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["report-old.pdf", "report.pdf"], "and the search finds the one below");
+
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["notes.txt", "report.pdf", "sub"], "an empty search shows everything");
+
+        type_text(&view, cx, "kind:folders");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub"]);
+        press(&view, cx, "escape");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["notes.txt", "report.pdf", "sub"], "Esc closes the search");
+        assert!(view.read_with(cx, |v, _| v.search.is_none()));
         let _ = std::fs::remove_dir_all(&root);
     }
 

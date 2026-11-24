@@ -8,5 +8,6 @@ pub mod history;
 pub mod model;
 pub mod nav;
 pub mod portal;
+pub mod search;
 pub mod rules;
 pub mod sort;
