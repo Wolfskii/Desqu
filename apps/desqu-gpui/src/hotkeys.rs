@@ -51,8 +51,11 @@ const TAKEN: &[(u32, u32, &str)] = &[
 ];
 
 /// The hotkeys the apps have now.
-pub fn collect(vials: &VialsConfig, workspaces: &WorkspacesConfig, screenbound: &AppConfig) -> Vec<Entry> {
+pub fn collect(palette: &str, vials: &VialsConfig, workspaces: &WorkspacesConfig, screenbound: &AppConfig) -> Vec<Entry> {
     let mut out = Vec::new();
+    if !palette.is_empty() {
+        out.push(Entry { app: "Desqu", what: "Open the command palette", keys: palette.to_string() });
+    }
     if !vials.peek_hotkey.is_empty() {
         out.push(Entry { app: "Vials", what: "Bring the vials above the windows (peek)", keys: vials.peek_hotkey.clone() });
     }
@@ -121,11 +124,12 @@ mod tests {
         let mut v = VialsConfig::default();
         let mut w = WorkspacesConfig::default();
         let mut s = AppConfig::default();
-        assert!(collect(&v, &w, &s).is_empty());
+        assert!(collect("", &v, &w, &s).is_empty());
+        assert_eq!(collect("ctrl+alt+space", &v, &w, &s).len(), 1);
         v.peek_hotkey = "win+shift+space".into();
         w.jump_hotkeys = true;
         s.zone_hotkey = "ctrl+alt+z".into();
-        assert_eq!(collect(&v, &w, &s).iter().map(|e| e.app).collect::<Vec<_>>(), vec!["Vials", "Workspaces", "Screenbound"]);
+        assert_eq!(collect("", &v, &w, &s).iter().map(|e| e.app).collect::<Vec<_>>(), vec!["Vials", "Workspaces", "Screenbound"]);
     }
 
     #[test]

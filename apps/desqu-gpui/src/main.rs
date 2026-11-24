@@ -11,6 +11,7 @@ mod backup;
 mod assets;
 mod hotkeys;
 mod modules;
+mod palette;
 mod report;
 mod screenbound_remote;
 mod supervisor;
@@ -71,7 +72,7 @@ fn main() {
 
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).unwrap_or_default();
     let settings_path = config_dir().join("gpui-shell.json");
-    let shell = Arc::new(Shell { supervisor: Arc::new(Supervisor::new(&exe_dir)), settings_path: settings_path.clone(), settings: Mutex::new(Settings::load(&settings_path)) });
+    let shell = Arc::new(Shell { supervisor: Arc::new(Supervisor::new(&exe_dir)), settings_path: settings_path.clone(), settings: Mutex::new(Settings::load(&settings_path)), nav: Mutex::new(None) });
     // A copy of the settings once a day (the newest 14 are kept).
     {
         let also = shell.settings.lock().unwrap_or_else(|e| e.into_inner()).backup_onedrive;
@@ -110,7 +111,31 @@ fn main() {
         let last = 1;
         cx.spawn(async move |cx| {
             let _keep = &tray;
+            // The command palette's hotkey follows the setting.
+            let mut palette_key: Option<(String, desqu_native_shell::hotkey::Hotkey)> = None;
+            let (palette_tx, palette_rx) = std::sync::mpsc::channel::<()>();
+            let mut tick = 0u32;
             loop {
+                if tick.is_multiple_of(10) {
+                    let wanted = shell.settings.lock().unwrap_or_else(|e| e.into_inner()).palette_keys().to_string();
+                    if palette_key.as_ref().map_or("", |(text, _)| text.as_str()) != wanted {
+                        palette_key = None;
+                        if !wanted.is_empty() {
+                            let for_press = palette_tx.clone();
+                            match desqu_native_shell::hotkey::Hotkey::register(&wanted, Box::new(move || {
+                                let _ = for_press.send(());
+                            })) {
+                                Ok(h) => palette_key = Some((wanted, h)),
+                                Err(e) => eprintln!("{e}"),
+                            }
+                        }
+                    }
+                }
+                tick = tick.wrapping_add(1);
+                while palette_rx.try_recv().is_ok() {
+                    let shell = shell.clone();
+                    let _ = cx.update(|cx| palette::toggle(cx, shell));
+                }
                 while let Ok(event) = event_rx.try_recv() {
                     let shell = shell.clone();
                     match event {

@@ -90,6 +90,19 @@ pub struct Settings {
     /// The first-run tour was finished or skipped.
     #[serde(default)]
     pub tour_done: bool,
+    /// The hotkey of the command palette: `None` is the usual one, an empty text is off.
+    #[serde(default)]
+    pub palette_hotkey: Option<String>,
+}
+
+/// The palette's hotkey when none was chosen.
+pub const DEFAULT_PALETTE_KEYS: &str = "ctrl+alt+space";
+
+impl Settings {
+    /// The keys of the command palette (empty: off).
+    pub fn palette_keys(&self) -> &str {
+        self.palette_hotkey.as_deref().unwrap_or(DEFAULT_PALETTE_KEYS)
+    }
 }
 
 /// The "start all apps with system" switch: over the apps that are on, some may start and some not.

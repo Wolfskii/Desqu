@@ -51,7 +51,7 @@ struct Open(Option<AnyWindowHandle>);
 impl Global for Open {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Page {
+pub enum Page {
     Home,
     App(Kind),
     Settings,
@@ -160,6 +160,8 @@ pub struct Shell {
     pub supervisor: Arc<Supervisor>,
     pub settings_path: PathBuf,
     pub settings: std::sync::Mutex<Settings>,
+    /// A page to go to the next time the window is drawn (the command palette asks for one).
+    pub nav: std::sync::Mutex<Option<Page>>,
 }
 
 struct DesquView {
@@ -870,6 +872,23 @@ impl DesquView {
         .detach();
     }
 
+    /// The command palette: which keys open it.
+    fn palette_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let current = self.settings().palette_keys().to_string();
+        card()
+            .gap(px(6.))
+            .child(card_title("Command palette"))
+            .child(dim("A small window where you type what you want: go to a page, turn an app on or off, make a vial, go to a virtual desktop, open an item of a vial."))
+            .child(div().flex().flex_wrap().gap(px(6.)).children([("Off", ""), ("Ctrl+Alt+Space", "ctrl+alt+space"), ("Alt+Space", "alt+space"), ("Win+Shift+P", "win+shift+p")].into_iter().map(|(label, value)| {
+                button(SharedString::from(format!("palette-{value}")), label, true)
+                    .when(current == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.edit(|s| s.palette_hotkey = Some(value.to_string()));
+                        cx.notify();
+                    }))
+            })))
+    }
+
     /// Every hotkey the apps use, with a warning for one that is taken twice or that Windows uses.
     /// Makes a backup of every app's settings now.
     fn back_up_now(&mut self, cx: &mut Context<Self>) {
@@ -988,7 +1007,8 @@ impl DesquView {
 
     fn hotkeys_card(&self) -> gpui::Div {
         use crate::hotkeys::{check, collect, pretty, Problem};
-        let entries = collect(&crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
+        let palette = self.settings().palette_keys().to_string();
+        let entries = collect(&palette, &crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
         let problems = check(&entries);
         let mut card = card().gap(px(6.)).child(card_title("Hotkeys"));
         if entries.is_empty() {
@@ -1059,6 +1079,7 @@ impl DesquView {
                     .child(dim("Each app keeps its output in the logs folder, which helps when one stops unexpectedly."))
                     .child(div().flex().child(button("logs", "Open the logs folder", true).on_click(move |_, _, _| open_path(&logs)))),
             )
+            .child(self.palette_card(cx))
             .child(self.hotkeys_card())
             .child(self.backup_card(cx))
             .child(
@@ -1074,6 +1095,9 @@ impl DesquView {
 
 impl Render for DesquView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(page) = self.shell.nav.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            self.page = page;
+        }
         // Screenbound's views are made the first time its page is shown.
         if self.page == Page::App(Kind::Screenbound) && self.screenbound.is_none() {
             let remote = crate::screenbound_remote::Remote::start();
