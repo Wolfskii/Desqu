@@ -161,16 +161,16 @@ mod tests {
 
     fn desktops() -> Desktops {
         Desktops {
-            list: vec![DesktopInfo { id: "{A}".into(), name: String::new() }, DesktopInfo { id: "{B}".into(), name: "Work".into() }],
-            current: Some("{B}".into()),
+            list: vec![DesktopInfo { id: "{00000000-0000-0000-0000-00000000000A}".into(), name: String::new() }, DesktopInfo { id: "{00000000-0000-0000-0000-00000000000B}".into(), name: "Work".into() }],
+            current: Some("{00000000-0000-0000-0000-00000000000B}".into()),
         }
     }
 
     #[test]
     fn items_land_on_their_desktop_and_the_rest_are_shared() {
         let mut cfg = WorkspacesConfig::default();
-        cfg.assign("C:/d/a.lnk", Some(("{A}", "Desktop 1")));
-        cfg.assign("C:/d/gone.txt", Some(("{C}", "Old")));
+        cfg.assign("C:/d/a.lnk", Some(("{00000000-0000-0000-0000-00000000000A}", "Desktop 1")));
+        cfg.assign("C:/d/gone.txt", Some(("{00000000-0000-0000-0000-00000000000C}", "Old")));
         let page = build(&cfg, &desktops(), &VialsConfig::default(), &["C:/d/a.lnk".into(), "C:/d/b.txt".into()]);
         assert_eq!(page.cards[0].name, "Desktop 1");
         assert_eq!(page.cards[0].items, vec![Item { id: "C:/d/a.lnk".into(), label: "a".into() }]);
@@ -183,11 +183,11 @@ mod tests {
     #[test]
     fn assigning_in_the_file_moves_an_item_and_refuses_an_unknown_desktop() {
         let path = std::env::temp_dir().join(format!("desqu-ws-page-{}", std::process::id())).join("config.json");
-        assign_in_file(&path, &desktops(), "C:/d/b.txt", Some("{B}")).unwrap();
-        assert_eq!(WorkspacesConfig::load(&path).unwrap().owner_of("C:/d/b.txt"), Some("{B}"));
+        assign_in_file(&path, &desktops(), "C:/d/b.txt", Some("{00000000-0000-0000-0000-00000000000B}")).unwrap();
+        assert_eq!(WorkspacesConfig::load(&path).unwrap().owner_of("C:/d/b.txt"), Some("{00000000-0000-0000-0000-00000000000B}"));
         assign_in_file(&path, &desktops(), "C:/d/b.txt", None).unwrap();
         assert_eq!(WorkspacesConfig::load(&path).unwrap().owner_of("C:/d/b.txt"), None);
-        assert!(assign_in_file(&path, &desktops(), "C:/d/b.txt", Some("{Z}")).is_err());
+        assert!(assign_in_file(&path, &desktops(), "C:/d/b.txt", Some("{00000000-0000-0000-0000-00000000000F}")).is_err());
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }
