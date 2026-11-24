@@ -5,6 +5,7 @@
 pub mod autostart;
 pub mod crash;
 pub mod hotkey;
+pub mod i18n;
 pub mod power;
 pub mod stdio;
 pub mod tray;

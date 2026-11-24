@@ -90,6 +90,9 @@ pub struct Settings {
     /// The first-run tour was finished or skipped.
     #[serde(default)]
     pub tour_done: bool,
+    /// The language of the window: `None` follows Windows, otherwise a code such as `sv`.
+    #[serde(default)]
+    pub language: Option<String>,
     /// The hotkey of the command palette: `None` is the usual one, an empty text is off.
     #[serde(default)]
     pub palette_hotkey: Option<String>,
@@ -99,6 +102,12 @@ pub struct Settings {
 pub const DEFAULT_PALETTE_KEYS: &str = "ctrl+alt+space";
 
 impl Settings {
+    /// The language to show: the chosen one, or Windows' own.
+    pub fn language(&self) -> desqu_native_shell::i18n::Lang {
+        use desqu_native_shell::i18n::Lang;
+        self.language.as_deref().and_then(Lang::from_code).unwrap_or_else(desqu_native_shell::i18n::system_language)
+    }
+
     /// The keys of the command palette (empty: off).
     pub fn palette_keys(&self) -> &str {
         self.palette_hotkey.as_deref().unwrap_or(DEFAULT_PALETTE_KEYS)

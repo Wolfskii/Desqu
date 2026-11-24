@@ -12,6 +12,7 @@ use gpui::{
 };
 
 use screenbound_module::core::config::AppConfig;
+use desqu_native_shell::i18n::t;
 use crate::modules::{Kind, Settings, TriState, ALL};
 use crate::supervisor::{Status, Supervisor};
 
@@ -60,11 +61,11 @@ pub enum Page {
 /// What a status is called in the window.
 pub fn status_text(status: Status) -> &'static str {
     match status {
-        Status::Off => "Off",
-        Status::Running => "On",
-        Status::RunningElsewhere => "Running on its own",
-        Status::Stopped => "Stopped unexpectedly",
-        Status::Missing => "Not installed",
+        Status::Off => t("Off"),
+        Status::Running => t("On"),
+        Status::RunningElsewhere => t("Running on its own"),
+        Status::Stopped => t("Stopped unexpectedly"),
+        Status::Missing => t("Not installed"),
     }
 }
 
@@ -317,14 +318,14 @@ impl DesquView {
             .border_r_1()
             .border_color(rgb(BORDER))
             .child(div().px(px(10.)).pt(px(4.)).pb(px(12.)).text_size(px(16.)).font_weight(FontWeight::BOLD).child("Desqu"))
-            .child(item("nav-home".into(), self.page == Page::Home).child(icon("icons/house.svg", 16., TEXT)).child("Home").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .child(item("nav-home".into(), self.page == Page::Home).child(icon("icons/house.svg", 16., TEXT)).child(t("Home")).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.page = Page::Home;
                 cx.notify();
             })))
-            .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child("APPS"))
+            .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child(t("APPS")))
             .children(apps)
             .child(div().flex_1())
-            .child(item("nav-settings".into(), self.page == Page::Settings).child(icon("icons/settings.svg", 16., TEXT)).child("Settings").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .child(item("nav-settings".into(), self.page == Page::Settings).child(icon("icons/settings.svg", 16., TEXT)).child(t("Settings")).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.page = Page::Settings;
                 this.note.clear();
                 cx.notify();
@@ -350,7 +351,7 @@ impl DesquView {
                 switch(SharedString::from(format!("start-{}", kind.name())), on_off(settings.start_with_system(kind)), start_usable)
                     .when(start_usable, |d| d.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle_start(kind, cx)))),
             )
-            .child(dim(if enabled { "Start with system" } else { "Start with system (turn the app on first)" }));
+            .child(dim(if enabled { t("Start with system") } else { "Start with system (turn the app on first)" }));
         (on, start)
     }
 
@@ -407,7 +408,7 @@ impl DesquView {
                                     .child(div().font_weight(FontWeight::SEMIBOLD).child(name))
                                     .child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))),
                             )
-                            .child(div().text_size(px(12.)).text_color(rgb(TEXT_DIM)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(kind.description())),
+                            .child(div().text_size(px(12.)).text_color(rgb(TEXT_DIM)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(t(kind.description()))),
                     ),
             )
             .child(on)
@@ -436,7 +437,7 @@ impl DesquView {
             buttons = buttons.child(button("tour-app", if on { format!("{} is on", kind.name()) } else { format!("Turn {} on", kind.name()) }, !on).when(!on, |d| d.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle(kind, cx)))));
         }
         buttons = buttons
-            .child(button("tour-next", if last { "Done" } else { "Next" }, true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+            .child(button("tour-next", if last { t("Done") } else { t("Next") }, true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 if last {
                     this.end_tour(cx);
                 } else {
@@ -444,8 +445,8 @@ impl DesquView {
                     cx.notify();
                 }
             })))
-            .when(!last, |d| d.child(button("tour-skip", "Skip the tour", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.end_tour(cx)))));
-        Some(card().border_color(rgb(ACCENT)).child(dim(format!("Step {} of {}", step + 1, crate::tour::STEPS.len()))).child(card_title(current.title)).child(div().child(current.text)).child(buttons))
+            .when(!last, |d| d.child(button("tour-skip", t("Skip the tour"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.end_tour(cx)))));
+        Some(card().border_color(rgb(ACCENT)).child(dim(format!("Step {} of {}", step + 1, crate::tour::STEPS.len()))).child(card_title(t(current.title))).child(div().child(t(current.text))).child(buttons))
     }
 
     fn end_tour(&mut self, cx: &mut Context<Self>) {
@@ -471,14 +472,14 @@ impl DesquView {
                     .items_start()
                     .justify_between()
                     .gap(px(16.))
-                    .child(div().child(heading("Your apps")).child(dim("Turn on what you need. Each app runs on its own, and Desqu keeps them together.")))
+                    .child(div().child(heading(t("Your apps"))).child(dim(t("Turn on what you need. Each app runs on its own, and Desqu keeps them together."))))
                     .child(
                         div()
                             .flex()
                             .items_center()
                             .gap(px(8.))
                             .child(switch("start-all", on_off(all == TriState::On), any_on).when(any_on, |d| d.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_all_start(cx)))))
-                            .child(dim("Start all apps with system")),
+                            .child(dim(t("Start all apps with system"))),
                     ),
             )
             .child(div().flex().flex_col().rounded(px(6.)).border_1().border_color(rgb(BORDER)).bg(rgb(SURFACE_1)).children(rows))
@@ -501,7 +502,7 @@ impl DesquView {
             .gap(px(12.))
             .max_w(px(760.))
             .child(heading(kind.name()))
-            .child(dim(kind.description()))
+            .child(dim(t(kind.description())))
             .child(
                 card()
                     .child(
@@ -509,7 +510,7 @@ impl DesquView {
                             .flex()
                             .items_center()
                             .gap(px(12.))
-                            .child(div().flex_1().child(card_title("Running")).child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))))
+                            .child(div().flex_1().child(card_title(t("Running"))).child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))))
                             .child(on),
                     )
                     .child(start)
@@ -518,7 +519,7 @@ impl DesquView {
                         div()
                             .flex()
                             .gap(px(8.))
-                            .child(button("page-log", "Show its log", true).on_click(move |_, _, _| open_path(&crate::supervisor::log_path(kind)))),
+                            .child(button("page-log", t("Show its log"), true).on_click(move |_, _, _| open_path(&crate::supervisor::log_path(kind)))),
                     ),
             )
             .when_some(self.options(kind, cx), |d, options| d.child(options))
@@ -780,7 +781,7 @@ impl DesquView {
                 let alive = matches!(self.shell.supervisor.status(kind), Status::Running | Status::RunningElsewhere);
                 Some(
                     card()
-                        .child(card_title("Settings"))
+                        .child(card_title(t("Settings")))
                         .child(div().child("Look of vials"))
                         .child(look)
                         .child(div().child("Glass tint (lower is clearer)"))
@@ -795,7 +796,7 @@ impl DesquView {
                         .child(self.option_switch(kind, "privacyMask", "Privacy mode", "Names and pictures stay hidden until the pointer is over a vial", cfg.privacy_mask, cx))
                         .child(self.option_switch(kind, "hideFromCapture", "Hide vials from screen sharing", "They do not show in shares, recordings or screenshots", cfg.hide_from_capture, cx))
                         .child(card_title("Peek hotkey"))
-                        .child(div().flex().flex_wrap().gap(px(6.)).children([("Off", ""), ("Win+Shift+Space", "win+shift+space"), ("Ctrl+Alt+V", "ctrl+alt+v")].into_iter().map(|(label, value)| {
+                        .child(div().flex().flex_wrap().gap(px(6.)).children([(t("Off"), ""), ("Win+Shift+Space", "win+shift+space"), ("Ctrl+Alt+V", "ctrl+alt+v")].into_iter().map(|(label, value)| {
                             button(SharedString::from(format!("peek-{value}")), label, true)
                                 .when(cfg.peek_hotkey == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
                                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_option(Kind::Vials, "peekHotkey", value.to_string(), cx)))
@@ -819,7 +820,7 @@ impl DesquView {
                         .flex()
                         .flex_col()
                         .gap(px(12.))
-                        .child(card().child(card_title("Settings")).child(self.option_switch(
+                        .child(card().child(card_title(t("Settings"))).child(self.option_switch(
                             kind,
                             "autoAssignNew",
                             "New files join the desktop you are on",
@@ -829,7 +830,7 @@ impl DesquView {
                         ))
                         .child(self.option_switch(kind, "showName", "Show the desktop's name when you switch", "A short note in the middle of the screen", cfg.show_name, cx))
                         .child(self.option_switch(kind, "jumpHotkeys", "Win+Ctrl+1..9 jumps to a desktop", "Goes straight to desktop 1 to 9", cfg.jump_hotkeys, cx)))
-                        .child(card_title("Desktops"))
+                        .child(card_title(t("Desktops")))
                         .child(self.workspaces_section(cx)),
                 )
             }
@@ -838,15 +839,15 @@ impl DesquView {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(card_title("Zone and apps"))
+                    .child(card_title(t("Zone and apps")))
                     .child(div().w_full().min_w(px(0.)).h(px(980.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.main.clone()))
-                    .child(card_title("Groups, rules and browser"))
+                    .child(card_title(t("Groups, rules and browser")))
                     .child(div().w_full().min_w(px(0.)).h(px(660.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.manage.clone()))
             }),
         }
     }
 
-    /// "Save a report": a zip with versions, a summary of the settings and the tail of each log, on the desktop.
+    /// t("Save a report"): a zip with versions, a summary of the settings and the tail of each log, on the desktop.
     fn save_report(&mut self, cx: &mut Context<Self>) {
         let Some(folder) = desqu_desktop::desktop_folders().into_iter().next() else {
             self.note = "The Desktop folder was not found".into();
@@ -872,14 +873,30 @@ impl DesquView {
         .detach();
     }
 
+    /// The language of the window.
+    fn language_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        use desqu_native_shell::i18n::Lang;
+        let chosen = self.settings().language.clone();
+        let options: Vec<(String, Option<&'static str>)> = std::iter::once((t("Automatic").to_string(), None)).chain(Lang::ALL.into_iter().map(|l| (l.name().to_string(), Some(l.code())))).collect();
+        card().gap(px(6.)).child(card_title(t("Language"))).child(div().flex().flex_wrap().gap(px(6.)).children(options.into_iter().map(|(label, code)| {
+            button(SharedString::from(format!("lang-{}", code.unwrap_or("auto"))), label, true)
+                .when(chosen.as_deref() == code, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.edit(|s| s.language = code.map(str::to_string));
+                    desqu_native_shell::i18n::set(this.settings().language());
+                    cx.notify();
+                }))
+        })))
+    }
+
     /// The command palette: which keys open it.
     fn palette_card(&self, cx: &mut Context<Self>) -> gpui::Div {
         let current = self.settings().palette_keys().to_string();
         card()
             .gap(px(6.))
-            .child(card_title("Command palette"))
+            .child(card_title(t("Command palette")))
             .child(dim("A small window where you type what you want: go to a page, turn an app on or off, make a vial, go to a virtual desktop, open an item of a vial."))
-            .child(div().flex().flex_wrap().gap(px(6.)).children([("Off", ""), ("Ctrl+Alt+Space", "ctrl+alt+space"), ("Alt+Space", "alt+space"), ("Win+Shift+P", "win+shift+p")].into_iter().map(|(label, value)| {
+            .child(div().flex().flex_wrap().gap(px(6.)).children([(t("Off"), ""), ("Ctrl+Alt+Space", "ctrl+alt+space"), ("Alt+Space", "alt+space"), ("Win+Shift+P", "win+shift+p")].into_iter().map(|(label, value)| {
                 button(SharedString::from(format!("palette-{value}")), label, true)
                     .when(current == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
@@ -951,14 +968,14 @@ impl DesquView {
         let folder = crate::backup::folder();
         let mut card = card()
             .gap(px(6.))
-            .child(card_title("Back up your settings"))
+            .child(card_title(t("Back up your settings")))
             .child(dim("One zip holds the settings of every app. Desqu makes one a day and keeps the newest 14."))
             .child(
                 div()
                     .flex()
                     .gap(px(8.))
-                    .child(button("backup-now", "Back up now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.back_up_now(cx))))
-                    .child(button("backup-folder", "Open the backup folder", true).on_click({
+                    .child(button("backup-now", t("Back up now"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.back_up_now(cx))))
+                    .child(button("backup-folder", t("Open the backup folder"), true).on_click({
                         let folder = folder.clone();
                         move |_, _, _| {
                             let _ = std::fs::create_dir_all(&folder);
@@ -974,7 +991,7 @@ impl DesquView {
                     .items_center()
                     .gap(px(8.))
                     .child(div().flex_1().child(format!("Backup from {when}")))
-                    .child(button(SharedString::from(format!("restore-{i}")), "Restore", true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.restore_backup(zip.clone(), cx)))),
+                    .child(button(SharedString::from(format!("restore-{i}")), t("Restore"), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.restore_backup(zip.clone(), cx)))),
             );
         }
         if cloud.is_some() {
@@ -1010,7 +1027,7 @@ impl DesquView {
         let palette = self.settings().palette_keys().to_string();
         let entries = collect(&palette, &crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
         let problems = check(&entries);
-        let mut card = card().gap(px(6.)).child(card_title("Hotkeys"));
+        let mut card = card().gap(px(6.)).child(card_title(t("Hotkeys")));
         if entries.is_empty() {
             return card.child(dim("No app has a hotkey on. Turn them on on the page of each app: the peek of Vials, the jump of Workspaces, the zone of Screenbound."));
         }
@@ -1043,11 +1060,11 @@ impl DesquView {
             .flex_col()
             .gap(px(12.))
             .max_w(px(760.))
-            .child(heading("Settings"))
+            .child(heading(t("Settings")))
             .child(
                 card()
                     .gap(px(6.))
-                    .child(card_title("Start with system"))
+                    .child(card_title(t("Start with system")))
                     .child(dim(if starts {
                         format!("Desqu starts with Windows and starts {}.", marked.join(", "))
                     } else {
@@ -1060,36 +1077,37 @@ impl DesquView {
             .child(
                 card()
                     .gap(px(6.))
-                    .child(card_title("Updates"))
+                    .child(card_title(t("Updates")))
                     .child(
                         div()
                             .flex()
                             .items_center()
                             .gap(px(8.))
                             .child(dim(if self.update_note.is_empty() { format!("Version {}", env!("CARGO_PKG_VERSION")) } else { self.update_note.clone() }).flex_1())
-                            .when_some(self.update_url.clone(), |d, url| d.child(button("download", "Download", true).on_click(move |_, _, _| open_url(&url))))
-                            .child(button("check", "Check now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.check_update(cx)))),
+                            .when_some(self.update_url.clone(), |d, url| d.child(button("download", t("Download"), true).on_click(move |_, _, _| open_url(&url))))
+                            .child(button("check", t("Check now"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.check_update(cx)))),
                     ),
             )
             .child(
                 card()
                     .gap(px(6.))
-                    .child(card_title("About"))
+                    .child(card_title(t("About")))
                     .child(div().flex().gap(px(24.)).child("Desqu").child(dim(env!("CARGO_PKG_VERSION"))))
                     .child(dim("Each app keeps its output in the logs folder, which helps when one stops unexpectedly."))
-                    .child(div().flex().child(button("logs", "Open the logs folder", true).on_click(move |_, _, _| open_path(&logs)))),
+                    .child(div().flex().child(button("logs", t("Open the logs folder"), true).on_click(move |_, _, _| open_path(&logs)))),
             )
+            .child(self.language_card(cx))
             .child(self.palette_card(cx))
             .child(self.hotkeys_card())
             .child(self.backup_card(cx))
             .child(
                 card()
                     .gap(px(6.))
-                    .child(card_title("Report a problem"))
+                    .child(card_title(t("Report a problem")))
                     .child(dim("Saves a zip on your desktop to attach to a bug report: the versions, which apps are running, a summary of the settings (options and counts, not your file names) and the last lines of each app's log. Your user folder is hidden in it."))
-                    .child(div().flex().child(button("report", "Save a report", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.save_report(cx))))),
+                    .child(div().flex().child(button("report", t("Save a report"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.save_report(cx))))),
             )
-            .child(div().flex().child(button("quit", "Quit Desqu and its apps", true).on_click(|_, _, cx| cx.quit())))
+            .child(div().flex().child(button("quit", t("Quit Desqu and its apps"), true).on_click(|_, _, cx| cx.quit())))
     }
 }
 
@@ -1207,6 +1225,38 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
 
 #[cfg(test)]
 mod tests {
+    /// Every text the window passes through `t("...")` has a Swedish and a Polish version, so a text added
+    /// later without one is caught here.
+    #[test]
+    fn every_translated_text_of_the_window_exists_in_both_languages() {
+        use desqu_native_shell::i18n::{is_translated, Lang};
+        // Only the program, not these tests.
+        let source = include_str!("view.rs").split("#[cfg(test)]").next().unwrap_or_default();
+        let mut found = 0;
+        for part in source.split("t(\"").skip(1) {
+            let Some(end) = part.find("\")") else { continue };
+            let text = &part[..end];
+            // Only the calls of `t`, not other functions whose name ends in t.
+            if text.contains('\n') || text.len() < 2 || text == "..." {
+                continue;
+            }
+            found += 1;
+            for lang in [Lang::Sv, Lang::Pl] {
+                assert!(is_translated(lang, text), "{text:?} has no {} translation", lang.code());
+            }
+        }
+        assert!(found > 20, "the scan found the texts ({found})");
+    }
+
+    #[test]
+    fn the_chosen_language_wins_over_windows_and_automatic_follows_it() {
+        use desqu_native_shell::i18n::Lang;
+        let chosen = crate::modules::Settings { language: Some("pl".into()), ..Default::default() };
+        assert_eq!(chosen.language(), Lang::Pl);
+        let unknown = crate::modules::Settings { language: Some("xx".into()), ..Default::default() };
+        assert_eq!(unknown.language(), desqu_native_shell::i18n::system_language());
+    }
+
     #[test]
     fn how_long_ago_is_said_for_people() {
         assert_eq!(ago_text(5), "just now");
@@ -1222,7 +1272,7 @@ mod tests {
         for s in [Status::Off, Status::Running, Status::RunningElsewhere, Status::Stopped, Status::Missing] {
             assert!(!status_text(s).is_empty());
         }
-        assert_eq!(status_text(Status::Running), "On", "the same word as the Tauri Desqu");
+        assert_eq!(status_text(Status::Running), t("On"), "the same word as the Tauri Desqu");
         assert!(status_text(Status::Stopped).contains("unexpectedly"));
     }
 }

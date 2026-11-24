@@ -70,6 +70,7 @@ fn main() {
         return;
     }
 
+    desqu_native_shell::i18n::set(Settings::load(&config_dir().join("gpui-shell.json")).language());
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).unwrap_or_default();
     let settings_path = config_dir().join("gpui-shell.json");
     let shell = Arc::new(Shell { supervisor: Arc::new(Supervisor::new(&exe_dir)), settings_path: settings_path.clone(), settings: Mutex::new(Settings::load(&settings_path)), nav: Mutex::new(None) });

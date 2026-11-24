@@ -46,4 +46,17 @@ mod tests {
         }
         assert!(STEPS.iter().all(|s| !s.title.is_empty() && s.text.len() > 40));
     }
+
+    #[test]
+    fn the_tour_and_the_descriptions_of_the_apps_are_translated() {
+        use desqu_native_shell::i18n::{is_translated, Lang};
+        for lang in [Lang::Sv, Lang::Pl] {
+            for step in &STEPS {
+                assert!(is_translated(lang, step.title) && is_translated(lang, step.text), "{} in {}", step.title, lang.code());
+            }
+            for kind in ALL {
+                assert!(is_translated(lang, kind.description()), "{} in {}", kind.name(), lang.code());
+            }
+        }
+    }
 }
