@@ -557,6 +557,29 @@ unsafe extern "system" fn menu_host_proc(hwnd: HWND, msg: u32, wparam: WPARAM, l
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
+/// Lets this process' menus follow the system's dark or light app mode: the shell's right-click menu
+/// of an item is a plain Win32 menu, bright unless the process opts in. The two calls are not
+/// documented (uxtheme.dll ordinals 135 and 136) and are skipped when Windows does not have them.
+fn allow_dark_menus() {
+    use ::windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // SAFETY: the ordinals are looked up in uxtheme.dll and only called with the signatures they
+        // have had since Windows 10 1903 (`int SetPreferredAppMode(int)`, `void FlushMenuThemes()`).
+        unsafe {
+            let Ok(uxtheme) = LoadLibraryW(::windows::core::w!("uxtheme.dll")) else { return };
+            let set_mode = GetProcAddress(uxtheme, ::windows::core::PCSTR(135 as *const u8));
+            let flush = GetProcAddress(uxtheme, ::windows::core::PCSTR(136 as *const u8));
+            if let (Some(set_mode), Some(flush)) = (set_mode, flush) {
+                let set_mode: unsafe extern "system" fn(i32) -> i32 = std::mem::transmute(set_mode);
+                let flush: unsafe extern "system" fn() = std::mem::transmute(flush);
+                set_mode(1); // AllowDark: follow the system setting
+                flush();
+            }
+        }
+    });
+}
+
 /// Shows Explorer's own right-click menu for a file, folder or shortcut at the cursor and runs the
 /// entry the user picks. It is the real shell menu (`IContextMenu`), so "Open", "Cut", "Copy",
 /// "Delete", "Properties", "Send to" and the entries other programs add are all there.
@@ -564,6 +587,7 @@ unsafe extern "system" fn menu_host_proc(hwnd: HWND, msg: u32, wparam: WPARAM, l
 /// Must run on the UI thread: the menu runs a modal loop. A vial window never takes focus, so the
 /// menu is owned by a small hidden window that exists only while it is open.
 pub fn show_item_menu(path: &str) -> Result<(), String> {
+    allow_dark_menus();
     // SAFETY: COM and window calls on the calling (UI) thread; every interface pointer and the
     // helper window stay alive until the menu is closed and the chosen command has run.
     unsafe {
@@ -662,6 +686,15 @@ pub fn round_corners(hwnd: isize, round: bool) {
             DWMWA_WINDOW_CORNER_PREFERENCE,
             &preference as *const _ as *const std::ffi::c_void,
             std::mem::size_of_val(&preference) as u32,
+        );
+        // Windows 11 also draws its own thin border around a rounded window, just outside the one the
+        // vial draws itself. Without it only the vial's border shows.
+        let no_border: u32 = 0xFFFF_FFFE; // DWMWA_COLOR_NONE
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            ::windows::Win32::Graphics::Dwm::DWMWA_BORDER_COLOR,
+            &no_border as *const _ as *const std::ffi::c_void,
+            std::mem::size_of_val(&no_border) as u32,
         );
     }
 }
