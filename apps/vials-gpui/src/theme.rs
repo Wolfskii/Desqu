@@ -46,6 +46,11 @@ impl Theme {
             liquid: false,
         };
         match theme {
+            VialTheme::System => {
+                // Dark unless Windows says its apps are light.
+                let light = vials_platform::apps_use_light_theme().unwrap_or(false);
+                Theme::of(if light { VialTheme::FluentLight } else { VialTheme::Fluent }, tint as u8)
+            }
             VialTheme::Glass => glass,
             VialTheme::Liquid => Theme { liquid: true, material: WindowBackgroundAppearance::Transparent, panel: 0x00000000, border: 0x00000000, ..glass },
             VialTheme::Classic => Theme {
@@ -93,7 +98,7 @@ mod tests {
 
     #[test]
     fn only_classic_has_no_blur_and_only_liquid_draws_its_own_backdrop() {
-        for t in [VialTheme::Glass, VialTheme::Fluent, VialTheme::FluentLight] {
+        for t in [VialTheme::Glass, VialTheme::Fluent, VialTheme::FluentLight, VialTheme::System] {
             assert_eq!(Theme::of(t, 20).material, WindowBackgroundAppearance::Blurred);
         }
         for t in [VialTheme::Classic, VialTheme::Liquid] {

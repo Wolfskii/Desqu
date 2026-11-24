@@ -701,7 +701,28 @@ pub fn round_corners(hwnd: isize, round: bool) {
 
 // ------------------------------------------------------------------------------- wallpaper
 
-use ::windows::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_SZ};
+use ::windows::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_DWORD, RRF_RT_REG_SZ};
+
+/// Whether Windows apps use the light theme (`false` = dark), or `None` when the setting is not there.
+pub fn apps_use_light_theme() -> Option<bool> {
+    let key: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0".encode_utf16().collect();
+    let value: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
+    let mut data = 0u32;
+    let mut len = 4u32;
+    // SAFETY: `data` is a 4-byte buffer and `len` says so.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            ::windows::core::PCWSTR(key.as_ptr()),
+            ::windows::core::PCWSTR(value.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut data as *mut u32 as *mut std::ffi::c_void),
+            Some(&mut len),
+        )
+    };
+    (status.0 == 0).then_some(data != 0)
+}
 
 fn desktop_reg_string(name: &str) -> Option<String> {
     let key: Vec<u16> = "Control Panel\\Desktop\0".encode_utf16().collect();

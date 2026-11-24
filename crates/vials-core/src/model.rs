@@ -133,6 +133,8 @@ pub enum VialTheme {
     Fluent,
     /// Fluent with its light surface and colours.
     FluentLight,
+    /// Fluent, dark or light by the Windows app setting (and changing with it).
+    System,
     /// Liquid glass: the wallpaper is redrawn behind the vial with a refraction shader (bent edges,
     /// highlights), which Windows' own blur cannot do. Popups use the plain Glass look.
     Liquid,
@@ -545,6 +547,8 @@ mod tests {
     #[test]
     fn settings_are_set_by_name_and_bad_values_are_refused() {
         let mut c = VialsConfig::default();
+        c.set_setting("theme", "system").unwrap();
+        assert_eq!(c.theme, VialTheme::System);
         c.set_setting("theme", "fluentLight").unwrap();
         c.set_setting("glassTint", "35").unwrap();
         c.set_setting("autoSort", "false").unwrap();

@@ -27,7 +27,7 @@ progress log in the same commit as the work.
 | P1-01 | [x] | Quick-hide: double-click empty desktop hides or shows all icons and vials | S | Setting on/off; reuse `veil` and the desktop-press event. Hand test |
 | P1-02 | [x] | Lock a vial (no move, resize, drop-out or rename) | S | `Vial.locked`; menu entry with check mark |
 | P1-03 | [x] | Collapsed vial opens while the pointer is over it | S | Setting; short close delay |
-| P1-04 | [ ] | Theme "follow Windows" (light or dark by the Windows setting) | S | Watch `AppsUseLightTheme` |
+| P1-04 | [x] | Theme "follow Windows" (light or dark by the Windows setting) | S | Watch `AppsUseLightTheme` |
 | P1-05 | [ ] | Per-vial look: colour, opacity, icon size, title alignment | M | Optional fields on `Vial`; "Look..." in the vial menu |
 | P1-06 | [ ] | More rule conditions: modified/created age, size, source folder; run rules now | M | `ItemMatcher` in vials-core, file facts from vials-platform |
 | P1-07 | [ ] | Keyboard in vials: arrows, Enter, F2, menu key, Home/End | M | Headless GPUI tests |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P1-04 theme "Follow Windows": Fluent dark or light by the Windows app setting, re-read about once a second while chosen. Tests for the setting name and that the theme resolves. The old Tauri Vials treats it as dark. Hand test: flip the Windows light/dark setting.
 - P1-03 collapsed vials open on hover (setting "Open collapsed vials on hover", off by default; closes 350 ms after the pointer leaves). Setting covered by a unit test. Hand test: the opening and closing.
 - P1-02 lock a vial: menu entry "Lock" (checked); a locked vial snaps back when moved or resized, cannot be renamed, dragged out or saved at a new place. Unit tests for the model (and old configs load unlocked). Hand test: moving, resizing and dragging out of a locked vial.
 - P1-01 quick-hide: double-click empty desktop hides or shows vials and desktop icons (setting on by default, on the Vials page in Desqu and in Vials settings). Unit tests for the double-click timing and the setting. Hand test: the real double-click and the icons coming back.

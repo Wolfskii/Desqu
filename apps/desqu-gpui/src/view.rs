@@ -677,6 +677,7 @@ impl DesquView {
                     (VialTheme::Classic, "classic", "Classic"),
                     (VialTheme::Fluent, "fluent", "Fluent dark"),
                     (VialTheme::FluentLight, "fluentLight", "Fluent light"),
+                    (VialTheme::System, "system", "Follow Windows"),
                 ];
                 let look = div().flex().flex_wrap().gap(px(6.)).children(themes.into_iter().map(|(theme, value, label)| {
                     button(SharedString::from(format!("look-{value}")), label, true)

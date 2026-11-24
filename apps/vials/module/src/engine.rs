@@ -890,7 +890,8 @@ fn style_window<R: Runtime>(window: &tauri::WebviewWindow<R>, cfg: &VialsConfig)
 fn apply_theme_effects<R: Runtime>(window: &tauri::WebviewWindow<R>, cfg: &VialsConfig) {
     match cfg.theme {
         VialTheme::Glass => apply_glass(window, cfg.glass_blur, cfg.glass_tint),
-        VialTheme::Fluent => apply_fluent(window, true),
+        // The Tauri build has no "follow Windows": it is dark.
+        VialTheme::Fluent | VialTheme::System => apply_fluent(window, true),
         VialTheme::FluentLight => apply_fluent(window, false),
         // Popups (menus) keep the plain glass; vial windows never get here for Liquid.
         VialTheme::Liquid => apply_glass(window, cfg.glass_blur, cfg.glass_tint),
@@ -1028,6 +1029,7 @@ fn create_vial_in<R: Runtime>(app: &AppHandle<R>, rect: PixelRect) -> Result<Str
         sort_key: None,
         sort_desc: false,
         folders_first: false,
+        locked: false,
     });
     state.set_config(cfg)?;
     Ok(id)

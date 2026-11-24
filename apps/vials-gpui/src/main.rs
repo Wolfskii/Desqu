@@ -334,7 +334,17 @@ fn main() {
             // Workspaces can tie a vial to a virtual desktop: look at its config about once a second.
             let mut follower = desktops::Follower::new(desktops::workspaces_config_path());
             let mut tick = 0u32;
+            let mut windows_light = vials_platform::apps_use_light_theme();
             loop {
+                // "Follow Windows": look at the Windows light/dark setting about once a second.
+                if tick.is_multiple_of(10) && engine.config().theme == vials_core::model::VialTheme::System {
+                    let now = vials_platform::apps_use_light_theme();
+                    if now != windows_light {
+                        windows_light = now;
+                        let revision = revision.clone();
+                        let _ = cx.update(|cx| bump(&revision, cx));
+                    }
+                }
                 if tick.is_multiple_of(10) {
                     let ids: Vec<String> = windows.borrow().keys().cloned().collect();
                     if let Some(moves) = follower.poll(&ids) {
