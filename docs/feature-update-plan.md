@@ -49,7 +49,7 @@ progress log in the same commit as the work.
 | P2-03 | [x] | Peek: hotkey brings all vials above windows | M | Default Win+Shift+Space, configurable |
 | P2-04 | [x] | Privacy mode: masked names and pictures; exclude vials from screen capture | M | `WDA_EXCLUDEFROMCAPTURE`. Hand test |
 | P2-05 | [x] | Saved layouts, one per screen setup, switched on dock/undock | M | |
-| P2-06 | [ ] | Recent files vial | M | Windows Recent list |
+| P2-06 | [x] | Recent files vial | M | Windows Recent list |
 | P2-07 | [ ] | Cleanup rule: untouched items move to an Archive vial or folder | M | |
 | P2-08 | [ ] | Note and link items | M | |
 | P2-09 | [ ] | Wallpaper-derived vial colour | M | |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P2-06 recent files vial: "New recent files vial here" in the vial menu makes a portal that shows Windows' Recent list (up to 50 shortcuts, newest first, filtered by search, nothing dropped into it). Test for the ordering and the limit (temp folder with set times). Hand test: with your real Recent list.
 - P2-05 saved layouts: vial menu "Layouts..." saves where the vials sit ("Layout N") and brings back or deletes a saved one; the program also remembers the places per screen setup (monitor names, sizes, arrangement) and, when you dock or undock, puts the vials where they were the last time you had that setup. Locked vials stay. Tests: the setup key, save/restore/delete, docking back and forth. Hand test: really docking and undocking.
 - P2-04 privacy mode: setting "Privacy mode" hides names and pictures of items until the pointer is over the vial; setting "Hide vials from screen sharing" keeps vials out of shares, recordings and screenshots (SetWindowDisplayAffinity, Windows 10 2004+). Tests for the setting and the masking rule. Hand test: with Teams, OBS or the Snipping Tool.
 - P2-03 peek: a hotkey (off by default; Win+Shift+Space or Ctrl+Alt+V on the Vials page and in settings; Win+Space is Windows' keyboard layout key so it is not the default) brings every vial above the open windows; a click outside every vial or Esc puts them back; the hotkey again toggles. Tests for the hotkey text, the setting and the point-in-vials test; the topmost switch itself needs a hand test.

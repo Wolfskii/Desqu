@@ -306,7 +306,7 @@ impl VialView {
         let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()) else { return };
         cx.spawn(async move |this, cx| {
             let wanted = dir.clone();
-            let listing = cx.background_executor().spawn(async move { vials_core::portal::list_dir(&dir) }).await;
+            let listing = cx.background_executor().spawn(async move { vials_core::portal::list(&dir) }).await;
             let _ = this.update(cx, |view, cx| {
                 let Some(portal) = view.portal.as_mut().filter(|p| p.dir == wanted) else { return };
                 match listing {
@@ -333,7 +333,7 @@ impl VialView {
             let Ok(dir) = this.update(cx, |view, _| view.portal.as_ref().map(|p| p.dir.clone())) else { return };
             let Some(dir) = dir else { continue };
             let wanted = dir.clone();
-            let listing = cx.background_executor().spawn(async move { vials_core::portal::list_dir(&dir) }).await;
+            let listing = cx.background_executor().spawn(async move { vials_core::portal::list(&dir) }).await;
             let alive = this.update(cx, |view, cx| {
                 let Some(portal) = view.portal.as_mut().filter(|p| p.dir == wanted) else { return };
                 let ids = listing.unwrap_or_default();
@@ -413,7 +413,8 @@ impl VialView {
         let generation = self.search_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
         self.search_results = None;
         self.refilter();
-        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()).filter(|_| !query.is_empty()) else {
+        // (The recent files are only the few the list holds: they are filtered, not searched for.)
+        let Some(dir) = self.portal.as_ref().filter(|p| p.root != std::path::Path::new(vials_core::portal::RECENT)).map(|p| p.dir.clone()).filter(|_| !query.is_empty()) else {
             cx.notify();
             return;
         };
@@ -673,6 +674,10 @@ impl VialView {
         // A portal is a folder: what is dropped is copied into the folder it shows (Explorer's own copy, with
         // its progress and its questions).
         if let Some(dir) = self.portal.as_ref().map(|p| p.dir.to_string_lossy().into_owned()) {
+            // Nothing is dropped into the list of recent files.
+            if dir == vials_core::portal::RECENT {
+                return;
+            }
             cx.spawn(async move |this, cx| {
                 let _ = cx.background_executor().spawn(async move { vials_platform::clipboard::transfer(&paths, false, &dir, false) }).await;
                 let _ = this.update(cx, |view, cx| view.refresh_portal(cx));
@@ -976,6 +981,14 @@ impl VialView {
         {
             let live = live.clone();
             entries.push(MenuEntry::new("New folder portal here...", move |cx| new_portal(cx, live.clone(), Some(at), None)));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New recent files vial here", move |cx| {
+                if live.engine.create_portal_at(Some(at), vials_core::portal::RECENT).is_some() {
+                    bump(&live.revision, cx);
+                }
+            }));
         }
         {
             let live = live.clone();

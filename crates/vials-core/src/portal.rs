@@ -6,6 +6,41 @@ use std::path::{Path, PathBuf};
 
 use super::sort::natural_cmp;
 
+/// The source of a portal that shows the files opened lately (Windows' own Recent list) instead of a folder.
+pub const RECENT: &str = "shell:recent";
+
+/// How many recent files the portal shows.
+pub const RECENT_LIMIT: usize = 50;
+
+/// The folder Windows keeps the shortcuts to recent files in.
+pub fn recent_folder() -> PathBuf {
+    std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default().join("Microsoft").join("Windows").join("Recent")
+}
+
+/// What a portal shows for `dir`: the folder's entries, or for [`RECENT`] the recent files.
+pub fn list(dir: &Path) -> Result<Vec<String>, String> {
+    if dir == Path::new(RECENT) {
+        return list_recent(&recent_folder(), RECENT_LIMIT);
+    }
+    list_dir(dir)
+}
+
+/// The shortcuts in `folder` (a Recent folder), newest first, at most `limit`. Folders of the Recent list
+/// (Windows keeps `AutomaticDestinations` there) are not shown.
+pub fn list_recent(folder: &Path, limit: usize) -> Result<Vec<String>, String> {
+    let mut entries: Vec<(std::time::SystemTime, String)> = Vec::new();
+    for entry in std::fs::read_dir(folder).map_err(|e| e.to_string())?.flatten() {
+        let path = entry.path();
+        if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("lnk")) {
+            continue;
+        }
+        let modified = entry.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+        entries.push((modified, path.to_string_lossy().into_owned()));
+    }
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(entries.into_iter().take(limit).map(|e| e.1).collect())
+}
+
 /// The entries of `dir` that a person would see in Explorer: folders first, then files, each by name
 /// the way Explorer orders them ("file2" before "file10"). Hidden and system entries and `desktop.ini`
 /// are left out. Entries that cannot be read are skipped; an unreadable folder is an error.
@@ -59,6 +94,9 @@ pub fn up(root: &Path, dir: &Path) -> Option<PathBuf> {
 
 /// A name for a new portal: the folder's own name, or the whole path for a drive root.
 pub fn title_of(folder: &Path) -> String {
+    if folder == Path::new(RECENT) {
+        return "Recent files".to_string();
+    }
     folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| folder.to_string_lossy().into_owned())
 }
 
@@ -69,6 +107,22 @@ fn normal(p: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_recent_list_is_shortcuts_newest_first_and_cut_at_the_limit() {
+        let dir = temp("recent");
+        let now = std::time::SystemTime::now();
+        for (name, age_secs) in [("old.lnk", 300u64), ("new.lnk", 10), ("mid.lnk", 100), ("not a link.txt", 1)] {
+            let file = std::fs::File::create(dir.join(name)).unwrap();
+            file.set_modified(now - std::time::Duration::from_secs(age_secs)).unwrap();
+        }
+        std::fs::create_dir(dir.join("AutomaticDestinations")).unwrap();
+        let names = |v: Vec<String>| v.iter().map(|p| title_of(Path::new(p))).collect::<Vec<_>>();
+        assert_eq!(names(list_recent(&dir, 50).unwrap()), vec!["new.lnk", "mid.lnk", "old.lnk"]);
+        assert_eq!(names(list_recent(&dir, 2).unwrap()), vec!["new.lnk", "mid.lnk"]);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(title_of(Path::new(RECENT)), "Recent files");
+    }
+
     use super::*;
 
     fn temp(name: &str) -> PathBuf {
