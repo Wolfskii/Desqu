@@ -46,7 +46,7 @@ progress log in the same commit as the work.
 |---|---|---|---|---|
 | P2-01 | [x] | Folder Portals: a vial that shows a folder (local, network, OneDrive) | L | `Vial.source`; watcher; breadcrumb; drag out copies/moves. Hand test with a share |
 | P2-02 | [x] | Search and filter in a vial and in portals | M | Off the UI thread, cancellable |
-| P2-03 | [ ] | Peek: hotkey brings all vials above windows | M | Default Win+Shift+Space, configurable |
+| P2-03 | [x] | Peek: hotkey brings all vials above windows | M | Default Win+Shift+Space, configurable |
 | P2-04 | [ ] | Privacy mode: masked names and pictures; exclude vials from screen capture | M | `WDA_EXCLUDEFROMCAPTURE`. Hand test |
 | P2-05 | [ ] | Saved layouts, one per screen setup, switched on dock/undock | M | |
 | P2-06 | [ ] | Recent files vial | M | Windows Recent list |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P2-03 peek: a hotkey (off by default; Win+Shift+Space or Ctrl+Alt+V on the Vials page and in settings; Win+Space is Windows' keyboard layout key so it is not the default) brings every vial above the open windows; a click outside every vial or Esc puts them back; the hotkey again toggles. Tests for the hotkey text, the setting and the point-in-vials test; the topmost switch itself needs a hand test.
 - P2-02 search in a vial: Ctrl+F or "Search..." in the vial menu opens a bar; words, .ext and kind:images/documents/videos/audio/archives/programs/shortcuts/folders filter at once; in a portal the folders below are searched too (off the UI thread, up to 300 hits, 6 levels, cancelled when you type on). Esc or x closes. Tests: query parsing and matching, the folder walk (depth, limit, cancel), a headless GPUI test of typing and Esc. Hand test: a large network folder.
 - P2-01 folder portals: "New folder portal here..." (desktop box popup and vial menu) makes a vial that shows any folder (local, network, OneDrive): folders first, double-click or Enter goes in, < or Backspace goes up (never above its folder), the folder is re-read every 2 s, drops copy into it, dragging to the empty desktop copies there, Explorer's menu works, nothing is hidden or deleted. Tests: folder listing, never-above-root, a headless GPUI test that walks a portal. Hand test: a network share and OneDrive; very large folders are listed in one go (no paging yet).
 - P1-15 "Save a report" on Desqu's Settings page: a zip on the desktop with versions, what runs, a summary of settings (options and counts, no file names) and the last 400 lines of each log, with the user folder hidden. Tests for hiding the folder, the tail, that summaries hold no names, and a real zip. Hand test: the button and the Explorer window that opens. Phase 1 is done.

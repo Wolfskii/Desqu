@@ -99,6 +99,21 @@ pub fn place_on_top(hwnd: HWND, rect: &PixelRect) {
     }
 }
 
+/// Puts a window above everything (a peek) or back below everything, without taking the focus.
+pub fn raise(hwnd: HWND, above: bool) {
+    // SAFETY: our own window.
+    unsafe {
+        let _ = SetWindowPos(hwnd, Some(if above { HWND_TOPMOST } else { HWND_BOTTOM }), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
+    }
+}
+
+/// Whether Esc is down right now.
+pub fn escape_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_ESCAPE};
+    // SAFETY: a plain key state query.
+    unsafe { GetAsyncKeyState(i32::from(VK_ESCAPE.0)) as u16 & 0x8000 != 0 }
+}
+
 /// Shows or hides a window without taking the focus.
 pub fn set_visible(hwnd: HWND, visible: bool) {
     // SAFETY: our own window.

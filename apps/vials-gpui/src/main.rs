@@ -139,6 +139,25 @@ impl Shell {
 }
 
 /// Puts vial windows on the virtual desktops Workspaces tied them to (or back on the current one).
+/// Brings every vial above the open windows (a peek), or puts them back below.
+fn raise_all(cx: &mut App, windows: &Windows, above: bool) {
+    let handles: Vec<AnyWindowHandle> = windows.borrow().values().copied().collect();
+    for handle in handles {
+        let _ = handle.update(cx, |_, window, _| {
+            if let Some(hwnd) = win::hwnd(window) {
+                win::set_visible(hwnd, true);
+                win::raise(hwnd, above);
+            }
+        });
+    }
+}
+
+/// Where every vial window is now (screen pixels).
+fn window_rects(cx: &mut App, windows: &Windows) -> Vec<vials_core::model::PixelRect> {
+    let handles: Vec<AnyWindowHandle> = windows.borrow().values().copied().collect();
+    handles.into_iter().filter_map(|h| h.update(cx, |_, window, _| win::hwnd(window).and_then(win::window_rect)).ok().flatten()).collect()
+}
+
 fn apply_moves(cx: &mut App, windows: &Windows, moves: Vec<(String, desktops::Move)>) {
     if moves.is_empty() {
         return;
@@ -327,6 +346,7 @@ fn main() {
         }
         let context_point: Rc<Cell<Option<(i32, i32)>>> = Rc::new(Cell::new(None));
         let quick_hidden = Rc::new(Cell::new(false));
+        let peeking = Rc::new(Cell::new(false));
         let engine = engine.clone();
         cx.spawn(async move |cx| {
             // Owned by this task: dropped (tray icon removed, hook released) when the app ends.
@@ -335,7 +355,35 @@ fn main() {
             let mut follower = desktops::Follower::new(desktops::workspaces_config_path());
             let mut tick = 0u32;
             let mut windows_light = vials_platform::apps_use_light_theme();
+            // The peek hotkey follows the setting; pressing it brings the vials above the windows.
+            let mut peek_key: Option<(String, desqu_native_shell::hotkey::Hotkey)> = None;
+            let (peek_tx, peek_rx) = std::sync::mpsc::channel::<()>();
             loop {
+                if tick.is_multiple_of(10) {
+                    let wanted = engine.config().peek_hotkey;
+                    if peek_key.as_ref().map_or("", |(text, _)| text.as_str()) != wanted {
+                        peek_key = None;
+                        if !wanted.is_empty() {
+                            let for_press = peek_tx.clone();
+                            match desqu_native_shell::hotkey::Hotkey::register(&wanted, Box::new(move || {
+                                let _ = for_press.send(());
+                            })) {
+                                Ok(h) => peek_key = Some((wanted, h)),
+                                Err(e) => eprintln!("{e}"),
+                            }
+                        }
+                    }
+                }
+                while peek_rx.try_recv().is_ok() {
+                    let above = !peeking.get();
+                    peeking.set(above);
+                    let _ = cx.update(|cx| raise_all(cx, &windows, above));
+                }
+                // Esc ends a peek.
+                if peeking.get() && win::escape_down() {
+                    peeking.set(false);
+                    let _ = cx.update(|cx| raise_all(cx, &windows, false));
+                }
                 // "Follow Windows": look at the Windows light/dark setting about once a second.
                 if tick.is_multiple_of(10) && engine.config().theme == vials_core::model::VialTheme::System {
                     let now = vials_platform::apps_use_light_theme();
@@ -419,7 +467,17 @@ fn main() {
                 while let Ok(event) = mouse_rx.try_recv() {
                     match event {
                         MouseEvent::ContextDown(at) => context_point.set(Some(at)),
-                        MouseEvent::ButtonDown(_) | MouseEvent::DesktopDown(_) => {}
+                        // A click outside every vial ends a peek.
+                        MouseEvent::ButtonDown(at) => {
+                            if peeking.get() {
+                                let rects = cx.update(|cx| window_rects(cx, &windows)).unwrap_or_default();
+                                if !gesture::point_in_any(&rects, at) {
+                                    peeking.set(false);
+                                    let _ = cx.update(|cx| raise_all(cx, &windows, false));
+                                }
+                            }
+                        }
+                        MouseEvent::DesktopDown(_) => {}
                         MouseEvent::Marquee(down, up) => {
                             // A box dragged on empty desktop offers a vial there; a box that caught icons
                             // is a selection, which Explorer needs a moment to settle.

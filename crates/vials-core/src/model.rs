@@ -245,6 +245,10 @@ pub struct VialsConfig {
     /// A box dragged over icons offers "New vial with these" (off: only a box over empty desktop offers a vial).
     #[serde(default)]
     pub offer_for_selection: bool,
+    /// A global hotkey (`win+shift+space`) that brings every vial above the open windows until you click
+    /// elsewhere or press Esc; empty is off.
+    #[serde(default)]
+    pub peek_hotkey: String,
     /// A double-click on the empty desktop hides every vial and the desktop icons; another shows them.
     #[serde(default = "yes")]
     pub quick_hide: bool,
@@ -272,6 +276,7 @@ impl Default for VialsConfig {
             create_on_drag: true,
             context_menu: true,
             quick_hide: true,
+            peek_hotkey: String::new(),
             offer_for_selection: false,
             hover_open: false,
             theme: VialTheme::default(),
@@ -313,6 +318,7 @@ impl VialsConfig {
             "contextMenu" => self.context_menu = flag()?,
             "quickHide" => self.quick_hide = flag()?,
             "hoverOpen" => self.hover_open = flag()?,
+            "peekHotkey" => self.peek_hotkey = value.trim().to_string(),
             "offerForSelection" => self.offer_for_selection = flag()?,
             other => return Err(format!("unknown setting {other}")),
         }
@@ -701,6 +707,8 @@ mod tests {
         c.set_setting("autoSort", "false").unwrap();
         c.set_setting("quickHide", "false").unwrap();
         c.set_setting("hoverOpen", "true").unwrap();
+        c.set_setting("peekHotkey", " win+shift+space ").unwrap();
+        assert_eq!(c.peek_hotkey, "win+shift+space");
         assert!(c.hover_open);
         assert!(!c.quick_hide);
         assert_eq!((c.theme, c.glass_tint, c.auto_sort), (VialTheme::FluentLight, 35, false));

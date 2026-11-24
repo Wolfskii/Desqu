@@ -703,6 +703,12 @@ impl DesquView {
                         .child(self.option_switch(kind, "contextMenu", "Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, cx))
                         .child(self.option_switch(kind, "offerForSelection", "Offer a vial for selected icons", "A box dragged over icons offers \"New vial with these\"", cfg.offer_for_selection, cx))
                         .child(self.option_switch(kind, "hoverOpen", "Open collapsed vials on hover", "A collapsed vial opens while the pointer is over it", cfg.hover_open, cx))
+                        .child(card_title("Peek hotkey"))
+                        .child(div().flex().flex_wrap().gap(px(6.)).children([("Off", ""), ("Win+Shift+Space", "win+shift+space"), ("Ctrl+Alt+V", "ctrl+alt+v")].into_iter().map(|(label, value)| {
+                            button(SharedString::from(format!("peek-{value}")), label, true)
+                                .when(cfg.peek_hotkey == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_option(Kind::Vials, "peekHotkey", value.to_string(), cx)))
+                        })))
                         .child(self.option_switch(kind, "quickHide", "Quick-hide", "Double-click the empty desktop to hide or show all vials and icons", cfg.quick_hide, cx))
                         .child(
                             div().child(

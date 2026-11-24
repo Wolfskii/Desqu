@@ -19,6 +19,11 @@ pub fn marquee(down: (i32, i32), up: (i32, i32)) -> Option<PixelRect> {
     (rect.width() >= MIN_WIDTH && rect.height() >= MIN_HEIGHT).then_some(rect)
 }
 
+/// Whether `at` is inside any of the rectangles (the click that ends a peek: outside every vial).
+pub fn point_in_any(rects: &[PixelRect], at: (i32, i32)) -> bool {
+    rects.iter().any(|r| at.0 >= r.left && at.0 < r.right && at.1 >= r.top && at.1 < r.bottom)
+}
+
 /// Spots a double-click on the empty desktop from the presses the mouse hook reports.
 #[derive(Debug, Default)]
 pub struct DoubleClick {
@@ -67,6 +72,14 @@ pub fn popup_position(cursor: (i32, i32), size: (i32, i32), screen: &PixelRect) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_point_is_in_a_vial_when_it_is_inside_any_rectangle() {
+        let rects = [PixelRect { left: 0, top: 0, right: 100, bottom: 50 }, PixelRect { left: 200, top: 200, right: 300, bottom: 300 }];
+        assert!(point_in_any(&rects, (10, 10)) && point_in_any(&rects, (250, 299)));
+        assert!(!point_in_any(&rects, (100, 10)), "the right edge is outside");
+        assert!(!point_in_any(&rects, (150, 150)) && !point_in_any(&[], (0, 0)));
+    }
+
     #[test]
     fn two_quick_presses_in_one_place_are_a_double_click_and_a_third_starts_over() {
         let mut d = DoubleClick::default();
