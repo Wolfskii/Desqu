@@ -245,6 +245,12 @@ pub struct VialsConfig {
     /// A box dragged over icons offers "New vial with these" (off: only a box over empty desktop offers a vial).
     #[serde(default)]
     pub offer_for_selection: bool,
+    /// Privacy mode: the names and pictures of items stay hidden until the pointer is over the vial.
+    #[serde(default)]
+    pub privacy_mask: bool,
+    /// The vials do not show in screen shares, recordings and screenshots (Windows 10 2004 or later).
+    #[serde(default)]
+    pub hide_from_capture: bool,
     /// A global hotkey (`win+shift+space`) that brings every vial above the open windows until you click
     /// elsewhere or press Esc; empty is off.
     #[serde(default)]
@@ -277,6 +283,8 @@ impl Default for VialsConfig {
             context_menu: true,
             quick_hide: true,
             peek_hotkey: String::new(),
+            privacy_mask: false,
+            hide_from_capture: false,
             offer_for_selection: false,
             hover_open: false,
             theme: VialTheme::default(),
@@ -318,6 +326,8 @@ impl VialsConfig {
             "contextMenu" => self.context_menu = flag()?,
             "quickHide" => self.quick_hide = flag()?,
             "hoverOpen" => self.hover_open = flag()?,
+            "privacyMask" => self.privacy_mask = flag()?,
+            "hideFromCapture" => self.hide_from_capture = flag()?,
             "peekHotkey" => self.peek_hotkey = value.trim().to_string(),
             "offerForSelection" => self.offer_for_selection = flag()?,
             other => return Err(format!("unknown setting {other}")),
@@ -707,6 +717,9 @@ mod tests {
         c.set_setting("autoSort", "false").unwrap();
         c.set_setting("quickHide", "false").unwrap();
         c.set_setting("hoverOpen", "true").unwrap();
+        c.set_setting("privacyMask", "true").unwrap();
+        c.set_setting("hideFromCapture", "true").unwrap();
+        assert!(c.privacy_mask && c.hide_from_capture);
         c.set_setting("peekHotkey", " win+shift+space ").unwrap();
         assert_eq!(c.peek_hotkey, "win+shift+space");
         assert!(c.hover_open);

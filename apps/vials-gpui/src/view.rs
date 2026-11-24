@@ -123,6 +123,8 @@ pub struct VialView {
     /// Icon size in pixels, and whether the title is centred: from the vial's own look.
     icon_size: u8,
     title_center: bool,
+    /// Privacy mode is on: names and pictures are hidden until the pointer is over the vial.
+    privacy_mask: bool,
     /// A collapsed vial is open for the moment because the pointer is over it.
     peeking: bool,
     /// Where the pointer is now (over the window or not), and which "left" a delayed close belongs to.
@@ -185,6 +187,9 @@ impl VialView {
         cx.observe_window_bounds(window, move |this, window, cx| {
             let Some(hwnd) = win::hwnd(window) else { return };
             this.hwnd = Some(hwnd.0 as isize);
+            if let Some(live) = &this.live {
+                this.apply_capture(live.engine.config().hide_from_capture);
+            }
             this.refresh_liquid(cx);
             // A locked vial goes back to where it was put.
             if this.locked && !this.shown_collapsed() {
@@ -241,6 +246,7 @@ impl VialView {
             search: None,
             search_gen: Default::default(),
             search_results: None,
+            privacy_mask: live.as_ref().is_some_and(|l| l.engine.config().privacy_mask),
             portal: None,
             cursor: None,
             anchor: None,
@@ -463,6 +469,9 @@ impl VialView {
             self.locked = vial.locked;
             self.icon_size = vial.icon_px();
             self.title_center = vial.title_center;
+            let config = live.engine.config();
+            self.privacy_mask = config.privacy_mask;
+            self.apply_capture(config.hide_from_capture);
             self.set_portal_source(vial.source.clone(), cx);
             if self.portal.is_none() {
                 self.set_items(vial.items, cx);
@@ -569,6 +578,18 @@ impl VialView {
         }
     }
 
+    /// Names and pictures are hidden right now: privacy mode is on and the pointer is not over the vial.
+    fn masked(&self) -> bool {
+        self.privacy_mask && !self.hovered
+    }
+
+    /// Keeps the window out of (or lets it into) screen captures, as the setting says.
+    fn apply_capture(&self, exclude: bool) {
+        if let Some(hwnd) = self.hwnd {
+            win::exclude_from_capture(windows::Win32::Foundation::HWND(hwnd as *mut std::ffi::c_void), exclude);
+        }
+    }
+
     /// Whether the window is only its title bar right now.
     fn shown_collapsed(&self) -> bool {
         self.collapsed && !self.peeking
@@ -600,6 +621,9 @@ impl VialView {
     fn on_hover_change(&mut self, over: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.hovered = over;
         self.hover_gen += 1;
+        if self.privacy_mask {
+            cx.notify();
+        }
         let wanted = self.live.as_ref().is_some_and(|l| l.engine.config().hover_open);
         if !wanted || !self.collapsed {
             return;
@@ -1364,7 +1388,8 @@ impl Render for VialView {
             .children(self.items.iter().enumerate().map(|(i, item)| {
                 let is_selected = selected.contains(&i);
                 let id = item.id.clone();
-                let icon = match self.icons.get(&item.id) {
+                let masked = self.masked();
+                let icon = match self.icons.get(&item.id).filter(|_| !masked) {
                     Some(image) => img(image.clone()).size(px(icon_px)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
                     None => div().size(px(icon_px)).rounded(px(6.)).bg(rgba(t.placeholder)).into_any_element(),
                 };
@@ -1423,7 +1448,7 @@ impl Render for VialView {
                         }
                     }))
                     .child(icon)
-                    .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(item.name.clone()))
+                    .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(if masked { SharedString::from("\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}") } else { item.name.clone() }))
                     .when(live && !is_portal, |d| {
                         d.child(
                             div()
@@ -1625,6 +1650,16 @@ mod tests {
         assert_eq!(names(&view, cx), vec!["notes.txt", "report.pdf", "sub"], "Esc closes the search");
         assert!(view.read_with(cx, |v, _| v.search.is_none()));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[gpui::test]
+    fn privacy_mode_hides_names_and_pictures_until_the_pointer_is_over_the_vial(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        assert!(!view.read_with(cx, |v, _| v.masked()), "off by default");
+        view.update(cx, |v, _| v.privacy_mask = true);
+        assert!(view.read_with(cx, |v, _| v.masked()), "on and the pointer is elsewhere");
+        view.update(cx, |v, _| v.hovered = true);
+        assert!(!view.read_with(cx, |v, _| v.masked()), "the pointer is over it");
     }
 
     #[gpui::test]

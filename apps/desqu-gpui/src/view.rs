@@ -703,6 +703,8 @@ impl DesquView {
                         .child(self.option_switch(kind, "contextMenu", "Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, cx))
                         .child(self.option_switch(kind, "offerForSelection", "Offer a vial for selected icons", "A box dragged over icons offers \"New vial with these\"", cfg.offer_for_selection, cx))
                         .child(self.option_switch(kind, "hoverOpen", "Open collapsed vials on hover", "A collapsed vial opens while the pointer is over it", cfg.hover_open, cx))
+                        .child(self.option_switch(kind, "privacyMask", "Privacy mode", "Names and pictures stay hidden until the pointer is over a vial", cfg.privacy_mask, cx))
+                        .child(self.option_switch(kind, "hideFromCapture", "Hide vials from screen sharing", "They do not show in shares, recordings or screenshots", cfg.hide_from_capture, cx))
                         .child(card_title("Peek hotkey"))
                         .child(div().flex().flex_wrap().gap(px(6.)).children([("Off", ""), ("Win+Shift+Space", "win+shift+space"), ("Ctrl+Alt+V", "ctrl+alt+v")].into_iter().map(|(label, value)| {
                             button(SharedString::from(format!("peek-{value}")), label, true)

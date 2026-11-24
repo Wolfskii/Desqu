@@ -228,6 +228,8 @@ impl Render for SettingsView {
             .child(row("Peek hotkey", "Brings every vial above the open windows until you click elsewhere or press Esc").child(div().flex().flex_wrap().gap_1().children([("Off", ""), ("Win+Shift+Space", "win+shift+space"), ("Ctrl+Alt+V", "ctrl+alt+v")].into_iter().map(|(label, value)| {
                 button(label, cfg.peek_hotkey == value).id(label).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.change(cx, |c| c.peek_hotkey = value.to_string())))
             }))))
+            .child(toggle("Privacy mode", "Names and pictures stay hidden until the pointer is over a vial", cfg.privacy_mask, |c, v| c.privacy_mask = v))
+            .child(toggle("Hide vials from screen sharing", "They do not show in shares, recordings or screenshots", cfg.hide_from_capture, |c, v| c.hide_from_capture = v))
             .child(toggle("Quick-hide", "Double-click the empty desktop to hide or show everything", cfg.quick_hide, |c, v| c.quick_hide = v))
             .child(
                 div().flex().gap_2().pt_3().child(
