@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    canvas, div, img, RenderImage, prelude::*, px, rgba, App, Bounds, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
+    div, img, RenderImage, prelude::*, px, rgba, App, Bounds, ClickEvent, Context, Entity, ExternalPaths, FocusHandle, FontWeight, Image,
     ImageFormat, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
     Render, SharedString, Window,
 };
@@ -732,10 +732,12 @@ impl Render for VialView {
 
         let selected = self.selected.clone();
         let bounds = self.bounds.clone();
-        // Redrawn items record themselves again; clearing anywhere else leaves it empty until a repaint.
-        bounds.borrow_mut().clear();
         let live = self.live.is_some();
         let grid = div()
+            // Where the items were drawn (window coordinates, one per child): what the box is held against.
+            .on_children_prepainted(move |all, _, _| {
+                *bounds.borrow_mut() = all.into_iter().enumerate().collect();
+            })
             .id("grid")
             .flex_1()
             .min_h_0()
@@ -761,7 +763,6 @@ impl Render for VialView {
             )
             .children(self.items.iter().enumerate().map(|(i, item)| {
                 let is_selected = selected.contains(&i);
-                let store = bounds.clone();
                 let id = item.id.clone();
                 let icon = match self.icons.get(&item.id) {
                     Some(image) => img(image.clone()).size(px(32.)).into_any_element(),
@@ -821,9 +822,6 @@ impl Render for VialView {
                             cx.notify();
                         }
                     }))
-                    .child(canvas(move |b, _, _| {
-                        store.borrow_mut().insert(i, b);
-                    }, |_, _, _, _| {}).absolute().top_0().left_0().right_0().bottom_0())
                     .child(icon)
                     .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(item.name.clone()))
                     .when(live, |d| {
