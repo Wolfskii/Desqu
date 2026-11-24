@@ -21,12 +21,12 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Takes the desktop layer (only one process may own it: not while another Vials is running) and
-    /// hides the items of every vial.
+    /// Opens the desktop layer (shared with Workspaces when that runs too) and hides the items of
+    /// every vial.
     pub fn start(path: &Path, config: VialsConfig, monitors: Vec<MonitorRef>) -> Result<Arc<Self>, String> {
         let journal = path.with_file_name("desktop-journal.json");
         let layer = desqu_desktop::open("vials", &journal).map_err(|e| match e {
-            desqu_desktop::DesktopError::OwnedElsewhere => "another Vials or Desqu already owns the desktop".to_string(),
+            desqu_desktop::DesktopError::OwnedElsewhere => "the desktop is held by an older Desqu, Vials or Workspaces that does not share it: quit that one first".to_string(),
             other => other.to_string(),
         })?;
         let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None) });

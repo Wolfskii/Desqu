@@ -24,7 +24,7 @@ pub enum DesktopError {
 pub type DesktopResult<T> = Result<T, DesktopError>;
 
 /// Result of a hide request.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HideReport {
     /// Items now hidden (including ones another owner had already hidden).
     pub hidden: Vec<String>,

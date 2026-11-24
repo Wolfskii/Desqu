@@ -9,7 +9,7 @@ The UI is the only thing that changes. Everything that is not UI stays Rust and 
 | Piece | Where | State |
 | --- | --- | --- |
 | Model, rules, layout, sort (pure) | `crates/vials-core` | extracted, 49 tests, used by both UIs |
-| Desktop layer (items, hide, icons) | `crates/desqu-desktop` | unchanged; new `icon_png()` needs no lock |
+| Desktop layer (items, hide, icons) | `crates/desqu-desktop` | `icon_png()` needs no lock; shared between processes: the first program to open it hosts it and serves it on a pipe, the next ones use it through that, and take over (restoring the old host's journal, then hiding their items again) when the host ends |
 | Native Windows pieces (item menu, drag out, clipboard, mouse hook) | `crates/vials-platform` | moved out of the Tauri module, used by both |
 | Workspaces (core, native pieces) | `crates/workspaces-core`, `crates/workspaces-platform` | moved out of the Tauri module, used by both |
 | Tauri + Svelte Vials (current) | `apps/vials`, `apps/vials/module` | still shipping, now uses the shared crates |

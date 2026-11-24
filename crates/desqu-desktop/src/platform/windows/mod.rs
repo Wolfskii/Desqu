@@ -3,6 +3,7 @@
 //! pointer ever crosses threads.
 
 mod lock;
+mod share;
 mod shell;
 mod watch;
 
@@ -84,17 +85,45 @@ struct Host {
     notifier: Arc<Notifier>,
     tx: Mutex<Sender<Command>>,
     thread: Mutex<Option<JoinHandle<()>>>,
+    /// Serves the layer to the other Desqu programs (see `share`).
+    server: Mutex<Option<share::Server>>,
     _lock: lock::NamedLock,
 }
 
 static HOST: Mutex<Weak<Host>> = Mutex::new(Weak::new());
 
 pub(crate) fn open(owner: &str, journal_path: &Path) -> DesktopResult<Arc<dyn DesktopLayer>> {
+    match open_local(owner, journal_path, None) {
+        // Another Desqu program hosts the layer: use it through that program.
+        Err(DesktopError::OwnedElsewhere) => share::Shared::connect(owner, journal_path),
+        other => other,
+    }
+}
+
+/// A handle on this process's layer, hosting it if needed. `adopt` is the journal of a host that went
+/// away: what it lists is put back before anyone else can reach the new host.
+fn open_local(owner: &str, journal_path: &Path, adopt: Option<&Path>) -> DesktopResult<Arc<dyn DesktopLayer>> {
     let mut slot = HOST.lock().unwrap_or_else(|e| e.into_inner());
     let host = match slot.upgrade() {
         Some(host) => host,
         None => {
             let host = Host::start(journal_path)?;
+            if let Some(old) = adopt.filter(|old| *old != journal_path) {
+                let old = old.to_path_buf();
+                let recovered = std::thread::Builder::new()
+                    .name("desqu-desktop-adopt".into())
+                    .spawn(move || with_com(|| recover_file(&old)))?
+                    .join();
+                match recovered {
+                    Ok(Ok(n)) if n > 0 => tracing::info!("put back {n} items the previous host left hidden"),
+                    Ok(Err(e)) => tracing::warn!("could not put back what the previous host left hidden: {e}"),
+                    _ => {}
+                }
+            }
+            match share::Server::start(Arc::downgrade(&host)) {
+                Ok(server) => *host.server.lock().unwrap_or_else(|e| e.into_inner()) = Some(server),
+                Err(e) => tracing::warn!("the desktop layer is not shared with the other Desqu programs: {e}"),
+            }
             *slot = Arc::downgrade(&host);
             host
         }
@@ -288,6 +317,7 @@ impl Host {
             notifier,
             tx: Mutex::new(tx),
             thread: Mutex::new(Some(thread)),
+            server: Mutex::new(None),
             _lock: lock,
         }))
     }
@@ -311,6 +341,8 @@ impl Drop for Host {
         if let Some(thread) = self.thread.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = thread.join();
         }
+        // Only now, with everything put back, tell the other programs: one of them takes over.
+        drop(self.server.lock().unwrap_or_else(|e| e.into_inner()).take());
     }
 }
 

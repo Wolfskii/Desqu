@@ -65,7 +65,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl Engine {
-    /// Takes the desktop layer (only one process may own it) and starts watching. `desktops` tells
+    /// Opens the desktop layer (shared with Vials when that runs too) and starts watching. `desktops` tells
     /// which virtual desktops exist (the real one: `workspaces_platform::desktops`).
     pub fn start(path: &Path, desktops: DesktopsFn) -> Result<Arc<Self>, String> {
         let journal = path.with_file_name("desktop-journal.json");
@@ -74,7 +74,7 @@ impl Engine {
             eprintln!("could not recover desktop items: {e}");
         }
         let layer = desqu_desktop::open("workspaces", &journal).map_err(|e| match e {
-            DesktopError::OwnedElsewhere => "another Desqu app is arranging the desktop".to_string(),
+            DesktopError::OwnedElsewhere => "the desktop is held by an older Desqu, Vials or Workspaces that does not share it: quit that one first".to_string(),
             other => other.to_string(),
         })?;
         let config = match WorkspacesConfig::load(path) {
