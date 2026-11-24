@@ -18,6 +18,8 @@ pub struct Engine {
     path: PathBuf,
     monitors: Vec<MonitorRef>,
     watch: Mutex<Option<desqu_desktop::Subscription>>,
+    /// The panel colour taken from the wallpaper (set by [`Engine::refresh_wallpaper_color`]).
+    wallpaper_color: Mutex<Option<u32>>,
     /// The vials were put at other places (a layout came back): the windows have to follow.
     places_changed: std::sync::atomic::AtomicBool,
     /// What the vials looked like before the last few changes the user made: for undo.
@@ -33,7 +35,7 @@ impl Engine {
             desqu_desktop::DesktopError::OwnedElsewhere => "the desktop is held by an older Desqu, Vials or Workspaces that does not share it: quit that one first".to_string(),
             other => other.to_string(),
         })?;
-        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None), places_changed: Default::default(), history: Mutex::new(vials_core::history::History::new(30)) });
+        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None), places_changed: Default::default(), wallpaper_color: Mutex::new(None), history: Mutex::new(vials_core::history::History::new(30)) });
         engine.hide_vial_items();
         Ok(engine)
     }
@@ -374,6 +376,16 @@ impl Engine {
 
     /// Adds a rule (tried after the existing ones). Desktop items that already match it and sit in no vial
     /// are sorted at once.
+    /// Looks at the wallpaper again (off the UI thread: it is a picture to decode) and keeps the panel colour it
+    /// gives. Returns whether that colour changed.
+    pub fn refresh_wallpaper_color(&self) -> bool {
+        let color = if self.config().wallpaper_tint { crate::liquid::current().and_then(|w| w.average_color()).map(vials_core::chameleon::panel_color) } else { None };
+        let mut slot = self.wallpaper_color.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = *slot != color;
+        *slot = color;
+        changed
+    }
+
     /// A vial that shows the folder of notes and links, named Notes.
     pub fn create_notes_at(&self, point: Option<(i32, i32)>) -> Option<String> {
         let folder = vials_core::notes::folder();
@@ -421,7 +433,8 @@ impl Engine {
         let vial = cfg.vial(vial_id);
         let tint = vial.and_then(|v| v.tint).unwrap_or(cfg.glass_tint);
         let look = crate::theme::Theme::of(cfg.theme, tint);
-        match vial.and_then(|v| v.color_rgb()) {
+        let wallpaper = cfg.wallpaper_tint.then(|| *self.wallpaper_color.lock().unwrap_or_else(|e| e.into_inner())).flatten();
+        match vial.and_then(|v| v.color_rgb()).or(wallpaper) {
             Some(rgb) => look.with_color(rgb),
             None => look,
         }

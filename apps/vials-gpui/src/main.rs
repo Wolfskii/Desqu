@@ -439,6 +439,14 @@ fn main() {
                         let _ = cx.update(|cx| bump(&revision, cx));
                     }
                 }
+                // The wallpaper's colour for the panels (when the setting is on): look every ten seconds, off the UI thread.
+                if tick.is_multiple_of(100) {
+                    let engine = engine.clone();
+                    if cx.background_executor().spawn(async move { engine.refresh_wallpaper_color() }).await {
+                        let revision = revision.clone();
+                        let _ = cx.update(|cx| bump(&revision, cx));
+                    }
+                }
                 if tick.is_multiple_of(10) {
                     let ids: Vec<String> = windows.borrow().keys().cloned().collect();
                     if let Some(moves) = follower.poll(&ids) {

@@ -245,6 +245,9 @@ pub struct VialsConfig {
     /// A box dragged over icons offers "New vial with these" (off: only a box over empty desktop offers a vial).
     #[serde(default)]
     pub offer_for_selection: bool,
+    /// The panels take their colour from the wallpaper (a vial with a colour of its own keeps it).
+    #[serde(default)]
+    pub wallpaper_tint: bool,
     /// Privacy mode: the names and pictures of items stay hidden until the pointer is over the vial.
     #[serde(default)]
     pub privacy_mask: bool,
@@ -286,6 +289,7 @@ impl Default for VialsConfig {
             context_menu: true,
             quick_hide: true,
             peek_hotkey: String::new(),
+            wallpaper_tint: false,
             privacy_mask: false,
             hide_from_capture: false,
             offer_for_selection: false,
@@ -330,6 +334,7 @@ impl VialsConfig {
             "contextMenu" => self.context_menu = flag()?,
             "quickHide" => self.quick_hide = flag()?,
             "hoverOpen" => self.hover_open = flag()?,
+            "wallpaperTint" => self.wallpaper_tint = flag()?,
             "privacyMask" => self.privacy_mask = flag()?,
             "hideFromCapture" => self.hide_from_capture = flag()?,
             "peekHotkey" => self.peek_hotkey = value.trim().to_string(),
@@ -722,6 +727,8 @@ mod tests {
         c.set_setting("quickHide", "false").unwrap();
         c.set_setting("hoverOpen", "true").unwrap();
         c.set_setting("privacyMask", "true").unwrap();
+        c.set_setting("wallpaperTint", "true").unwrap();
+        assert!(c.wallpaper_tint);
         c.set_setting("hideFromCapture", "true").unwrap();
         assert!(c.privacy_mask && c.hide_from_capture);
         c.set_setting("peekHotkey", " win+shift+space ").unwrap();
