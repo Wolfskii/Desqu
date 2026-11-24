@@ -46,6 +46,7 @@ fn config_dir() -> PathBuf {
 
 fn main() {
     desqu_native_shell::stdio::protect();
+    desqu_native_shell::power::stay_responsive();
     desqu_native_shell::crash::install();
     let action = std::env::args().find_map(|a| a.strip_prefix("--action=").map(str::to_string));
     let autostarted = std::env::args().any(|a| a == "--autostart");

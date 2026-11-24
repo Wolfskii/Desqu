@@ -166,6 +166,7 @@ fn apply_moves(cx: &mut App, windows: &Windows, moves: Vec<(String, desktops::Mo
 
 fn main() {
     desqu_native_shell::stdio::protect();
+    desqu_native_shell::power::stay_responsive();
     desqu_native_shell::crash::install();
     let path = config_path();
     let config = match VialsConfig::load(&path) {

@@ -4,6 +4,7 @@
 
 pub mod autostart;
 pub mod crash;
+pub mod power;
 pub mod stdio;
 pub mod tray;
 pub mod update;
