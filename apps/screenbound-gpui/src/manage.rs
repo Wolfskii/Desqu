@@ -12,7 +12,7 @@ use screenbound_module::core::window::ChromeMode;
 
 use crate::field::TextField;
 use crate::manage_model::{self as m, Scope};
-use crate::runtime::Runtime;
+use crate::runtime::Backend;
 use crate::view::button;
 
 #[derive(Default)]
@@ -27,8 +27,8 @@ enum Tab {
     Diagnostics,
 }
 
-struct ManageView {
-    rt: Arc<Runtime>,
+pub struct ManageView {
+    rt: Arc<dyn Backend>,
     tab: Tab,
     name: Entity<TextField>,
     site: Entity<TextField>,
@@ -341,8 +341,37 @@ impl Render for ManageView {
     }
 }
 
+/// The view, redrawing when the snapshot changes.
+fn create(rt: Arc<dyn Backend>, cx: &mut App) -> Entity<ManageView> {
+    let name = cx.new(|cx| TextField::new("Name", cx));
+    let site = cx.new(|cx| TextField::new("youtube.com or *.vimeo.com", cx));
+    cx.new(|cx| {
+        let watched = rt.clone();
+        cx.spawn(async move |this, cx| {
+            let mut seen = watched.generation();
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
+                let now = watched.generation();
+                if now != seen {
+                    seen = now;
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        return;
+                    }
+                }
+            }
+        })
+        .detach();
+        ManageView { rt, tab: Tab::Groups, name, site, scope: Scope::All, chrome: ChromeMode::Keep, effect: Effect::Fullscreen, fill: m::Fill::Monitor, topmost: false, site_mode: FullscreenMode::Zone }
+    })
+}
+
+/// The view for the Desqu window.
+pub fn embedded(rt: Arc<dyn Backend>, cx: &mut App) -> Entity<ManageView> {
+    create(rt, cx)
+}
+
 /// Opens the window, or brings the open one to the front.
-pub fn open(cx: &mut App, rt: Arc<Runtime>) {
+pub fn open(cx: &mut App, rt: Arc<dyn Backend>) {
     if let Some(Open(Some(handle))) = cx.try_global::<Open>().map(|o| Open(o.0)) {
         if handle.update(cx, |_, window, _| window.activate_window()).is_ok() {
             return;
@@ -357,29 +386,7 @@ pub fn open(cx: &mut App, rt: Arc<Runtime>) {
             window_background: WindowBackgroundAppearance::Opaque,
             ..Default::default()
         },
-        move |_, cx| {
-            let name = cx.new(|cx| TextField::new("Name", cx));
-            let site = cx.new(|cx| TextField::new("youtube.com or *.vimeo.com", cx));
-            cx.new(|cx| {
-                // Redraw when the engine's snapshot changes.
-                let watched = rt.clone();
-                cx.spawn(async move |this, cx| {
-                    let mut seen = watched.generation();
-                    loop {
-                        cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
-                        let now = watched.generation();
-                        if now != seen {
-                            seen = now;
-                            if this.update(cx, |_, cx| cx.notify()).is_err() {
-                                return;
-                            }
-                        }
-                    }
-                })
-                .detach();
-                ManageView { rt, tab: Tab::Groups, name, site, scope: Scope::All, chrome: ChromeMode::Keep, effect: Effect::Fullscreen, fill: m::Fill::Monitor, topmost: false, site_mode: FullscreenMode::Zone }
-            })
-        },
+        move |_, cx| create(rt, cx),
     );
     if let Ok(handle) = opened {
         cx.set_global(Open(Some(handle.into())));

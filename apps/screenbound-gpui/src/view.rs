@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    canvas, div, point, prelude::*, px, rgba, size, AnyWindowHandle, App, Bounds, ClickEvent, Context, Global, IntoElement, MouseButton,
+    canvas, div, point, prelude::*, px, rgba, size, AnyWindowHandle, App, Bounds, ClickEvent, Context, Entity, Global, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString, Window, WindowBackgroundAppearance, WindowBounds,
     WindowOptions,
 };
@@ -14,7 +14,7 @@ use screenbound_module::core::monitor::MonitorInfo;
 use screenbound_module::core::zone::NormalizedRect;
 
 use crate::model::{self, PRESETS};
-use crate::runtime::Runtime;
+use crate::runtime::Backend;
 
 #[derive(Default)]
 struct Open(Option<AnyWindowHandle>);
@@ -92,8 +92,10 @@ struct Drag {
     current: (f32, f32),
 }
 
-struct ScreenboundView {
-    rt: Arc<Runtime>,
+pub struct ScreenboundView {
+    rt: Arc<dyn Backend>,
+    /// In the Desqu window: no start-up or update rows, and no button for the second window.
+    embedded: bool,
     /// Where the preview is in the window (set while painting), to turn mouse positions into positions on a monitor.
     origin: Rc<Cell<Point<Pixels>>>,
     drag: Option<Drag>,
@@ -315,34 +317,38 @@ impl Render for ScreenboundView {
             )
             .child(section(&format!("Managed now: {}", managed.len())))
             .children(managed.iter().take(4).map(|m| div().text_xs().child(format!("{} ({:?})", m.process_name, m.kind))))
-            .child(div().flex().child(button("Groups, rules and browser...", false).id("manage").on_click(cx.listener(|this, _: &ClickEvent, _, cx| crate::manage::open(cx, this.rt.clone())))))
+            .when(!self.embedded, |d| {
+                d.child(div().flex().child(button("Groups, rules and browser...", false).id("manage").on_click(cx.listener(|this, _: &ClickEvent, _, cx| crate::manage::open(cx, this.rt.clone())))))
+            })
             .child(section("Activity"))
             .children(activity)
             .when(!self.note.is_empty(), |d| d.child(div().text_xs().text_color(rgba(0xffb870ff)).child(self.note.clone())))
-            .child(div().flex_1())
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(div().flex_1().text_sm().child("Start with Windows"))
-                    .child(button(if autostart_on { "On" } else { "Off" }, autostart_on).id("autostart").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        this.note = match desqu_native_shell::autostart::set(&crate::ID, "", !autostart_on) {
-                            Ok(()) => String::new(),
-                            Err(e) => e,
-                        };
-                        cx.notify();
-                    }))),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(div().flex_1().text_sm().child(if self.update_note.is_empty() { "Updates".to_string() } else { self.update_note.clone() }))
-                    .when_some(self.update_url.clone(), |d, url| d.child(button("Download", true).id("download").on_click(move |_, _, _| open_url(&url))))
-                    .child(button("Check now", false).id("check").on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.check_update(cx)))),
-            )
+            .when(!self.embedded, |d| {
+                d.child(div().flex_1())
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(div().flex_1().text_sm().child("Start with Windows"))
+                        .child(button(if autostart_on { "On" } else { "Off" }, autostart_on).id("autostart").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.note = match desqu_native_shell::autostart::set(&crate::ID, "", !autostart_on) {
+                                Ok(()) => String::new(),
+                                Err(e) => e,
+                            };
+                            cx.notify();
+                        }))),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(div().flex_1().text_sm().child(if self.update_note.is_empty() { "Updates".to_string() } else { self.update_note.clone() }))
+                        .when_some(self.update_url.clone(), |d, url| d.child(button("Download", true).id("download").on_click(move |_, _, _| open_url(&url))))
+                        .child(button("Check now", false).id("check").on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.check_update(cx)))),
+                )
+            })
     }
 }
 
@@ -350,8 +356,35 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();
 }
 
+/// The view, redrawing when the snapshot changes (a window went fullscreen, a monitor changed).
+fn create(rt: Arc<dyn Backend>, embedded: bool, cx: &mut App) -> Entity<ScreenboundView> {
+    cx.new(|cx| {
+        let watched = rt.clone();
+        cx.spawn(async move |this, cx| {
+            let mut seen = watched.generation();
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
+                let now = watched.generation();
+                if now != seen {
+                    seen = now;
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        return;
+                    }
+                }
+            }
+        })
+        .detach();
+        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0 }
+    })
+}
+
+/// The view for the Desqu window, without the rows that only make sense in the app's own window.
+pub fn embedded(rt: Arc<dyn Backend>, cx: &mut App) -> Entity<ScreenboundView> {
+    create(rt, true, cx)
+}
+
 /// Opens the window, or brings the open one to the front.
-pub fn open(cx: &mut App, rt: Arc<Runtime>) {
+pub fn open(cx: &mut App, rt: Arc<dyn Backend>) {
     if let Some(Open(Some(handle))) = cx.try_global::<Open>().map(|o| Open(o.0)) {
         if handle.update(cx, |_, window, _| window.activate_window()).is_ok() {
             return;
@@ -365,27 +398,7 @@ pub fn open(cx: &mut App, rt: Arc<Runtime>) {
             window_background: WindowBackgroundAppearance::Opaque,
             ..Default::default()
         },
-        move |_, cx| {
-            cx.new(|cx| {
-                // Redraw when the engine's snapshot changes (a window went fullscreen, a monitor changed).
-                let watched = rt.clone();
-                cx.spawn(async move |this, cx| {
-                    let mut seen = watched.generation();
-                    loop {
-                        cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
-                        let now = watched.generation();
-                        if now != seen {
-                            seen = now;
-                            if this.update(cx, |_, cx| cx.notify()).is_err() {
-                                return;
-                            }
-                        }
-                    }
-                })
-                .detach();
-                ScreenboundView { rt: rt.clone(), origin: Rc::new(Cell::new(Point::default())), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0 }
-            })
-        },
+        move |_, cx| create(rt, false, cx),
     );
     if let Ok(handle) = opened {
         cx.set_global(Open(Some(handle.into())));

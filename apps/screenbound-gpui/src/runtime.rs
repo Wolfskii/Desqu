@@ -42,6 +42,42 @@ struct Shared {
     bridge: Mutex<Option<BridgeServer>>,
 }
 
+/// What the views need from Screenbound: the engine inside the app itself ([`Runtime`]), or, in the
+/// Desqu window, the saved config plus a message to the running app.
+pub trait Backend {
+    fn snapshot(&self) -> Arc<Snapshot>;
+    /// Bumped whenever the snapshot changed: the views redraw then.
+    fn generation(&self) -> u64;
+    fn change_boxed(&self, edit: Box<dyn FnOnce(&mut AppConfig) -> bool + Send>);
+    fn release_all(&self);
+    fn sync_browser(&self);
+}
+
+impl dyn Backend {
+    /// Changes the config (never blocks the caller).
+    pub fn change(&self, edit: impl FnOnce(&mut AppConfig) -> bool + Send + 'static) {
+        self.change_boxed(Box::new(edit));
+    }
+}
+
+impl Backend for Runtime {
+    fn snapshot(&self) -> Arc<Snapshot> {
+        Runtime::snapshot(self)
+    }
+    fn generation(&self) -> u64 {
+        Runtime::generation(self)
+    }
+    fn change_boxed(&self, edit: Box<dyn FnOnce(&mut AppConfig) -> bool + Send>) {
+        Runtime::change(self, edit);
+    }
+    fn release_all(&self) {
+        Runtime::release_all(self);
+    }
+    fn sync_browser(&self) {
+        Runtime::sync_browser(self);
+    }
+}
+
 pub struct Runtime {
     shared: Arc<Shared>,
     _subscription: Option<EventSubscription>,

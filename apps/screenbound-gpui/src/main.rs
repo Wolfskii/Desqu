@@ -2,25 +2,15 @@
 //!   screenbound-gpui [--config-dir <folder>] [--autostart] [--action=show|pause|resume|quit] [--unregister-browser]
 //! It lives in the tray; a second launch brings its window up (or hands over its `--action`).
 
-mod field;
-mod manage;
-mod manage_model;
-mod model;
-mod runtime;
-mod view;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use desqu_native_shell::{tray, Identity};
+use desqu_native_shell::tray;
 use gpui::{App, Application};
 
-use runtime::Runtime;
+use screenbound_gpui::runtime::{self, Backend, Runtime};
+use screenbound_gpui::{view, ID};
 
-/// Who this app is to Windows (names of its mutex, tray window and startup entry are derived from it).
-pub const ID: Identity = Identity { name: "Screenbound", key: "ScreenboundGpui" };
-/// Where the update manifest lives. Not published yet for this build.
-pub const MANIFEST_URL: &str = "https://wolfskii.github.io/Desqu/updates/screenbound-gpui/latest.json";
 const TRAY_MENU: [&str; 4] = ["Open Screenbound", "Pause or resume", "Release all windows", "Quit Screenbound"];
 
 fn arg_value(name: &str) -> Option<String> {
@@ -81,7 +71,7 @@ fn main() {
         let started = if std::env::args().any(|a| a == "--no-tray-icon") { tray::start_hidden(&ID, event_tx.clone()) } else { tray::start(&ID, &TRAY_MENU, event_tx.clone()) };
         let tray = started.map_err(|e| eprintln!("no tray icon: {e}")).ok();
         if !autostarted {
-            view::open(cx, Arc::clone(&rt));
+            view::open(cx, rt.clone() as Arc<dyn Backend>);
         }
         cx.spawn(async move |cx| {
             let _keep = &tray;
@@ -90,7 +80,7 @@ fn main() {
                     let rt = Arc::clone(&rt);
                     match event {
                         tray::Event::Menu(0) => {
-                            let _ = cx.update(|cx| view::open(cx, rt));
+                            let _ = cx.update(|cx| view::open(cx, rt as Arc<dyn Backend>));
                         }
                         tray::Event::Menu(1) => {
                             let enabled = rt.snapshot().config.as_ref().is_none_or(|c| c.enabled);
@@ -105,7 +95,7 @@ fn main() {
                         }
                         tray::Event::Action(name) => match name.as_str() {
                             "show" => {
-                                let _ = cx.update(|cx| view::open(cx, rt));
+                                let _ = cx.update(|cx| view::open(cx, rt as Arc<dyn Backend>));
                             }
                             "pause" | "resume" => {
                                 let pause = name == "pause";
@@ -113,6 +103,20 @@ fn main() {
                                     c.enabled = !pause;
                                     true
                                 });
+                            }
+                            // From the Desqu window: it changed the saved config, or asks for what only this process can do.
+                            "release" => rt.release_all(),
+                            "sync-browser" => rt.sync_browser(),
+                            other if other.starts_with("replace-config:") => {
+                                let file = std::path::PathBuf::from(other.trim_start_matches("replace-config:"));
+                                match screenbound_module::core::config::AppConfig::load(&file) {
+                                    Ok(new) => rt.change(move |c| {
+                                        *c = new;
+                                        true
+                                    }),
+                                    Err(e) => eprintln!("could not read the settings from Desqu: {e}"),
+                                }
+                                let _ = std::fs::remove_file(&file);
                             }
                             "quit" => {
                                 let _ = cx.update(|cx| cx.quit());
