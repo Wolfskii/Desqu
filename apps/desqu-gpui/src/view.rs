@@ -716,7 +716,7 @@ impl DesquView {
                 )
             }
             Kind::Workspaces => {
-                let on = crate::app_settings::workspaces_auto_assign();
+                let cfg = crate::app_settings::workspaces();
                 Some(
                     div()
                         .flex()
@@ -727,9 +727,11 @@ impl DesquView {
                             "autoAssignNew",
                             "New files join the desktop you are on",
                             "A file that appears on the desktop belongs to the current virtual desktop",
-                            on,
+                            cfg.auto_assign_new,
                             cx,
-                        )))
+                        ))
+                        .child(self.option_switch(kind, "showName", "Show the desktop's name when you switch", "A short note in the middle of the screen", cfg.show_name, cx))
+                        .child(self.option_switch(kind, "jumpHotkeys", "Win+Ctrl+1..9 jumps to a desktop", "Goes straight to desktop 1 to 9", cfg.jump_hotkeys, cx)))
                         .child(card_title("Desktops"))
                         .child(self.workspaces_section(cx)),
                 )

@@ -8,7 +8,7 @@ use serde::Serialize;
 #[cfg(windows)]
 mod extras;
 #[cfg(windows)]
-pub use extras::{clipboard_has_files, set_paste_entry, ClipboardWatcher, TaskViewWatcher};
+pub use extras::{clipboard_has_files, make_overlay, press_desktop_keys, set_paste_entry, ClipboardWatcher, HotkeyWatcher, TaskViewWatcher};
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]

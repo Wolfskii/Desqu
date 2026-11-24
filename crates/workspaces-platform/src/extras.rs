@@ -14,11 +14,14 @@ use ::windows::Win32::System::Registry::{
 };
 use ::windows::Win32::System::Threading::GetCurrentThreadId;
 use ::windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
-use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
+use ::windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, RegisterHotKey, SendInput, UnregisterHotKey, HOT_KEY_MODIFIERS, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+    KEYEVENTF_KEYUP, MOD_CONTROL, MOD_NOREPEAT, MOD_WIN, VIRTUAL_KEY, VK_CONTROL, VK_LEFT, VK_LWIN, VK_MENU, VK_RIGHT,
+};
 use ::windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClassNameW, GetMessageW, PostThreadMessageW, RegisterClassW,
     TranslateMessage, UnregisterClassW, EVENT_SYSTEM_FOREGROUND, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT,
-    WM_CLIPBOARDUPDATE, WM_QUIT, WNDCLASSW,
+    WM_CLIPBOARDUPDATE, WM_HOTKEY, WM_QUIT, WNDCLASSW,
 };
 
 // ------------------------------------------------------------------------------------ Task View
@@ -116,8 +119,11 @@ pub fn clipboard_has_files() -> bool {
     unsafe { IsClipboardFormatAvailable(CF_HDROP).is_ok() }
 }
 
+/// What to call with whether the clipboard holds files.
+type FilesCallback = Box<dyn Fn(bool)>;
+
 thread_local! {
-    static CLIPBOARD: RefCell<Option<Box<dyn Fn(bool)>>> = const { RefCell::new(None) };
+    static CLIPBOARD: RefCell<Option<FilesCallback>> = const { RefCell::new(None) };
 }
 
 unsafe extern "system" fn clipboard_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -249,6 +255,104 @@ pub fn set_paste_entry(exe: Option<&str>) -> Result<(), String> {
                 Err(format!("could not remove the menu entry: {status:?}"))
             }
         }
+    }
+}
+
+// ------------------------------------------------------------------------------------ hotkeys
+
+/// Win+Ctrl+1..9: calls `on_digit(n)` with the number pressed. Needs no window, only a thread that reads
+/// its message queue. Dropping it gives the keys back.
+pub struct HotkeyWatcher {
+    thread_id: u32,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl HotkeyWatcher {
+    pub fn start(on_digit: Box<dyn Fn(u32) + Send + 'static>) -> Result<Self, String> {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<u32, String>>();
+        let thread = std::thread::Builder::new()
+            .name("workspaces-hotkeys".into())
+            .spawn(move || {
+                // SAFETY: the keys are registered and released on this thread, which owns the queue.
+                unsafe {
+                    let modifiers = HOT_KEY_MODIFIERS(MOD_WIN.0 | MOD_CONTROL.0 | MOD_NOREPEAT.0);
+                    let mut taken = Vec::new();
+                    for digit in 1..=9u32 {
+                        if RegisterHotKey(None, digit as i32, modifiers, u32::from(b'0') + digit).is_ok() {
+                            taken.push(digit);
+                        }
+                    }
+                    if taken.is_empty() {
+                        let _ = ready_tx.send(Err("Windows did not give Workspaces any Win+Ctrl+number key".into()));
+                        return;
+                    }
+                    let _ = ready_tx.send(Ok(GetCurrentThreadId()));
+                    let mut msg = MSG::default();
+                    while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                        if msg.message == WM_HOTKEY {
+                            on_digit(msg.wParam.0 as u32);
+                        }
+                    }
+                    for digit in taken {
+                        let _ = UnregisterHotKey(None, digit as i32);
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        let thread_id = ready_rx.recv().map_err(|e| e.to_string())??;
+        Ok(Self { thread_id, thread: Some(thread) })
+    }
+}
+
+impl Drop for HotkeyWatcher {
+    fn drop(&mut self) {
+        // SAFETY: posts WM_QUIT to the watcher thread so its message loop ends.
+        unsafe {
+            let _ = PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+fn key(vk: VIRTUAL_KEY, up: bool) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: vk, wScan: 0, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, time: 0, dwExtraInfo: 0 } },
+    }
+}
+
+/// Presses Win+Ctrl+Right (or Left) `count` times: Windows' own way to move between virtual desktops.
+pub fn press_desktop_keys(right: bool, count: u32) {
+    let arrow = if right { VK_RIGHT } else { VK_LEFT };
+    let size = std::mem::size_of::<INPUT>() as i32;
+    // SAFETY: plain input events built right here.
+    unsafe {
+        SendInput(&[key(VK_LWIN, false), key(VK_CONTROL, false)], size);
+        for _ in 0..count {
+            SendInput(&[key(arrow, false), key(arrow, true)], size);
+            // Windows needs a moment to take each step.
+            std::thread::sleep(std::time::Duration::from_millis(70));
+        }
+        SendInput(&[key(VK_CONTROL, true), key(VK_LWIN, true)], size);
+    }
+}
+
+/// Makes a window of ours a note on the screen: on top of everything, never takes the focus, and
+/// mouse clicks go through it to what is below.
+pub fn make_overlay(hwnd: isize) {
+    use ::windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+    };
+    let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+    // SAFETY: our own window.
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let add = (WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT).0 as isize;
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | add);
+        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
     }
 }
 

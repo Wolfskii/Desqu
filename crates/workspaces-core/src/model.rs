@@ -54,6 +54,12 @@ pub struct WorkspacesConfig {
     /// The first-run question ("which desktop do your current items belong to?") was answered.
     #[serde(default)]
     pub initialized: bool,
+    /// Win+Ctrl+1..9 goes straight to that virtual desktop.
+    #[serde(default)]
+    pub jump_hotkeys: bool,
+    /// A short note with the desktop's name shows when you switch desktops.
+    #[serde(default = "yes")]
+    pub show_name: bool,
 }
 
 impl Default for WorkspacesConfig {
@@ -63,6 +69,8 @@ impl Default for WorkspacesConfig {
             workspaces: Vec::new(),
             auto_assign_new: true,
             initialized: false,
+            jump_hotkeys: false,
+            show_name: true,
         }
     }
 }
@@ -217,6 +225,13 @@ impl WorkspacesConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_old_config_gets_the_new_options_at_their_defaults() {
+        let cfg: WorkspacesConfig = serde_json::from_str(r#"{"version":1,"workspaces":[]}"#).unwrap();
+        assert!(!cfg.jump_hotkeys, "the hotkeys are opt-in");
+        assert!(cfg.show_name, "the name note is on");
+    }
+
     use super::*;
 
     #[test]

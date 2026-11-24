@@ -34,8 +34,8 @@ progress log in the same commit as the work.
 | P1-08 | [x] | Undo for vial changes (Ctrl+Z) | M | Engine keeps a short history |
 | P1-09 | [x] | "New vial with these" for selected desktop icons | S | Offer in the create popup |
 | P1-10 | [x] | Vial actions: open all, copy paths, zip, move to folder | S | On a vial or selection |
-| P1-11 | [ ] | Workspaces: desktop name overlay on switch | S | |
-| P1-12 | [ ] | Workspaces: jump hotkeys Win+Ctrl+1..9 | S | Check clashes with Windows |
+| P1-11 | [x] | Workspaces: desktop name overlay on switch | S | |
+| P1-12 | [x] | Workspaces: jump hotkeys Win+Ctrl+1..9 | S | Check clashes with Windows |
 | P1-13 | [ ] | Screenbound: hotkey puts the focused window in the zone | S | |
 | P1-14 | [ ] | Screenbound: pause for exclusive-fullscreen games | S | |
 | P1-15 | [ ] | Desqu: diagnostics bundle ("Save a report") | S | No file names unless asked |
@@ -103,6 +103,8 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P1-11 desktop name note when you switch (setting "Show the desktop's name", on by default): a dark panel in the middle of the screen for 1.3 s that takes no focus and lets clicks through. Hand test: the look and position, on more than one monitor.
+- P1-12 Win+Ctrl+1..9 jumps to desktop N (setting, off by default): the jump is Windows' own Win+Ctrl+Left/Right pressed the right number of times (plan tested in workspaces-core). Hand test: the keys on a PC with several desktops; check no other tool uses Win+Ctrl+number.
 - P1-10 vial actions in the vial menu: Open all (up to 20), Copy paths (text), Zip to the desktop (PowerShell Compress-Archive, name made safe and unique) and Move to folder... (folder picker, then Explorer's own move, items leave the vial). Tests for the zip (real PowerShell on temp files) and the name helpers. Hand test: the folder picker and the move.
 - P1-09 "New vial with these": a box dragged over desktop icons can offer a vial that takes them (setting "Offer a vial for selected icons", off by default so selecting icons stays quiet). New read-only desqu-desktop::selected_items (checked against the real desktop, ignored test). Hand test: the popup and the vial that takes the icons.
 - P1-08 undo for vials: Ctrl+Z in a vial and "Undo" in the vial menu take back the last 30 things you did (drops, drags out, new/deleted/renamed vials, sorts, rules, look, lock); not window moves, settings, collapse or automatic sorting. Unit tests for the history and for restoring content while keeping places and settings. Hand test: undo of a drag into a vial and of a deleted vial.
