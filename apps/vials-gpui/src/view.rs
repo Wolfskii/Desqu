@@ -12,6 +12,7 @@ use gpui::{
     Render, SharedString, Window,
 };
 use vials_core::model::PixelRect;
+use vials_core::nav;
 
 use crate::engine::Engine;
 use crate::liquid;
@@ -74,6 +75,9 @@ pub struct VialView {
     items: Vec<Item>,
     icons: HashMap<String, Arc<Image>>,
     icons_requested: HashSet<String>,
+    /// The item the keyboard is on, and where a Shift range starts.
+    cursor: Option<usize>,
+    anchor: Option<usize>,
     /// Icon size in pixels, and whether the title is centred: from the vial's own look.
     icon_size: u8,
     title_center: bool,
@@ -191,6 +195,8 @@ impl VialView {
             icons_requested: HashSet::new(),
             icon_size: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).map_or(32, |v| v.icon_px()),
             title_center: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).is_some_and(|v| v.title_center),
+            cursor: None,
+            anchor: None,
             peeking: false,
             hovered: false,
             hover_gen: 0,
@@ -696,6 +702,46 @@ impl VialView {
             cx.notify();
             return;
         }
+        let dir = match k.key.as_str() {
+            "left" => Some(nav::Dir::Left),
+            "right" => Some(nav::Dir::Right),
+            "up" => Some(nav::Dir::Up),
+            "down" => Some(nav::Dir::Down),
+            "home" => Some(nav::Dir::Home),
+            "end" => Some(nav::Dir::End),
+            _ => None,
+        };
+        if let Some(dir) = dir {
+            self.move_cursor(dir, k.modifiers.shift, cx);
+            return;
+        }
+        match k.key.as_str() {
+            "escape" => {
+                self.selected.clear();
+                self.cursor = None;
+                cx.notify();
+                return;
+            }
+            "f2" => {
+                self.begin_rename(cx);
+                return;
+            }
+            // Enter opens what is selected, like Explorer.
+            "enter" => {
+                for id in self.selected_ids() {
+                    win::open_path(&id);
+                }
+                return;
+            }
+            // The menu key, or Shift+F10: the item menu of the item the keyboard is on.
+            "menu" | "f10" if k.key == "menu" || k.modifiers.shift => {
+                if let Some(i) = self.cursor.filter(|i| *i < self.items.len()) {
+                    self.item_menu(i, cx);
+                }
+                return;
+            }
+            _ => {}
+        }
         let ids = self.selected_ids();
         if ids.is_empty() {
             return;
@@ -707,6 +753,27 @@ impl VialView {
         } else if k.modifiers.control && (k.key == "c" || k.key == "x") {
             let _ = vials_platform::clipboard::put_files(&ids, k.key == "x");
         }
+    }
+
+    /// Moves the keyboard to another item; with Shift the selection grows from where it started.
+    fn move_cursor(&mut self, dir: nav::Dir, extend: bool, cx: &mut Context<Self>) {
+        let bounds = self.bounds.borrow();
+        // Where each item was drawn, in order: an item that has not been drawn yet counts as the origin.
+        let places: Vec<(f32, f32)> = (0..self.items.len())
+            .map(|i| bounds.get(&i).map_or((0.0, 0.0), |b| (f32::from(b.origin.x), f32::from(b.origin.y))))
+            .collect();
+        drop(bounds);
+        let from = self.cursor.or_else(|| self.selected.iter().next_back().copied());
+        let Some(to) = nav::step(&places, from, dir) else { return };
+        self.cursor = Some(to);
+        if extend {
+            let anchor = *self.anchor.get_or_insert(from.unwrap_or(to));
+            self.selected = nav::range(anchor, to).collect();
+        } else {
+            self.anchor = Some(to);
+            self.selected = BTreeSet::from([to]);
+        }
+        cx.notify();
     }
 
     /// The ids of the selected items, in the order they are shown.
@@ -1048,6 +1115,31 @@ mod tests {
         cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
         let selected = view.read_with(cx, |v, _| v.selected.iter().copied().collect::<Vec<_>>());
         assert_eq!(selected, vec![0, 1, 2, 3]);
+    }
+
+    fn press(view: &Entity<VialView>, cx: &mut gpui::VisualTestContext, keys: &str) {
+        let key = gpui::KeyDownEvent { keystroke: gpui::Keystroke::parse(keys).unwrap(), is_held: false };
+        view.update(cx, |v, cx| v.on_key(&key, cx));
+    }
+
+    #[gpui::test]
+    fn the_arrow_keys_walk_the_items_and_shift_extends_the_selection(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        cx.run_until_parked();
+        let selected = |view: &Entity<VialView>, cx: &mut gpui::VisualTestContext| view.read_with(cx, |v, _| v.selected.iter().copied().collect::<Vec<_>>());
+        press(&view, cx, "right");
+        assert_eq!(selected(&view, cx), vec![0], "the first press lands on the first item");
+        press(&view, cx, "right");
+        press(&view, cx, "right");
+        assert_eq!(selected(&view, cx), vec![2]);
+        press(&view, cx, "shift-left");
+        assert_eq!(selected(&view, cx), vec![1, 2]);
+        press(&view, cx, "home");
+        assert_eq!(selected(&view, cx), vec![0]);
+        press(&view, cx, "end");
+        assert_eq!(selected(&view, cx), vec![3]);
+        press(&view, cx, "escape");
+        assert!(selected(&view, cx).is_empty());
     }
 
     #[gpui::test]

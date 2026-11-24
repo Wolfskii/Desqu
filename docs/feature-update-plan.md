@@ -30,7 +30,7 @@ progress log in the same commit as the work.
 | P1-04 | [x] | Theme "follow Windows" (light or dark by the Windows setting) | S | Watch `AppsUseLightTheme` |
 | P1-05 | [x] | Per-vial look: colour, opacity, icon size, title alignment | M | Optional fields on `Vial`; "Look..." in the vial menu |
 | P1-06 | [x] | More rule conditions: modified/created age, size, source folder; run rules now | M | `ItemMatcher` in vials-core, file facts from vials-platform |
-| P1-07 | [ ] | Keyboard in vials: arrows, Enter, F2, menu key, Home/End | M | Headless GPUI tests |
+| P1-07 | [x] | Keyboard in vials: arrows, Enter, F2, menu key, Home/End | M | Headless GPUI tests |
 | P1-08 | [ ] | Undo for vial changes (Ctrl+Z) | M | Engine keeps a short history |
 | P1-09 | [ ] | "New vial with these" for selected desktop icons | S | Offer in the create popup |
 | P1-10 | [ ] | Vial actions: open all, copy paths, zip, move to folder | S | On a vial or selection |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P1-07 keyboard in vials: arrows, Home/End, Shift+arrows, Enter opens, F2 renames the vial, Esc clears, menu key or Shift+F10 opens the item menu. Unit tests for the movement (vials-core nav) and a headless GPUI test of the keys. Hand test: the item menu from the keyboard.
 - P1-06 more rule conditions: changed in the last N days, not changed for N days, created in the last N days, bigger/smaller than N MB (in the rules window), plus "Sort desktop items now". Unit tests with a fake clock and file facts. 'Came from folder' dropped: desktop items always sit in the Desktop folder. Hand test: a rule on real files.
 - P1-05 per-vial look: vial menu "Look..." sets icon size (24/32/48), panel colour (6 presets), how see-through (5/default/45/90) and the title in the middle. Unit tests for the model fields, fallbacks and the colour on a theme; old configs load. Hand test: how each looks on the desktop, esp. colour on Fluent and Liquid (Liquid ignores the colour).
 - P1-04 theme "Follow Windows": Fluent dark or light by the Windows app setting, re-read about once a second while chosen. Tests for the setting name and that the theme resolves. The old Tauri Vials treats it as dark. Hand test: flip the Windows light/dark setting.
