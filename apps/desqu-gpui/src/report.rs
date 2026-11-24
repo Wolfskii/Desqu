@@ -197,6 +197,7 @@ mod tests {
             color: None,
             icon_size: None,
             title_center: false,
+            source: None,
         });
         let text = vials_summary(&v);
         assert!(text.contains("vials: 1, items in vials: 1"));

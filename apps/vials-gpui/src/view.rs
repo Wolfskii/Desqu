@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -54,6 +54,30 @@ pub struct Placement {
 /// Pointer movement (px) before a press turns into a drag.
 const DRAG_THRESHOLD: f32 = 5.0;
 
+/// What a folder portal shows: the folder it was made for, the one it is in now, and what that held.
+struct PortalState {
+    root: PathBuf,
+    dir: PathBuf,
+    listing: Vec<String>,
+}
+
+/// "New folder portal here...": asks for a folder, then makes a portal at `at` showing it.
+pub fn new_portal(cx: &mut App, live: Live, at: Option<(i32, i32)>, rect: Option<PixelRect>) {
+    cx.spawn(async move |cx| {
+        let folder = cx.background_executor().spawn(async { vials_platform::actions::pick_folder("Choose the folder the portal shows").ok().flatten() }).await;
+        let Some(folder) = folder else { return };
+        let folder = folder.to_string_lossy().into_owned();
+        let made = match rect {
+            Some(rect) => live.engine.create_portal(rect, &folder),
+            None => live.engine.create_portal_at(at, &folder),
+        };
+        if made.is_some() {
+            let _ = cx.update(|cx| bump(&live.revision, cx));
+        }
+    })
+    .detach();
+}
+
 /// The box drawn on empty space to select several items at once.
 struct Marquee {
     start: Point<Pixels>,
@@ -78,6 +102,8 @@ pub struct VialView {
     /// The item the keyboard is on, and where a Shift range starts.
     cursor: Option<usize>,
     anchor: Option<usize>,
+    /// A folder portal: the folder it was made for, the one it shows now, and what that held when last looked at.
+    portal: Option<PortalState>,
     /// Icon size in pixels, and whether the title is centred: from the vial's own look.
     icon_size: u8,
     title_center: bool,
@@ -195,6 +221,7 @@ impl VialView {
             icons_requested: HashSet::new(),
             icon_size: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).map_or(32, |v| v.icon_px()),
             title_center: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).is_some_and(|v| v.title_center),
+            portal: None,
             cursor: None,
             anchor: None,
             peeking: false,
@@ -221,7 +248,109 @@ impl VialView {
             hwnd: None,
         };
         view.set_items(ids, cx);
+        view.init_portal(cx);
+        view.start_portal_watch(cx);
         view
+    }
+
+    /// A vial that shows a folder starts at that folder.
+    fn init_portal(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let source = live.engine.vials().into_iter().find(|v| v.id == live.vial_id).and_then(|v| v.source);
+        self.set_portal_source(source, cx);
+    }
+
+    /// Makes the view a portal of `source` (or an ordinary vial with `None`); nothing changes when it already is.
+    fn set_portal_source(&mut self, source: Option<String>, cx: &mut Context<Self>) {
+        match source {
+            Some(folder) => {
+                let root = PathBuf::from(folder);
+                if self.portal.as_ref().map(|p| &p.root) != Some(&root) {
+                    self.portal = Some(PortalState { dir: root.clone(), root, listing: Vec::new() });
+                    self.selected.clear();
+                    self.refresh_portal(cx);
+                }
+            }
+            None => self.portal = None,
+        }
+    }
+
+    /// Reads the folder the portal shows now (off the UI thread: a network folder can be slow).
+    fn refresh_portal(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()) else { return };
+        cx.spawn(async move |this, cx| {
+            let wanted = dir.clone();
+            let listing = cx.background_executor().spawn(async move { vials_core::portal::list_dir(&dir) }).await;
+            let _ = this.update(cx, |view, cx| {
+                let Some(portal) = view.portal.as_mut().filter(|p| p.dir == wanted) else { return };
+                match listing {
+                    Ok(ids) => {
+                        portal.listing = ids.clone();
+                        view.set_items(ids, cx);
+                    }
+                    // A folder that cannot be read shows as empty.
+                    Err(_) => {
+                        portal.listing.clear();
+                        view.set_items(Vec::new(), cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// A portal looks at its folder every couple of seconds, so files that come and go show up.
+    fn start_portal_watch(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+            let Ok(dir) = this.update(cx, |view, _| view.portal.as_ref().map(|p| p.dir.clone())) else { return };
+            let Some(dir) = dir else { continue };
+            let wanted = dir.clone();
+            let listing = cx.background_executor().spawn(async move { vials_core::portal::list_dir(&dir) }).await;
+            let alive = this.update(cx, |view, cx| {
+                let Some(portal) = view.portal.as_mut().filter(|p| p.dir == wanted) else { return };
+                let ids = listing.unwrap_or_default();
+                if portal.listing != ids {
+                    portal.listing = ids.clone();
+                    view.set_items(ids, cx);
+                    cx.notify();
+                }
+            });
+            if alive.is_err() {
+                return;
+            }
+        })
+        .detach();
+    }
+
+    /// Goes into a folder of the portal.
+    fn portal_go(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+        let Some(portal) = self.portal.as_mut() else { return };
+        if !vials_core::portal::is_inside(&portal.root, &dir) {
+            return;
+        }
+        portal.dir = dir;
+        portal.listing.clear();
+        self.selected.clear();
+        self.cursor = None;
+        self.refresh_portal(cx);
+        cx.notify();
+    }
+
+    /// One folder up, but never above the folder the portal was made for.
+    fn portal_up(&mut self, cx: &mut Context<Self>) {
+        let Some(up) = self.portal.as_ref().and_then(|p| vials_core::portal::up(&p.root, &p.dir)) else { return };
+        self.portal_go(up, cx);
+    }
+
+    /// Opens an item the way a double-click does: a folder of a portal is entered, anything else is opened.
+    fn open_item(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.portal.is_some() && std::path::Path::new(id).is_dir() {
+            self.portal_go(PathBuf::from(id), cx);
+        } else {
+            win::open_path(id);
+        }
     }
 
     fn set_items(&mut self, ids: Vec<String>, cx: &mut Context<Self>) {
@@ -253,8 +382,10 @@ impl VialView {
             self.locked = vial.locked;
             self.icon_size = vial.icon_px();
             self.title_center = vial.title_center;
-            let ids = vial.items;
-            self.set_items(ids, cx);
+            self.set_portal_source(vial.source.clone(), cx);
+            if self.portal.is_none() {
+                self.set_items(vial.items, cx);
+            }
         }
         cx.notify();
     }
@@ -434,6 +565,16 @@ impl VialView {
         // Never work inside the drop itself: Explorer's drag loop waits for this call to return, and
         // asking Explorer for its items (or marking files) from in here deadlocks it with several
         // items. Return at once and do the work afterwards, off the UI thread.
+        // A portal is a folder: what is dropped is copied into the folder it shows (Explorer's own copy, with
+        // its progress and its questions).
+        if let Some(dir) = self.portal.as_ref().map(|p| p.dir.to_string_lossy().into_owned()) {
+            cx.spawn(async move |this, cx| {
+                let _ = cx.background_executor().spawn(async move { vials_platform::clipboard::transfer(&paths, false, &dir, false) }).await;
+                let _ = this.update(cx, |view, cx| view.refresh_portal(cx));
+            })
+            .detach();
+            return;
+        }
         let (engine, vial_id) = (live.engine.clone(), live.vial_id.clone());
         cx.spawn(async move |this, cx| {
             let changed = cx.background_executor().spawn(async move { engine.drop_items(&vial_id, &paths) }).await;
@@ -469,8 +610,19 @@ impl VialView {
             vec![item.id.clone()]
         };
         let source = live.engine.vial_id_of(&item.id);
+        let portal = self.portal.is_some();
         cx.spawn(async move |this, cx| {
             let end = vials_platform::drag_items(&ids);
+            if portal {
+                // Files of a folder stay in it; let go on the empty desktop and they are copied there.
+                if let Ok(vials_platform::DragEnd::OnDesktop(_)) = end {
+                    if let Some(desktop) = desqu_desktop::desktop_folders().first().map(|p| p.to_string_lossy().into_owned()) {
+                        let _ = cx.background_executor().spawn(async move { vials_platform::clipboard::transfer(&ids, false, &desktop, true) }).await;
+                    }
+                }
+                let _ = this.update(cx, |view, cx| view.refresh_portal(cx));
+                return;
+            }
             if let Ok(end) = end {
                 let changed = live.engine.settle_drag(&ids, source.as_deref(), end);
                 if changed {
@@ -485,7 +637,7 @@ impl VialView {
     fn item_menu(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(live) = &self.live else { return };
         let Some(item) = self.items.get(index) else { return };
-        if item.missing || !live.engine.is_assigned(&item.id) {
+        if item.missing || (self.portal.is_none() && !live.engine.is_assigned(&item.id)) {
             return;
         }
         let id = item.id.clone();
@@ -581,7 +733,7 @@ impl VialView {
             })
         };
         let mut entries = vec![rename, MenuEntry::separator()];
-        for (key, label) in [("name", "Sort by name"), ("type", "Sort by type"), ("modified", "Sort by date modified"), ("size", "Sort by size")] {
+        for (key, label) in [("name", "Sort by name"), ("type", "Sort by type"), ("modified", "Sort by date modified"), ("size", "Sort by size")].into_iter().filter(|_| vial.source.is_none()) {
             let on = vial.sort_key.as_deref() == Some(key);
             let descending = on && !vial.sort_desc; // choosing the active sort again reverses it
             let live = live.clone();
@@ -594,7 +746,7 @@ impl VialView {
                 .checked(on),
             );
         }
-        {
+        if vial.source.is_none() {
             let live = live.clone();
             let on = !vial.folders_first;
             entries.push(
@@ -664,6 +816,13 @@ impl VialView {
                 );
             }
             entries.push(MenuEntry::separator());
+        }
+        if let Some(source) = vial.source.clone() {
+            entries.push(MenuEntry::new("Open the folder in Explorer", move |_| win::open_path(&source)));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New folder portal here...", move |cx| new_portal(cx, live.clone(), Some(at), None)));
         }
         {
             let live = live.clone();
@@ -757,10 +916,15 @@ impl VialView {
                 self.begin_rename(cx);
                 return;
             }
+            // Backspace goes up a folder in a portal, like Explorer.
+            "backspace" if self.portal.is_some() => {
+                self.portal_up(cx);
+                return;
+            }
             // Enter opens what is selected, like Explorer.
             "enter" => {
                 for id in self.selected_ids() {
-                    win::open_path(&id);
+                    self.open_item(&id, cx);
                 }
                 return;
             }
@@ -973,6 +1137,7 @@ impl Render for VialView {
                 .into_any_element(),
             None => div().child(self.name.clone()).into_any_element(),
         };
+        let can_up = self.portal.as_ref().is_some_and(|p| vials_core::portal::up(&p.root, &p.dir).is_some());
         let header = div()
             .id("header")
             .h(px(34.))
@@ -981,6 +1146,22 @@ impl Render for VialView {
             .items_center()
             .border_b_1()
             .border_color(rgba(t.line))
+            // Inside a folder of a portal: back to the folder above.
+            .when(can_up, |d| {
+                d.child(
+                    div()
+                        .id("portal-up")
+                        .w(px(30.))
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_xs()
+                        .hover(move |s| s.bg(rgba(t.hover)))
+                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.portal_up(cx)))
+                        .child("<"),
+                )
+            })
             .child(
                 // Press and drag moves the window, a plain click renames it, right click opens the menu.
                 div()
@@ -1034,6 +1215,7 @@ impl Render for VialView {
         let selected = self.selected.clone();
         let bounds = self.bounds.clone();
         let live = self.live.is_some();
+        let is_portal = self.portal.is_some();
         let icon_px = f32::from(self.icon_size);
         // The icon plus room for a two-line name on each side.
         let item_w = icon_px + 52.0;
@@ -1119,7 +1301,7 @@ impl Render for VialView {
                     )
                     .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| {
                         if e.click_count() >= 2 {
-                            win::open_path(&id);
+                            this.open_item(&id, cx);
                         } else if !e.modifiers().control && this.selected.len() > 1 {
                             // A plain click on one of several selected items narrows it to that one.
                             this.selected = BTreeSet::from([i]);
@@ -1128,7 +1310,7 @@ impl Render for VialView {
                     }))
                     .child(icon)
                     .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(item.name.clone()))
-                    .when(live, |d| {
+                    .when(live && !is_portal, |d| {
                         d.child(
                             div()
                                 .id(("remove", i))
@@ -1227,6 +1409,37 @@ mod tests {
     fn press(view: &Entity<VialView>, cx: &mut gpui::VisualTestContext, keys: &str) {
         let key = gpui::KeyDownEvent { keystroke: gpui::Keystroke::parse(keys).unwrap(), is_held: false };
         view.update(cx, |v, cx| v.on_key(&key, cx));
+    }
+
+    #[gpui::test]
+    fn a_portal_shows_its_folder_goes_into_subfolders_and_never_above_its_root(cx: &mut TestAppContext) {
+        let root = std::env::temp_dir().join(format!("desqu-portal-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        std::fs::write(root.join("sub").join("inner.txt"), "i").unwrap();
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        let names = |view: &Entity<VialView>, cx: &mut gpui::VisualTestContext| view.read_with(cx, |v, _| v.items.iter().map(|i| i.name.to_string()).collect::<Vec<_>>());
+        view.update(cx, |v, cx| v.set_portal_source(Some(root.to_string_lossy().into_owned()), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"], "folders first");
+
+        view.update(cx, |v, cx| v.open_item(&root.join("sub").to_string_lossy(), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["inner.txt"], "inside the folder");
+
+        view.update(cx, |v, cx| v.portal_up(cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"], "back at the top");
+        view.update(cx, |v, cx| v.portal_up(cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"], "no way above the folder of the portal");
+
+        // Something outside the folder is not entered either.
+        view.update(cx, |v, cx| v.portal_go(std::env::temp_dir(), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[gpui::test]

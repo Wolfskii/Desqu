@@ -1034,6 +1034,7 @@ fn create_vial_in<R: Runtime>(app: &AppHandle<R>, rect: PixelRect) -> Result<Str
         color: None,
         icon_size: None,
         title_center: false,
+        source: None,
     });
     state.set_config(cfg)?;
     Ok(id)

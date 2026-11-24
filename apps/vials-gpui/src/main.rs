@@ -452,13 +452,19 @@ fn main() {
                                         1 => "New vial with this item".to_string(),
                                         n => format!("New vial with these {n} items"),
                                     };
+                                    let portal_live = view::Live { engine: engine.clone(), revision: revision.clone(), vial_id: String::new() };
+                                    let none_picked = picked.is_empty();
                                     let entry = MenuEntry::new(label, move |cx| {
                                         if engine.create_vial_with(rect, &picked).is_some() {
                                             bump(&revision, cx);
                                         }
                                     })
                                     .icon(menu::Icon::Add);
-                                    menu::open(cx, up, vec![entry]);
+                                    let mut entries = vec![entry];
+                                    if none_picked {
+                                        entries.push(MenuEntry::new("New folder portal here...", move |cx| view::new_portal(cx, portal_live.clone(), None, Some(rect))).icon(menu::Icon::Add));
+                                    }
+                                    menu::open(cx, up, entries);
                                 });
                             })
                             .detach();

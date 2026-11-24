@@ -306,6 +306,37 @@ impl Engine {
 
     /// A new empty vial of the default size (380 x 260 dip) with its corner at `point` (physical screen
     /// pixels), kept on its monitor. `None` point: the middle of the primary monitor.
+    /// A folder portal: a vial that shows `folder`, in `rect`.
+    pub fn create_portal(&self, rect: PixelRect, folder: &str) -> Option<String> {
+        let monitor = layout::monitor_containing(&rect, &self.monitors)?;
+        let normalized = layout::to_normalized(&rect, &monitor.bounds);
+        let name = monitor.name.clone();
+        let mut id = None;
+        self.apply(|cfg| {
+            id = Some(cfg.add_portal(normalized, Some(name), folder));
+            true
+        });
+        id
+    }
+
+    /// A folder portal of the usual size at a point (the pointer, say).
+    pub fn create_portal_at(&self, point: Option<(i32, i32)>, folder: &str) -> Option<String> {
+        let rect = self.popup_rect(point)?;
+        self.create_portal(rect, folder)
+    }
+
+    /// Where a new vial of the usual size goes when it is made at `point` (the middle of the primary monitor
+    /// without one), kept on its monitor.
+    fn popup_rect(&self, point: Option<(i32, i32)>) -> Option<PixelRect> {
+        let primary = self.monitors.iter().find(|m| m.primary).or(self.monitors.first())?;
+        let point = point.unwrap_or(((primary.bounds.left + primary.bounds.right) / 2, (primary.bounds.top + primary.bounds.bottom) / 2));
+        let at = PixelRect { left: point.0, top: point.1, right: point.0 + 1, bottom: point.1 + 1 };
+        let monitor = layout::monitor_containing(&at, &self.monitors).unwrap_or(primary);
+        let size = ((380.0 * monitor.scale).round() as i32, (260.0 * monitor.scale).round() as i32);
+        let (x, y) = vials_core::gesture::popup_position(point, size, &monitor.bounds);
+        Some(PixelRect { left: x, top: y, right: x + size.0, bottom: y + size.1 })
+    }
+
     pub fn create_vial_at(&self, point: Option<(i32, i32)>) -> Option<String> {
         let primary = self.monitors.iter().find(|m| m.primary).or(self.monitors.first())?;
         let point = point.unwrap_or(((primary.bounds.left + primary.bounds.right) / 2, (primary.bounds.top + primary.bounds.bottom) / 2));
@@ -510,6 +541,7 @@ mod tests {
             color: None,
             icon_size: None,
             title_center: false,
+            source: None,
         });
         cfg.save(&cfg_path).unwrap();
 
@@ -584,6 +616,7 @@ mod tests {
             color: None,
             icon_size: None,
             title_center: false,
+            source: None,
         });
         cfg.rules.push(SortRule {
             id: "r1".into(),

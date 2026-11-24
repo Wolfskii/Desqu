@@ -235,7 +235,7 @@ pub fn describe(matcher: &ItemMatcher) -> String {
 pub fn first_match<'a>(cfg: &'a VialsConfig, item: &DesktopItem) -> Option<&'a SortRule> {
     cfg.rules
         .iter()
-        .find(|r| r.enabled && cfg.vial(&r.target_vial).is_some_and(|v| !v.inbox) && r.matcher.matches(item))
+        .find(|r| r.enabled && cfg.vial(&r.target_vial).is_some_and(|v| !v.inbox && v.source.is_none()) && r.matcher.matches(item))
 }
 
 /// `(item id, vial id)` for every desktop item that is in no vial yet and matches a rule.
@@ -339,6 +339,7 @@ mod tests {
             color: None,
             icon_size: None,
             title_center: false,
+            source: None,
         }
     }
 

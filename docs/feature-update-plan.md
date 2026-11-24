@@ -44,7 +44,7 @@ progress log in the same commit as the work.
 
 | ID | Status | Item | Size | Notes |
 |---|---|---|---|---|
-| P2-01 | [ ] | Folder Portals: a vial that shows a folder (local, network, OneDrive) | L | `Vial.source`; watcher; breadcrumb; drag out copies/moves. Hand test with a share |
+| P2-01 | [x] | Folder Portals: a vial that shows a folder (local, network, OneDrive) | L | `Vial.source`; watcher; breadcrumb; drag out copies/moves. Hand test with a share |
 | P2-02 | [ ] | Search and filter in a vial and in portals | M | Off the UI thread, cancellable |
 | P2-03 | [ ] | Peek: hotkey brings all vials above windows | M | Default Win+Shift+Space, configurable |
 | P2-04 | [ ] | Privacy mode: masked names and pictures; exclude vials from screen capture | M | `WDA_EXCLUDEFROMCAPTURE`. Hand test |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P2-01 folder portals: "New folder portal here..." (desktop box popup and vial menu) makes a vial that shows any folder (local, network, OneDrive): folders first, double-click or Enter goes in, < or Backspace goes up (never above its folder), the folder is re-read every 2 s, drops copy into it, dragging to the empty desktop copies there, Explorer's menu works, nothing is hidden or deleted. Tests: folder listing, never-above-root, a headless GPUI test that walks a portal. Hand test: a network share and OneDrive; very large folders are listed in one go (no paging yet).
 - P1-15 "Save a report" on Desqu's Settings page: a zip on the desktop with versions, what runs, a summary of settings (options and counts, no file names) and the last 400 lines of each log, with the user folder hidden. Tests for hiding the folder, the tail, that summaries hold no names, and a real zip. Hand test: the button and the Explorer window that opens. Phase 1 is done.
 - P1-14 games in exclusive fullscreen (Windows' D3D full screen state) are left alone (setting on by default, on the Screenbound page). Engine test with the fake platform: a fullscreen window is managed without a game and untouched with one. Hand test: with a real exclusive-fullscreen game.
 - P1-13 zone hotkey: a hotkey (off, Ctrl+Alt+Z, Win+Shift+Z or Ctrl+Alt+Space, chosen on the Screenbound page) puts the window in front into the zone, once. New shared desqu-native-shell hotkey module (text to key combination, tested) for the later hotkey items; engine test with the fake platform. Hand test: the key on real windows.

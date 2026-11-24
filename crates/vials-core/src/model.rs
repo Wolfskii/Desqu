@@ -96,6 +96,10 @@ pub struct Vial {
     /// The title sits in the middle of the title bar instead of at its left.
     #[serde(default)]
     pub title_center: bool,
+    /// A folder portal: the vial shows this folder (any local, network or cloud folder) instead of items of
+    /// the desktop. Nothing is hidden on the desktop and `items` stays empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// The icon sizes a vial can use, in pixels.
@@ -334,6 +338,16 @@ impl VialsConfig {
         self.declined = before.declined;
     }
 
+    /// A vial that shows a folder, put at `rect` and named after it. Returns its id.
+    pub fn add_portal(&mut self, rect: NormalizedRect, monitor: Option<String>, folder: &str) -> String {
+        let id = self.add_vial(rect, monitor);
+        if let Some(v) = self.vials.iter_mut().find(|v| v.id == id) {
+            v.source = Some(folder.to_string());
+            v.name = crate::portal::title_of(std::path::Path::new(folder));
+        }
+        id
+    }
+
     /// Whether the vial is locked (an unknown vial is not).
     pub fn is_locked(&self, id: &str) -> bool {
         self.vial(id).is_some_and(|v| v.locked)
@@ -385,6 +399,7 @@ impl VialsConfig {
                 color: None,
                 icon_size: None,
                 title_center: false,
+                source: None,
             },
         );
         true
@@ -410,6 +425,7 @@ impl VialsConfig {
             color: None,
             icon_size: None,
             title_center: false,
+            source: None,
         });
         id
     }
@@ -605,6 +621,21 @@ impl VialsConfig {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_portal_is_a_vial_with_a_source_and_old_vials_have_none() {
+        let mut cfg = VialsConfig::default();
+        let id = cfg.add_portal(NormalizedRect { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, None, r"\\server\share\Projects");
+        let v = cfg.vial(&id).unwrap();
+        assert_eq!(v.source.as_deref(), Some(r"\\server\share\Projects"));
+        assert_eq!(v.name, "Projects");
+        assert!(v.items.is_empty());
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: VialsConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.vial(&id).unwrap().source, v.source);
+        let old: Vial = serde_json::from_str(r#"{"id":"v","name":"V","rect":{"x":0.0,"y":0.0,"width":0.2,"height":0.2},"items":[]}"#).unwrap();
+        assert!(old.source.is_none());
+    }
+
+    #[test]
     fn restoring_content_keeps_where_the_vials_are_and_the_settings() {
         let mut before = VialsConfig::default();
         before.vials.push(vial("a", &["x", "y"]));
@@ -696,6 +727,7 @@ mod tests {
             color: None,
             icon_size: None,
             title_center: false,
+            source: None,
         }
     }
 
