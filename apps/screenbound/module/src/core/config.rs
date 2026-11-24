@@ -22,6 +22,9 @@ pub struct AppConfig {
     /// How entering and leaving the zone is animated.
     #[serde(default)]
     pub transition: TransitionSpeed,
+    /// A global hotkey (`ctrl+alt+z`) that puts the window you are working in into the zone; empty is off.
+    #[serde(default)]
+    pub zone_hotkey: String,
     /// v1 only: read so it can be handed to the shell once, never written back.
     #[serde(rename = "startAtBoot", default, skip_serializing)]
     pub legacy_start_at_boot: Option<bool>,
@@ -76,6 +79,7 @@ impl Default for AppConfig {
             version: CONFIG_VERSION,
             enabled: true,
             transition: TransitionSpeed::default(),
+            zone_hotkey: String::new(),
             legacy_start_at_boot: None,
             zones: vec![Zone {
                 id: "zone-left-75".into(),

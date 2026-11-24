@@ -301,6 +301,21 @@ impl Render for ScreenboundView {
         }));
 
         let expanded = self.expanded.clone();
+        // The hotkey that snaps the window you are working in into the zone.
+        let current_hotkey = snap.config.as_ref().map(|c| c.zone_hotkey.clone()).unwrap_or_default();
+        let hotkeys = div().flex().flex_wrap().gap_1().children([("Off", ""), ("Ctrl+Alt+Z", "ctrl+alt+z"), ("Win+Shift+Z", "win+shift+z"), ("Ctrl+Alt+Space", "ctrl+alt+space")].into_iter().enumerate().map(
+            |(i, (label, value))| {
+                button(label, current_hotkey == value).id(("hotkey", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.rt.change(move |c| {
+                        let changed = c.zone_hotkey != value;
+                        c.zone_hotkey = value.to_string();
+                        changed
+                    });
+                    cx.notify();
+                }))
+            },
+        ));
+
         let app_list = apps.iter().enumerate().map(|(i, row)| {
             let name = row.process_name.clone();
             let on = row.applied;
@@ -398,6 +413,8 @@ impl Render for ScreenboundView {
                 div().relative().w_full().child(canvas(move |b, _, _| avail.set(f32::from(b.size.width)), |_, _, _, _| {}).absolute().size_full()).child(preview)
             })
             .child(presets)
+            .child(section("Hotkey: put the window in front into the zone"))
+            .child(hotkeys)
             .child(section("Apps that stay inside the zone"))
             .child(
                 div()
