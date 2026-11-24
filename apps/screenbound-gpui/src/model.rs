@@ -72,6 +72,58 @@ pub fn set_zone(cfg: &mut AppConfig, rect: NormalizedRect) -> bool {
     true
 }
 
+/// Sets the zone `id` to `rect` (as percentages of the monitor). Returns whether the config changed.
+pub fn set_zone_of(cfg: &mut AppConfig, id: &str, rect: NormalizedRect) -> bool {
+    let rect = sanitize(rect);
+    let Some(zone) = cfg.zones.iter_mut().find(|z| z.id == id) else { return false };
+    if zone.rect == rect && zone.unit == ZoneUnit::Percent && zone.pixels.is_none() {
+        return false;
+    }
+    zone.rect = rect;
+    zone.unit = ZoneUnit::Percent;
+    zone.pixels = None;
+    true
+}
+
+/// The id a new zone would get: `zone-N` for the first N not used.
+pub fn next_zone_id(cfg: &AppConfig) -> String {
+    (2..).map(|n| format!("zone-{n}")).chain(std::iter::once("zone-x".to_string())).find(|id| !cfg.zones.iter().any(|z| &z.id == id)).unwrap_or_default()
+}
+
+/// Adds a zone in the middle of the monitor (half its width and height) under the id `id`, named "Zone N".
+pub fn add_zone(cfg: &mut AppConfig, id: &str) -> bool {
+    if cfg.zones.iter().any(|z| z.id == id) {
+        return false;
+    }
+    let mut zone = cfg.zones.first().cloned().expect("a config always has a zone");
+    zone.id = id.to_string();
+    zone.name = format!("Zone {}", cfg.zones.len() + 1);
+    zone.rect = NormalizedRect { x: 0.25, y: 0.25, width: 0.5, height: 0.5 };
+    zone.unit = ZoneUnit::Percent;
+    zone.pixels = None;
+    cfg.zones.push(zone);
+    true
+}
+
+/// Removes a zone. The last one cannot go. The rules that used it use the first zone that is left.
+pub fn delete_zone(cfg: &mut AppConfig, id: &str) -> bool {
+    if cfg.zones.len() < 2 || !cfg.zones.iter().any(|z| z.id == id) {
+        return false;
+    }
+    cfg.zones.retain(|z| z.id != id);
+    let fallback = cfg.zones[0].id.clone();
+    for rule in &mut cfg.rules {
+        for action in &mut rule.actions {
+            if let screenbound_module::core::rules::Action::FullscreenZone { zone_id, .. } = action {
+                if zone_id == id {
+                    *zone_id = fallback.clone();
+                }
+            }
+        }
+    }
+    true
+}
+
 /// One line of the Apps list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppRow {
@@ -156,6 +208,26 @@ pub fn set_app_enabled(cfg: &mut AppConfig, process_name: &str, enabled: bool) -
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn zones_can_be_added_changed_and_removed_and_the_last_one_stays() {
+        let mut cfg = AppConfig::default();
+        let first = cfg.zones[0].id.clone();
+        let id = next_zone_id(&cfg);
+        assert!(add_zone(&mut cfg, &id) && !add_zone(&mut cfg, &id));
+        assert_eq!(cfg.zones.len(), 2);
+        assert_eq!(cfg.zones[1].name, "Zone 2");
+        assert_ne!(next_zone_id(&cfg), id, "the next id is a free one");
+        assert!(set_zone_of(&mut cfg, &id, NormalizedRect { x: 0.0, y: 0.0, width: 0.3, height: 1.0 }));
+        assert!(!set_zone_of(&mut cfg, &id, NormalizedRect { x: 0.0, y: 0.0, width: 0.3, height: 1.0 }));
+        assert_eq!(cfg.zones[0].rect.width, 0.75, "the other zone is untouched");
+        // A rule that used the zone moves to the one that is left.
+        crate::manage_model::add_rule(&mut cfg, "all", &crate::manage_model::Scope::All, &id, screenbound_module::core::window::ChromeMode::Keep);
+        assert!(delete_zone(&mut cfg, &id));
+        assert!(cfg.rules.iter().all(|r| r.actions.iter().all(|a| !matches!(a, screenbound_module::core::rules::Action::FullscreenZone { zone_id, .. } if zone_id == &id))));
+        assert!(!delete_zone(&mut cfg, &first), "the last zone cannot be deleted");
+        assert!(cfg.clone().validated().is_ok(), "and the config is still valid");
+    }
+
     #[test]
     fn the_desqu_programs_are_not_listed_as_apps() {
         assert!(is_suite_app("Vials-GPUI.exe") && is_suite_app("desqu-gpui.exe") && !is_suite_app("Spotify.exe"));
