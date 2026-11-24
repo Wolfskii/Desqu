@@ -22,6 +22,15 @@ impl Kind {
         }
     }
 
+    /// The app's icon (a Lucide icon built into the program).
+    pub fn icon(self) -> &'static str {
+        match self {
+            Kind::Vials => "icons/layout-grid.svg",
+            Kind::Workspaces => "icons/layers.svg",
+            Kind::Screenbound => "icons/scan.svg",
+        }
+    }
+
     pub fn description(self) -> &'static str {
         match self {
             Kind::Vials => "Fences-style containers on your desktop: drag a box or right-click the desktop to create one, drag icons in and out, optional auto-sort rules.",

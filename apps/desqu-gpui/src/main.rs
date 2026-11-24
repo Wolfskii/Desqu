@@ -4,6 +4,7 @@
 //!   desqu-gpui [--config-dir <folder>] [--autostart] [--action=show|quit]
 
 mod app_settings;
+mod assets;
 mod modules;
 mod screenbound_remote;
 mod supervisor;
@@ -79,7 +80,7 @@ fn main() {
     let shell_for_exit = shell.clone();
     // The apps have no window of their own under Desqu: their settings are on their pages here.
     let menu: Vec<String> = vec!["Open Desqu".to_string(), "Quit Desqu".to_string()];
-    Application::new().run(move |cx: &mut App| {
+    Application::new().with_assets(assets::Assets).run(move |cx: &mut App| {
         let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
         let labels: Vec<&str> = menu.iter().map(String::as_str).collect();
         let tray = tray::start(&ID, &labels, event_tx.clone()).map_err(|e| eprintln!("no tray icon: {e}")).ok();

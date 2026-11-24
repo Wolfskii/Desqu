@@ -87,6 +87,11 @@ pub fn sync_autostart(settings: &Settings) {
     }
 }
 
+/// An icon from `assets/icons`, in the colour of the text.
+fn icon(path: &'static str, size: f32, color: u32) -> gpui::Svg {
+    gpui::svg().path(path).size(px(size)).flex_none().text_color(rgb(color))
+}
+
 /// A plain button (the Tauri `button`).
 fn button(id: impl Into<SharedString>, label: impl Into<SharedString>, enabled: bool) -> gpui::Stateful<gpui::Div> {
     div()
@@ -286,8 +291,9 @@ impl DesquView {
                 _ => BORDER_STRONG,
             };
             item(SharedString::from(format!("nav-{}", kind.name())), self.page == Page::App(kind))
-                .child(div().size(px(8.)).rounded(px(4.)).bg(rgb(dot)))
-                .child(kind.name())
+                .child(icon(kind.icon(), 16., TEXT))
+                .child(div().flex_1().child(kind.name()))
+                .child(div().size(px(7.)).rounded(px(4.)).bg(rgb(dot)))
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                     this.page = Page::App(kind);
                     this.note.clear();
@@ -306,14 +312,14 @@ impl DesquView {
             .border_r_1()
             .border_color(rgb(BORDER))
             .child(div().px(px(10.)).pt(px(4.)).pb(px(12.)).text_size(px(16.)).font_weight(FontWeight::BOLD).child("Desqu"))
-            .child(item("nav-home".into(), self.page == Page::Home).child("Home").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .child(item("nav-home".into(), self.page == Page::Home).child(icon("icons/house.svg", 16., TEXT)).child("Home").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.page = Page::Home;
                 cx.notify();
             })))
             .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child("APPS"))
             .children(apps)
             .child(div().flex_1())
-            .child(item("nav-settings".into(), self.page == Page::Settings).child("Settings").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .child(item("nav-settings".into(), self.page == Page::Settings).child(icon("icons/settings.svg", 16., TEXT)).child("Settings").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.page = Page::Settings;
                 this.note.clear();
                 cx.notify();
@@ -382,10 +388,7 @@ impl DesquView {
                             .bg(rgba(ACCENT_SOFT))
                             .border_1()
                             .border_color(rgb(ACCENT))
-                            .text_color(rgb(ACCENT))
-                            .text_size(px(17.))
-                            .font_weight(FontWeight::BOLD)
-                            .child(&name[..1]),
+                            .child(icon(kind.icon(), 20., ACCENT)),
                     )
                     .child(
                         div()
@@ -408,10 +411,8 @@ impl DesquView {
                     .id(SharedString::from(format!("chevron-{name}")))
                     .flex_none()
                     .w(px(24.))
-                    .text_size(px(20.))
-                    .text_color(rgb(TEXT_DIM))
                     .cursor_pointer()
-                    .child("\u{203A}")
+                    .child(icon("icons/chevron-right.svg", 18., TEXT_DIM))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                         this.page = Page::App(kind);
                         cx.notify();
@@ -441,7 +442,7 @@ impl DesquView {
                             .flex()
                             .items_center()
                             .gap(px(8.))
-                            .child(switch("start-all", all, any_on).when(any_on, |d| d.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_all_start(cx)))))
+                            .child(switch("start-all", on_off(all == TriState::On), any_on).when(any_on, |d| d.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_all_start(cx)))))
                             .child(dim("Start all apps with system")),
                     ),
             )
