@@ -54,6 +54,8 @@ pub struct Tools {
     /// Windows that were pinned by the hotkey (so they can be let go when the tool is turned off).
     pinned: HashSet<isize>,
     awake: Option<(bool, win::KeepAwake)>,
+    /// The focus dimmer, while it is on.
+    dimmer: Option<desqu_native_shell::dimmer::Dimmer>,
     /// When the folder was last tidied by itself.
     last_tidy: Option<std::time::Instant>,
     /// Window layouts, while the tool is on.
@@ -90,6 +92,13 @@ impl Tools {
         }
         if let Some(layouts) = self.layouts.as_mut() {
             layouts.tick();
+        }
+        // Focus dimmer.
+        match (s.tool_dimmer, self.dimmer.as_ref()) {
+            (true, None) => self.dimmer = Some(desqu_native_shell::dimmer::Dimmer::start(s.dim_level())),
+            (true, Some(d)) => d.set_level(s.dim_level()),
+            (false, Some(_)) => self.dimmer = None,
+            (false, None) => {}
         }
         // Tidy the folder by itself, once an hour.
         if s.tool_tidy_auto && self.last_tidy.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(3600)) {

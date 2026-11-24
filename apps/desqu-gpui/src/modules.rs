@@ -96,6 +96,11 @@ pub struct Settings {
     /// Tidy a folder: files that have been in it a while go into folders by kind, every hour when this is on.
     #[serde(default)]
     pub tool_tidy_auto: bool,
+    /// Focus dimmer: everything but the window in front is darkened; how dark is `tool_dim_level` (0 to 255).
+    #[serde(default)]
+    pub tool_dimmer: bool,
+    #[serde(default)]
+    pub tool_dim_level: Option<u8>,
     /// Window layouts: the windows are put back where they were after the screens change.
     #[serde(default)]
     pub tool_layouts: bool,
@@ -123,6 +128,11 @@ pub struct Settings {
 pub const DEFAULT_PALETTE_KEYS: &str = "ctrl+alt+space";
 
 impl Settings {
+    /// How dark the focus dimmer is (a medium one when not chosen).
+    pub fn dim_level(&self) -> u8 {
+        self.tool_dim_level.unwrap_or(140)
+    }
+
     /// When the light theme starts on the schedule, in minutes since midnight.
     pub fn light_from(&self) -> u16 {
         self.tool_light_from.unwrap_or(7 * 60)

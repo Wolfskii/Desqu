@@ -4,6 +4,7 @@
 
 pub mod autostart;
 pub mod crash;
+pub mod dimmer;
 pub mod hotkey;
 pub mod i18n;
 pub mod power;

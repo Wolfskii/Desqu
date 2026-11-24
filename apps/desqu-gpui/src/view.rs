@@ -1190,6 +1190,20 @@ impl DesquView {
                             }))),
                     ),
             )
+            .child(
+                card()
+                    .child(card_title("Focus dimmer"))
+                    .child(dim("Darkens everything except the window you are working in, on every screen. Clicks go through the dark to the windows below."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("dimmer", s.tool_dimmer, cx, |s, v| s.tool_dimmer = v)).child(div().child("Dim everything else")))
+                    .child(div().flex().gap(px(6.)).children([("Light", 90u8), ("Medium", 140), ("Strong", 190)].into_iter().map(|(label, level)| {
+                        button(SharedString::from(format!("dim-{level}")), label, true)
+                            .when(s.dim_level() == level, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.edit(|s| s.tool_dim_level = Some(level));
+                                cx.notify();
+                            }))
+                    }))),
+            )
             .child(self.brightness_card(cx))
             .child(card().child(card_title("Always on top")).child(dim("A hotkey keeps the window in front above all others, with a thin blue border; press it again to let it go.")).child(pin))
             .child(
