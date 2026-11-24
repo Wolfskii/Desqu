@@ -23,7 +23,7 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemImageFactory,
     IShellWindows, SHCreateItemFromIDList, SHCreateItemFromParsingName, SHGetKnownFolderPath, ShellWindows,
-    KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY, SIIGBF_ICONONLY, SVGIO_ALLVIEW, SVGIO_SELECTION,
+    KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY, SIIGBF, SIIGBF_ICONONLY, SVGIO_ALLVIEW, SVGIO_SELECTION,
     SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -287,13 +287,23 @@ pub(super) fn desktop_folders() -> Vec<PathBuf> {
 
 /// The item's icon as a PNG (`size` x `size`).
 pub(super) unsafe fn icon_png(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    shell_image_png(id, size, SIIGBF_ICONONLY)
+}
+
+/// What Explorer shows for the item at that size: a picture of the contents for images, videos,
+/// documents and the like, the icon for the rest. Not square for a picture that is not.
+pub(super) unsafe fn thumbnail_png(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    shell_image_png(id, size, SIIGBF(0))
+}
+
+unsafe fn shell_image_png(id: &str, size: u32, flags: SIIGBF) -> DesktopResult<Vec<u8>> {
     let wide: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
     let item: IShellItem =
         SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).map_err(|_| DesktopError::NotFound(id.to_string()))?;
     let factory: IShellItemImageFactory = item.cast().map_err(|e| native("IShellItemImageFactory", e))?;
     let size = size.clamp(16, 256) as i32;
     let hbitmap = factory
-        .GetImage(SIZE { cx: size, cy: size }, SIIGBF_ICONONLY)
+        .GetImage(SIZE { cx: size, cy: size }, flags)
         .map_err(|e| native("GetImage", e))?;
 
     let mut bitmap = BITMAP::default();
@@ -323,8 +333,13 @@ pub(super) unsafe fn icon_png(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
     if lines == 0 {
         return Err(DesktopError::Native { op: "GetDIBits", message: "no pixels returned".into() });
     }
+    // Some thumbnails come with no alpha at all (every alpha byte 0): they are fully opaque pictures.
+    let opaque = pixels.chunks_exact(4).all(|px| px[3] == 0);
     for px in pixels.chunks_exact_mut(4) {
         px.swap(0, 2); // BGRA -> RGBA
+        if opaque {
+            px[3] = 255;
+        }
     }
     encode_png(width as u32, height as u32, &pixels)
 }

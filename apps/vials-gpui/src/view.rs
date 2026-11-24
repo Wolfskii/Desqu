@@ -240,7 +240,8 @@ impl VialView {
         let (tx, rx) = std::sync::mpsc::channel::<(String, Vec<u8>)>();
         std::thread::spawn(move || {
             for id in wanted {
-                if let Ok(png) = desqu_desktop::icon_png(&id, 32) {
+                // A picture of the contents where there is one (images, videos, documents), else the icon.
+                if let Ok(png) = desqu_desktop::thumbnail_png(&id, 64).or_else(|_| desqu_desktop::icon_png(&id, 64)) {
                     if tx.send((id, png)).is_err() {
                         return;
                     }
@@ -768,7 +769,7 @@ impl Render for VialView {
                 let is_selected = selected.contains(&i);
                 let id = item.id.clone();
                 let icon = match self.icons.get(&item.id) {
-                    Some(image) => img(image.clone()).size(px(32.)).into_any_element(),
+                    Some(image) => img(image.clone()).size(px(32.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
                     None => div().size(px(32.)).rounded(px(6.)).bg(rgba(t.placeholder)).into_any_element(),
                 };
                 let remove_id = item.id.clone();

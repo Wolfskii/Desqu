@@ -182,6 +182,12 @@ pub(crate) fn icon_png_standalone(id: &str, size: u32) -> DesktopResult<Vec<u8>>
     with_com(|| unsafe { shell::icon_png(id, size) })
 }
 
+/// What Explorer shows for an item (a picture of its contents when it has one), without a layer.
+pub(crate) fn thumbnail_png_standalone(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    // SAFETY: shell calls on this thread inside its own COM apartment.
+    with_com(|| unsafe { shell::thumbnail_png(id, size) })
+}
+
 pub(crate) fn icons_visible() -> DesktopResult<bool> {
     // SAFETY: plain window lookup and visibility query.
     unsafe { shell::icons_visible() }
