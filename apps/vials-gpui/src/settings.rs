@@ -122,6 +122,7 @@ impl Render for SettingsView {
             (VialTheme::Fluent, "Fluent dark"),
             (VialTheme::FluentLight, "Fluent light"),
             (VialTheme::System, "Follow Windows"),
+            (VialTheme::Mica, "Mica (try it)"),
         ];
         let theme_row = row("Look of vials", "Glass and Liquid blur what is behind").child(div().flex().flex_wrap().gap_1().w(px(260.)).children(
             themes.into_iter().map(|(theme, label)| {

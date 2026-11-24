@@ -703,6 +703,22 @@ pub fn round_corners(hwnd: isize, round: bool) {
 
 use ::windows::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_DWORD, RRF_RT_REG_SZ};
 
+/// Turns Windows 11's Mica backdrop on or off for a window (it is the system's soft tint of the wallpaper). The
+/// window must be transparent for it to show. Does nothing on Windows 10, where the call is refused.
+pub fn apply_mica(hwnd: isize, on: bool) {
+    use ::windows::Win32::Graphics::Dwm::{DwmExtendFrameIntoClientArea, DWMWINDOWATTRIBUTE};
+    use ::windows::Win32::UI::Controls::MARGINS;
+    let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+    // DWMWA_SYSTEMBACKDROP_TYPE is 38: 1 = none, 2 = Mica.
+    let kind: i32 = if on { 2 } else { 1 };
+    let margins = if on { MARGINS { cxLeftWidth: -1, cxRightWidth: -1, cyTopHeight: -1, cyBottomHeight: -1 } } else { MARGINS::default() };
+    // SAFETY: `hwnd` is a window of this process; the values are plain integers that outlive the calls.
+    unsafe {
+        let _ = DwmSetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE(38), &kind as *const _ as *const std::ffi::c_void, std::mem::size_of_val(&kind) as u32);
+        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+    }
+}
+
 /// Whether Windows apps use the light theme (`false` = dark), or `None` when the setting is not there.
 pub fn apps_use_light_theme() -> Option<bool> {
     let key: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0".encode_utf16().collect();

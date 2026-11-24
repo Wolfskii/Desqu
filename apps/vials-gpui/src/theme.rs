@@ -22,6 +22,8 @@ pub struct Theme {
     pub tint: f32,
     /// Liquid glass draws its own backdrop (see `liquid.rs`) instead of the window material.
     pub liquid: bool,
+    /// Windows 11's Mica is switched on for the window (the panel is then mostly see-through).
+    pub mica: bool,
 }
 
 impl Theme {
@@ -52,6 +54,7 @@ impl Theme {
             radius: 12.0,
             tint: tint as f32 / 100.0,
             liquid: false,
+            mica: false,
         };
         match theme {
             VialTheme::System => {
@@ -68,6 +71,7 @@ impl Theme {
                 radius: 8.0,
                 ..glass
             },
+            VialTheme::Mica => Theme { material: WindowBackgroundAppearance::Transparent, mica: true, panel: 0x20202058, border: 0xffffff1c, hover: 0xffffff14, hover_border: 0xffffff2a, radius: 8.0, ..glass },
             VialTheme::Fluent => Theme {
                 panel: 0x1b252cf2,
                 border: 0xffffff1c,
@@ -127,6 +131,8 @@ mod tests {
 
     #[test]
     fn the_light_theme_has_dark_text() {
+        let mica = Theme::of(VialTheme::Mica, 20);
+        assert!(mica.mica && mica.material == WindowBackgroundAppearance::Transparent && !Theme::of(VialTheme::Glass, 20).mica);
         assert_ne!(Theme::of(VialTheme::FluentLight, 20).text, Theme::of(VialTheme::Glass, 20).text);
     }
 }

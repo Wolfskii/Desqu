@@ -187,6 +187,9 @@ pub enum VialTheme {
     FluentLight,
     /// Fluent, dark or light by the Windows app setting (and changing with it).
     System,
+    /// Windows 11's Mica: the window takes a soft tint of the wallpaper from the system. Experimental: it only
+    /// shows on Windows 11, elsewhere the panel is a plain dark one.
+    Mica,
     /// Liquid glass: the wallpaper is redrawn behind the vial with a refraction shader (bent edges,
     /// highlights), which Windows' own blur cannot do. Popups use the plain Glass look.
     Liquid,
@@ -721,6 +724,8 @@ mod tests {
         let mut c = VialsConfig::default();
         c.set_setting("theme", "system").unwrap();
         assert_eq!(c.theme, VialTheme::System);
+        c.set_setting("theme", "mica").unwrap();
+        assert_eq!(c.theme, VialTheme::Mica);
         c.set_setting("theme", "fluentLight").unwrap();
         c.set_setting("glassTint", "35").unwrap();
         c.set_setting("autoSort", "false").unwrap();

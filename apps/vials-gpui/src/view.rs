@@ -1352,6 +1352,9 @@ impl Render for VialView {
         }
         if std::mem::take(&mut self.material_dirty) {
             window.set_background_appearance(self.theme.material);
+            if let Some(hwnd) = win::hwnd(window) {
+                vials_platform::apply_mica(hwnd.0 as isize, self.theme.mica);
+            }
         }
         let t = self.theme;
         let chevron = div()
