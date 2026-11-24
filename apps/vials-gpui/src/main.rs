@@ -181,6 +181,14 @@ fn main() {
     };
     let live_mode = std::env::args().any(|a| a == "--live");
     let action = std::env::args().find_map(|a| a.strip_prefix("--action=").map(str::to_string));
+    // The desktop's "Create vial here" entry runs `--action=create-vial` with no `--live`: it is only a
+    // messenger for the copy that is running, never a viewer of its own.
+    if let (false, Some(action)) = (live_mode, &action) {
+        if !tray::forward_action(&ID, action) {
+            eprintln!("Vials is not running, so it cannot take the action {action}");
+        }
+        return;
+    }
     // Live mode is one running copy: a second launch (for example the desktop's "Create vial here"
     // entry, which runs `--action=create-vial`) hands its action to the first and exits.
     let _single = if live_mode {
