@@ -22,6 +22,9 @@ pub struct AppConfig {
     /// How entering and leaving the zone is animated.
     #[serde(default)]
     pub transition: TransitionSpeed,
+    /// Where the zones were the last time the screens were set up in a given way (see `zone_layouts` in the app).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub zone_layouts: Vec<ZoneLayout>,
     /// A game in exclusive fullscreen is left alone: its window is never moved or resized.
     #[serde(default = "default_true")]
     pub leave_games_alone: bool,
@@ -43,6 +46,26 @@ pub struct AppConfig {
     /// Browser integration: per-site fullscreen rules. Missing in older configs.
     #[serde(default)]
     pub browser: BrowserSettings,
+}
+
+/// The shape of the zones for one screen setup: the key of the setup (which monitors, how big, where) and
+/// each zone's rectangle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoneLayout {
+    pub setup: String,
+    pub zones: Vec<ZoneShape>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoneShape {
+    pub id: String,
+    pub rect: super::zone::NormalizedRect,
+    #[serde(default)]
+    pub unit: super::zone::ZoneUnit,
+    #[serde(default)]
+    pub pixels: Option<super::zone::PixelRect>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +106,7 @@ impl Default for AppConfig {
             enabled: true,
             transition: TransitionSpeed::default(),
             leave_games_alone: true,
+            zone_layouts: Vec::new(),
             zone_hotkey: String::new(),
             legacy_start_at_boot: None,
             zones: vec![Zone {

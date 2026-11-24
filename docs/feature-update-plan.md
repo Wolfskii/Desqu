@@ -56,7 +56,7 @@ progress log in the same commit as the work.
 | P2-10 | [x] | Workspaces: startup sets per desktop | M | |
 | P2-11 | [x] | Workspaces: wallpaper per desktop (Windows 10) | M | |
 | P2-12 | [x] | Screenbound: zone per app or group, several zones per monitor | M | |
-| P2-13 | [ ] | Screenbound: zones per screen setup | M | |
+| P2-13 | [x] | Screenbound: zones per screen setup | M | |
 | P2-14 | [ ] | Desqu: hotkey manager with clash warnings | M | |
 | P2-15 | [ ] | Desqu: backup, restore and OneDrive sync of all settings | M | |
 | P2-16 | [ ] | Desqu: one update check and installer for the suite | M | Needs signed feeds first |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P2-13 zones per screen setup: when the monitors change (dock, undock, another resolution) the zones take the shape they had the last time the screens were like that; nothing is added or removed, so no rule loses its zone. Tests for the setup change both ways and the config staying valid. Hand test: really docking.
 - P2-12 several zones: the Screenbound page has a row of zones (+ Add zone, Delete this zone), the one picked is drawn strongly and is the one the drag and the presets change, the others are shown faint; a new rule picks the zone its windows stay in (with a group as its scope that is a zone per app group). Deleting a zone moves its rules to the first one left; the last cannot be deleted. Tests for add/change/delete and a still-valid config. Hand test: two zones with two groups on real windows.
 - P2-11 wallpaper per desktop: each desktop card on the Workspaces page can keep "my wallpaper now" (the picture Windows shows when you press the button) and puts it on when you switch to the desktop; "Remove" takes it away. Off unless used, so Windows 11's own per-desktop backgrounds are not touched by default. Tests for the config; setting a wallpaper is not run in tests (it would change yours). Hand test: on Windows 10; on Windows 11 check that it does not clash with its own setting.
 - P2-10 startup sets: each desktop card on the Workspaces page has a switch "Open its apps and folders the first time I come here"; the first time you switch to such a desktop in a session its items (up to 8; not vials or system items) are opened with Explorer, one every 0.4 s. Tests for the choice, the limit and the once-per-session rule. Hand test: with real desktops.

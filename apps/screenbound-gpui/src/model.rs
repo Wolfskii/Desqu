@@ -85,6 +85,42 @@ pub fn set_zone_of(cfg: &mut AppConfig, id: &str, rect: NormalizedRect) -> bool 
     true
 }
 
+/// A text that says which screen setup this is: each monitor's name, size and place, in a fixed order.
+pub fn setup_key(monitors: &[screenbound_module::core::monitor::MonitorInfo]) -> String {
+    let mut parts: Vec<String> = monitors
+        .iter()
+        .map(|m| format!("{}:{}x{}@{},{}", m.device_name, m.bounds.right - m.bounds.left, m.bounds.bottom - m.bounds.top, m.bounds.left, m.bounds.top))
+        .collect();
+    parts.sort();
+    parts.join("|")
+}
+
+/// The screens changed from the setup `old` to `new`: the shape of the zones is kept for `old`, and the shape
+/// kept for `new` (if any) is put on the zones that have the same ids. Zones are never added or removed here,
+/// so no rule is left pointing at a zone that is gone. Returns whether the config changed.
+pub fn switch_zone_setup(cfg: &mut AppConfig, old: &str, new: &str) -> bool {
+    use screenbound_module::core::config::{ZoneLayout, ZoneShape};
+    if old == new || old.is_empty() || new.is_empty() {
+        return false;
+    }
+    let before = cfg.clone();
+    let shapes: Vec<ZoneShape> = cfg.zones.iter().map(|z| ZoneShape { id: z.id.clone(), rect: z.rect, unit: z.unit, pixels: z.pixels }).collect();
+    match cfg.zone_layouts.iter_mut().find(|l| l.setup == old) {
+        Some(l) => l.zones = shapes,
+        None => cfg.zone_layouts.push(ZoneLayout { setup: old.to_string(), zones: shapes }),
+    }
+    if let Some(saved) = cfg.zone_layouts.iter().find(|l| l.setup == new).cloned() {
+        for shape in saved.zones {
+            if let Some(zone) = cfg.zones.iter_mut().find(|z| z.id == shape.id) {
+                zone.rect = shape.rect;
+                zone.unit = shape.unit;
+                zone.pixels = shape.pixels;
+            }
+        }
+    }
+    *cfg != before
+}
+
 /// The id a new zone would get: `zone-N` for the first N not used.
 pub fn next_zone_id(cfg: &AppConfig) -> String {
     (2..).map(|n| format!("zone-{n}")).chain(std::iter::once("zone-x".to_string())).find(|id| !cfg.zones.iter().any(|z| &z.id == id)).unwrap_or_default()
@@ -208,6 +244,24 @@ pub fn set_app_enabled(cfg: &mut AppConfig, process_name: &str, enabled: bool) -
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn docking_and_undocking_bring_back_the_zones_of_that_setup_without_adding_or_removing_any() {
+        let mut cfg = AppConfig::default();
+        let id = cfg.zones[0].id.clone();
+        let wide = NormalizedRect { x: 0.0, y: 0.0, width: 0.5, height: 1.0 };
+        // First time away from the desk: nothing is remembered for the laptop, the zone stays.
+        assert!(switch_zone_setup(&mut cfg, "desk", "laptop"), "the shape of the desk is remembered");
+        assert_eq!(cfg.zones[0].rect.width, 0.75);
+        set_zone_of(&mut cfg, &id, wide);
+        assert!(switch_zone_setup(&mut cfg, "laptop", "desk"));
+        assert_eq!(cfg.zones[0].rect.width, 0.75, "the desk shape is back");
+        assert!(switch_zone_setup(&mut cfg, "desk", "laptop"));
+        assert_eq!(cfg.zones[0].rect.width, 0.5, "and the laptop shape");
+        assert_eq!(cfg.zones.len(), 1);
+        assert!(!switch_zone_setup(&mut cfg, "laptop", "laptop") && !switch_zone_setup(&mut cfg, "", "desk"));
+        assert!(cfg.clone().validated().is_ok());
+    }
+
     #[test]
     fn zones_can_be_added_changed_and_removed_and_the_last_one_stays() {
         let mut cfg = AppConfig::default();
