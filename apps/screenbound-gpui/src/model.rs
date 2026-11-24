@@ -81,12 +81,28 @@ pub struct AppRow {
     pub applied: bool,
 }
 
+/// The Desqu programs themselves (the GPUI builds and the older Tauri ones): they have no place in the
+/// list of apps Screenbound can keep inside the zone.
+pub fn is_suite_app(process_name: &str) -> bool {
+    const NAMES: [&str; 8] = [
+        "desqu-gpui.exe",
+        "vials-gpui.exe",
+        "workspaces-gpui.exe",
+        "screenbound-gpui.exe",
+        "desqu.exe",
+        "vials.exe",
+        "workspaces.exe",
+        "screenbound.exe",
+    ];
+    NAMES.iter().any(|n| n.eq_ignore_ascii_case(process_name.trim()))
+}
+
 /// Merges the open windows into the remembered apps. Keeps a useful title when one was seen.
 pub fn remember_apps(seen: &[KnownApp], windows: &[WindowInfo]) -> Vec<KnownApp> {
     let mut out: Vec<KnownApp> = seen.to_vec();
     for window in windows {
         let name = window.identity.process_name.trim();
-        if name.is_empty() {
+        if name.is_empty() || is_suite_app(name) {
             continue;
         }
         let title = window.identity.title.trim();
@@ -106,6 +122,7 @@ pub fn remember_apps(seen: &[KnownApp], windows: &[WindowInfo]) -> Vec<KnownApp>
 pub fn app_rows(seen: &[KnownApp], running: &[String]) -> Vec<AppRow> {
     let mut rows: Vec<AppRow> = seen
         .iter()
+        .filter(|a| !is_suite_app(&a.process_name))
         .map(|a| AppRow {
             process_name: a.process_name.clone(),
             title: a.title.clone(),
@@ -139,6 +156,16 @@ pub fn set_app_enabled(cfg: &mut AppConfig, process_name: &str, enabled: bool) -
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_desqu_programs_are_not_listed_as_apps() {
+        assert!(is_suite_app("Vials-GPUI.exe") && is_suite_app("desqu-gpui.exe") && !is_suite_app("Spotify.exe"));
+        let kept = KnownApp { process_name: "Spotify.exe".into(), title: String::new(), enabled: false, group_id: None };
+        let own = KnownApp { process_name: "vials-gpui.exe".into(), title: "Vial 3".into(), enabled: false, group_id: None };
+        let rows = app_rows(&[kept, own], &[]);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].process_name, "Spotify.exe");
+    }
+
     use super::*;
     use screenbound_module::core::geometry::Rect;
 

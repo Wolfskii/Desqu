@@ -11,6 +11,7 @@ use gpui::{
     WindowOptions,
 };
 use screenbound_module::core::monitor::MonitorInfo;
+use screenbound_module::core::transition::TransitionSpeed;
 use screenbound_module::core::zone::NormalizedRect;
 
 use crate::model::{self, PRESETS};
@@ -265,6 +266,24 @@ impl Render for ScreenboundView {
             }))
         }));
 
+        // How the window gets to its new size: at once, or in a slow glide.
+        let speed = snap.config.as_ref().map(|c| c.transition).unwrap_or_default();
+        let transitions = div().flex().flex_wrap().gap_1().children(
+            [(TransitionSpeed::Instant, "No animation"), (TransitionSpeed::Fast, "Fast (1 s)"), (TransitionSpeed::Normal, "Normal (3 s)"), (TransitionSpeed::Slow, "Slow (5 s)")]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (value, label))| {
+                    button(label, speed == value).id(("transition", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.rt.change(move |c| {
+                            let changed = c.transition != value;
+                            c.transition = value;
+                            changed
+                        });
+                        cx.notify();
+                    }))
+                }),
+        );
+
         let app_list = apps.iter().enumerate().map(|(i, row)| {
             let name = row.process_name.clone();
             let on = row.applied;
@@ -320,6 +339,8 @@ impl Render for ScreenboundView {
             .child(section("Zone: drag on a monitor, or pick a preset"))
             .child(preview)
             .child(presets)
+            .child(section("Going into and out of fullscreen"))
+            .child(transitions)
             .child(section("Apps that stay inside the zone"))
             .child(
                 div()
