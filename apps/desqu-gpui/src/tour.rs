@@ -52,7 +52,9 @@ mod tests {
         use desqu_native_shell::i18n::{is_translated, Lang};
         for lang in [Lang::Sv, Lang::Pl] {
             for step in &STEPS {
-                assert!(is_translated(lang, step.title) && is_translated(lang, step.text), "{} in {}", step.title, lang.code());
+                // The name of an app is the same in every language.
+                let name = ALL.iter().any(|k| k.name() == step.title);
+                assert!((name || is_translated(lang, step.title)) && is_translated(lang, step.text), "{} in {}", step.title, lang.code());
             }
             for kind in ALL {
                 assert!(is_translated(lang, kind.description()), "{} in {}", kind.name(), lang.code());
