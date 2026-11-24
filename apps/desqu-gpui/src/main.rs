@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app_settings;
+mod backup;
 mod assets;
 mod hotkeys;
 mod modules;
@@ -70,6 +71,17 @@ fn main() {
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).unwrap_or_default();
     let settings_path = config_dir().join("gpui-shell.json");
     let shell = Arc::new(Shell { supervisor: Arc::new(Supervisor::new(&exe_dir)), settings_path: settings_path.clone(), settings: Mutex::new(Settings::load(&settings_path)) });
+    // A copy of the settings once a day (the newest 14 are kept).
+    {
+        let also = shell.settings.lock().unwrap_or_else(|e| e.into_inner()).backup_onedrive;
+        std::thread::spawn(move || {
+            if backup::is_due(&backup::folder(), backup::now_secs(), 86_400) {
+                if let Err(e) = backup::back_up(&backup::Paths::real(), also) {
+                    eprintln!("no automatic backup: {e}");
+                }
+            }
+        });
+    }
     // The modules that are on start with Desqu (from sign-in: only those marked "start with system").
     {
         let (supervisor, settings) = (shell.supervisor.clone(), shell.settings.lock().unwrap_or_else(|e| e.into_inner()).clone());

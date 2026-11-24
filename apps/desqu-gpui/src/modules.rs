@@ -84,6 +84,9 @@ pub struct Settings {
     pub workspaces_start_with_system: bool,
     #[serde(default)]
     pub screenbound_start_with_system: bool,
+    /// Each backup of the settings also goes to the Desqu folder in OneDrive.
+    #[serde(default)]
+    pub backup_onedrive: bool,
 }
 
 /// The "start all apps with system" switch: over the apps that are on, some may start and some not.

@@ -838,6 +838,121 @@ impl DesquView {
     }
 
     /// Every hotkey the apps use, with a warning for one that is taken twice or that Windows uses.
+    /// Makes a backup of every app's settings now.
+    fn back_up_now(&mut self, cx: &mut Context<Self>) {
+        let also = self.settings().backup_onedrive;
+        self.note = "Backing up...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { crate::backup::back_up(&crate::backup::Paths::real(), also) }).await;
+            let _ = this.update(cx, |view, cx| {
+                view.note = match result {
+                    Ok(zip) => format!("Saved {}", zip.display()),
+                    Err(e) => format!("Could not back up: {e}"),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Puts the settings of a backup back. The apps that run are stopped for it and started again after.
+    fn restore_backup(&mut self, zip: std::path::PathBuf, cx: &mut Context<Self>) {
+        let shell = self.shell.clone();
+        self.note = "Restoring...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    // The apps would write their own settings over the restored ones.
+                    let running: Vec<Kind> = ALL.into_iter().filter(|k| matches!(shell.supervisor.status(*k), Status::Running)).collect();
+                    for kind in &running {
+                        shell.supervisor.stop(*kind);
+                    }
+                    let restored = crate::backup::restore(&crate::backup::Paths::real(), &zip);
+                    // Desqu's own choices (which apps are on) come from the restored file too.
+                    *shell.settings.lock().unwrap_or_else(|e| e.into_inner()) = Settings::load(&shell.settings_path);
+                    for kind in running {
+                        let _ = shell.supervisor.start(kind);
+                    }
+                    restored
+                })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                view.note = match result {
+                    Ok(done) => format!("Restored {} settings files", done.len()),
+                    Err(e) => format!("Could not restore: {e}"),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Back up and restore the settings of all the apps.
+    fn backup_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let backups: Vec<std::path::PathBuf> = crate::backup::list(&crate::backup::folder()).into_iter().take(5).collect();
+        let cloud = crate::backup::onedrive_folder();
+        let cloud_latest = cloud.as_ref().and_then(|c| crate::backup::list(c).into_iter().next());
+        let on = self.settings().backup_onedrive;
+        let folder = crate::backup::folder();
+        let mut card = card()
+            .gap(px(6.))
+            .child(card_title("Back up your settings"))
+            .child(dim("One zip holds the settings of every app. Desqu makes one a day and keeps the newest 14."))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(8.))
+                    .child(button("backup-now", "Back up now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.back_up_now(cx))))
+                    .child(button("backup-folder", "Open the backup folder", true).on_click({
+                        let folder = folder.clone();
+                        move |_, _, _| {
+                            let _ = std::fs::create_dir_all(&folder);
+                            open_path(&folder);
+                        }
+                    })),
+            );
+        for (i, zip) in backups.into_iter().enumerate() {
+            let when = crate::backup::stamp_of(&zip).map(|s| ago_text(crate::backup::now_secs().saturating_sub(s))).unwrap_or_default();
+            card = card.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(div().flex_1().child(format!("Backup from {when}")))
+                    .child(button(SharedString::from(format!("restore-{i}")), "Restore", true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.restore_backup(zip.clone(), cx)))),
+            );
+        }
+        if cloud.is_some() {
+            card = card
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(switch("backup-onedrive", on_off(on), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.edit(|s| s.backup_onedrive = !on);
+                            cx.notify();
+                        })))
+                        .child(dim("Also keep a copy in OneDrive, for another PC")),
+                )
+                .when_some(cloud_latest, |d, zip| {
+                    let when = crate::backup::stamp_of(&zip).map(|s| ago_text(crate::backup::now_secs().saturating_sub(s))).unwrap_or_default();
+                    d.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(div().flex_1().child(format!("OneDrive copy from {when}")))
+                            .child(button("restore-cloud", "Restore it", true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.restore_backup(zip.clone(), cx)))),
+                    )
+                });
+        }
+        card
+    }
+
     fn hotkeys_card(&self) -> gpui::Div {
         use crate::hotkeys::{check, collect, pretty, Problem};
         let entries = collect(&crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
@@ -912,6 +1027,7 @@ impl DesquView {
                     .child(div().flex().child(button("logs", "Open the logs folder", true).on_click(move |_, _, _| open_path(&logs)))),
             )
             .child(self.hotkeys_card())
+            .child(self.backup_card(cx))
             .child(
                 card()
                     .gap(px(6.))
@@ -980,6 +1096,17 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();
 }
 
+/// How long ago, for people: "just now", "5 minutes ago", "3 hours ago", "2 days ago".
+fn ago_text(secs: u64) -> String {
+    let plural = |n: u64, unit: &str| format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" });
+    match secs {
+        0..=59 => "just now".to_string(),
+        60..=3599 => plural(secs / 60, "minute"),
+        3600..=86_399 => plural(secs / 3600, "hour"),
+        _ => plural(secs / 86_400, "day"),
+    }
+}
+
 /// Opens a file or folder the way Explorer does (a log opens in the text editor).
 fn open_path(path: &std::path::Path) {
     let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
@@ -1022,6 +1149,14 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn how_long_ago_is_said_for_people() {
+        assert_eq!(ago_text(5), "just now");
+        assert_eq!(ago_text(60), "1 minute ago");
+        assert_eq!(ago_text(7_200), "2 hours ago");
+        assert_eq!(ago_text(86_400 * 3), "3 days ago");
+    }
+
     use super::*;
 
     #[test]
