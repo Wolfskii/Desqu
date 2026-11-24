@@ -1,6 +1,6 @@
 //! The Desqu window, laid out like the Tauri Desqu: a sidebar (Home, the apps, Settings) and a page.
-//! Home has one card per app (on/off, start with system, open its window); an app's page has the
-//! same controls plus its log; Settings has start-up, updates and about.
+//! Home is a list with one row per app (on/off switch, a chevron to its page); an app's page has
+//! start with system, its log and its settings; Settings has start-up, updates and about.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -43,8 +43,6 @@ const ERROR: u32 = 0xff6b6b;
 const GREEN: u32 = 0x4cc38a;
 
 const SIDEBAR: f32 = 190.;
-const CARD_MIN: f32 = 320.;
-const GAP: f32 = 12.;
 const PAGE_PAD: f32 = 20.;
 
 #[derive(Default)]
@@ -345,68 +343,92 @@ impl DesquView {
         (on, start)
     }
 
-    fn app_card(&self, kind: Kind, settings: &Settings, cx: &mut Context<Self>) -> gpui::Div {
+    /// One app in the list on Home: its name and what it does, the switch, and a chevron to its page.
+    fn app_row(&self, kind: Kind, last: bool, cx: &mut Context<Self>) -> gpui::Div {
+        let settings = self.settings();
         let status = self.shell.supervisor.status(kind);
-        let (on, start) = self.switches(kind, settings, cx);
-        card()
+        let (on, _) = self.switches(kind, &settings, cx);
+        let name = kind.name();
+        div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(14.))
+            .min_h(px(64.))
+            .when(!last, |d| d.border_b_1().border_color(rgb(BORDER)))
             .when(status == Status::Missing, |d| d.opacity(0.6))
             .child(
                 div()
+                    .id(SharedString::from(format!("row-{name}")))
+                    .flex_1()
+                    .min_w(px(0.))
                     .flex()
                     .items_center()
                     .gap(px(12.))
+                    .py(px(10.))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.page = Page::App(kind);
+                        cx.notify();
+                    }))
                     .child(
                         div()
                             .flex()
                             .flex_none()
                             .items_center()
                             .justify_center()
-                            .size(px(38.))
-                            .rounded(px(10.))
+                            .size(px(36.))
+                            .rounded(px(8.))
                             .bg(rgba(ACCENT_SOFT))
                             .border_1()
                             .border_color(rgb(ACCENT))
                             .text_color(rgb(ACCENT))
-                            .text_size(px(18.))
+                            .text_size(px(17.))
                             .font_weight(FontWeight::BOLD)
-                            .child(&kind.name()[..1]),
+                            .child(&name[..1]),
                     )
                     .child(
                         div()
                             .flex_1()
                             .min_w(px(0.))
-                            .child(div().text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).child(kind.name()))
-                            .child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))),
-                    )
-                    .child(on),
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_baseline()
+                                    .gap(px(8.))
+                                    .child(div().font_weight(FontWeight::SEMIBOLD).child(name))
+                                    .child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))),
+                            )
+                            .child(div().text_size(px(12.)).text_color(rgb(TEXT_DIM)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(kind.description())),
+                    ),
             )
-            .child(dim(kind.description()))
-            .child(start)
+            .child(on)
+            .child(
+                div()
+                    .id(SharedString::from(format!("chevron-{name}")))
+                    .flex_none()
+                    .w(px(24.))
+                    .text_size(px(20.))
+                    .text_color(rgb(TEXT_DIM))
+                    .cursor_pointer()
+                    .child("\u{203A}")
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.page = Page::App(kind);
+                        cx.notify();
+                    })),
+            )
     }
 
-    fn home(&self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
+    fn home(&self, cx: &mut Context<Self>) -> gpui::Div {
         let settings = self.settings();
         let all = settings.all_start();
         let any_on = ALL.into_iter().any(|k| settings.enabled(k));
-        // A grid like CSS `repeat(auto-fill, minmax(320px, 1fr))`.
-        let width = f32::from(window.viewport_size().width) - SIDEBAR - 2. * PAGE_PAD;
-        let columns = (((width + GAP) / (CARD_MIN + GAP)).floor() as usize).max(1);
-        let cards: Vec<Kind> = ALL.to_vec();
-        let mut rows = Vec::new();
-        for row in cards.chunks(columns) {
-            let mut line = div().flex().gap(px(GAP));
-            for kind in row {
-                line = line.child(self.app_card(*kind, &settings, cx).flex_1().min_w(px(0.)));
-            }
-            for _ in row.len()..columns {
-                line = line.child(div().flex_1());
-            }
-            rows.push(line);
-        }
+        let rows: Vec<gpui::Div> = ALL.iter().enumerate().map(|(i, kind)| self.app_row(*kind, i + 1 == ALL.len(), cx)).collect();
         div()
             .flex()
             .flex_col()
             .gap(px(14.))
+            .max_w(px(900.))
             .child(
                 div()
                     .flex()
@@ -423,7 +445,7 @@ impl DesquView {
                             .child(dim("Start all apps with system")),
                     ),
             )
-            .children(rows)
+            .child(div().flex().flex_col().rounded(px(6.)).border_1().border_color(rgb(BORDER)).bg(rgb(SURFACE_1)).children(rows))
     }
 
     fn app_page(&self, kind: Kind, cx: &mut Context<Self>) -> gpui::Div {
@@ -771,7 +793,7 @@ impl DesquView {
 }
 
 impl Render for DesquView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Screenbound's views are made the first time its page is shown.
         if self.page == Page::App(Kind::Screenbound) && self.screenbound.is_none() {
             let remote = crate::screenbound_remote::Remote::start();
@@ -781,7 +803,7 @@ impl Render for DesquView {
             self.screenbound = Some(ScreenboundViews { remote, main, manage });
         }
         let page = match self.page {
-            Page::Home => self.home(window, cx),
+            Page::Home => self.home(cx),
             Page::App(kind) => self.app_page(kind, cx),
             Page::Settings => self.settings_page(cx),
         };
