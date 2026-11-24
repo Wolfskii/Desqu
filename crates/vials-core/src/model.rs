@@ -84,6 +84,44 @@ pub struct Vial {
     /// The vial stays where it is and keeps its items: no moving, resizing, renaming or dragging out.
     #[serde(default)]
     pub locked: bool,
+    /// This vial's own glass tint (0 clear to 100 solid); `None` follows the setting for all vials.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tint: Option<u8>,
+    /// This vial's own panel colour as `#rrggbb`; `None` is the look's own colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Icon size in pixels (24, 32 or 48); `None` is 32.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_size: Option<u8>,
+    /// The title sits in the middle of the title bar instead of at its left.
+    #[serde(default)]
+    pub title_center: bool,
+}
+
+/// The icon sizes a vial can use, in pixels.
+pub const ICON_SIZES: [u8; 3] = [24, 32, 48];
+
+/// The panel colours offered in the vial menu: (name, `#rrggbb`).
+pub const PANEL_COLORS: [(&str, &str); 6] = [
+    ("Graphite", "#2b2f36"),
+    ("Blue", "#1f3b73"),
+    ("Green", "#1f5a3d"),
+    ("Orange", "#7a4a1a"),
+    ("Pink", "#7a2a52"),
+    ("Purple", "#4a2f7a"),
+];
+
+impl Vial {
+    /// The icon size to draw: the chosen one, else 32.
+    pub fn icon_px(&self) -> u8 {
+        self.icon_size.filter(|s| ICON_SIZES.contains(s)).unwrap_or(32)
+    }
+
+    /// The panel colour as `0xRRGGBB`, if one is set and valid.
+    pub fn color_rgb(&self) -> Option<u32> {
+        let hex = self.color.as_deref()?.strip_prefix('#')?;
+        (hex.len() == 6).then(|| u32::from_str_radix(hex, 16).ok()).flatten()
+    }
 }
 
 /// A predicate over a desktop item.
@@ -313,6 +351,10 @@ impl VialsConfig {
                 sort_desc: false,
                 folders_first: false,
                 locked: false,
+                tint: None,
+                color: None,
+                icon_size: None,
+                title_center: false,
             },
         );
         true
@@ -334,6 +376,10 @@ impl VialsConfig {
             sort_desc: false,
             folders_first: false,
             locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
         });
         id
     }
@@ -529,6 +575,26 @@ impl VialsConfig {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_vial_look_has_defaults_and_ignores_values_it_does_not_know() {
+        let mut v = vial("a", &[]);
+        assert_eq!((v.icon_px(), v.color_rgb(), v.tint, v.title_center), (32, None, None, false));
+        v.icon_size = Some(48);
+        v.color = Some("#1f3b73".into());
+        assert_eq!((v.icon_px(), v.color_rgb()), (48, Some(0x1f3b73)));
+        v.icon_size = Some(40);
+        v.color = Some("blue".into());
+        assert_eq!((v.icon_px(), v.color_rgb()), (32, None), "unknown size and colour fall back");
+        let json = r#"{"id":"v","name":"V","rect":{"x":0.0,"y":0.0,"width":0.2,"height":0.2},"items":[]}"#;
+        let old: Vial = serde_json::from_str(json).unwrap();
+        assert!(old.tint.is_none() && old.color.is_none() && old.icon_size.is_none() && !old.title_center);
+        for (_, hex) in PANEL_COLORS {
+            let mut p = vial("p", &[]);
+            p.color = Some(hex.into());
+            assert!(p.color_rgb().is_some(), "{hex}");
+        }
+    }
+
+    #[test]
     fn a_vial_can_be_locked_and_an_old_config_without_the_field_loads_unlocked() {
         let mut cfg = VialsConfig::default();
         cfg.vials.push(vial("vial-1", &[]));
@@ -576,6 +642,10 @@ mod tests {
             sort_desc: false,
             folders_first: false,
             locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
         }
     }
 

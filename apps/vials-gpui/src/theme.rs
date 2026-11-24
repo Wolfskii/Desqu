@@ -25,6 +25,14 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// The look with the panel in `rgb` (`0xRRGGBB`), keeping its see-through amount. Liquid has no panel to colour.
+    pub fn with_color(mut self, rgb: u32) -> Self {
+        if !self.liquid {
+            self.panel = (rgb << 8) | (self.panel & 0xff);
+        }
+        self
+    }
+
     /// `tint` is the "glass tint" setting, 0 (clearest) to 100 (nearly solid).
     pub fn of(theme: VialTheme, tint: u8) -> Self {
         let tint = u32::from(tint.min(100));
@@ -87,6 +95,16 @@ impl Theme {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_panel_colour_keeps_the_see_through_amount_and_liquid_has_none() {
+        let glass = Theme::of(VialTheme::Glass, 40);
+        let blue = glass.with_color(0x1f3b73);
+        assert_eq!(blue.panel >> 8, 0x1f3b73);
+        assert_eq!(blue.panel & 0xff, glass.panel & 0xff);
+        let liquid = Theme::of(VialTheme::Liquid, 40);
+        assert_eq!(liquid.with_color(0x1f3b73).panel, liquid.panel);
+    }
+
     use super::*;
 
     #[test]

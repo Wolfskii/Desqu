@@ -89,7 +89,7 @@ impl Shell {
         let live = self.engine.as_ref().map(|e| Live { engine: Arc::clone(e), revision: self.revision.clone(), vial_id: vial.id.clone() });
         let title = name.clone();
         let look = match &self.engine {
-            Some(e) => e.look(),
+            Some(e) => e.look_for(&vial.id),
             None => theme::Theme::of(self.theme, self.tint),
         };
 

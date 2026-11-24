@@ -74,6 +74,9 @@ pub struct VialView {
     items: Vec<Item>,
     icons: HashMap<String, Arc<Image>>,
     icons_requested: HashSet<String>,
+    /// Icon size in pixels, and whether the title is centred: from the vial's own look.
+    icon_size: u8,
+    title_center: bool,
     /// A collapsed vial is open for the moment because the pointer is over it.
     peeking: bool,
     /// Where the pointer is now (over the window or not), and which "left" a delayed close belongs to.
@@ -186,6 +189,8 @@ impl VialView {
             items: Vec::new(),
             icons: HashMap::new(),
             icons_requested: HashSet::new(),
+            icon_size: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).map_or(32, |v| v.icon_px()),
+            title_center: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).is_some_and(|v| v.title_center),
             peeking: false,
             hovered: false,
             hover_gen: 0,
@@ -231,7 +236,7 @@ impl VialView {
 
     fn reload(&mut self, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
-        let look = live.engine.look();
+        let look = live.engine.look_for(&live.vial_id);
         if look != self.theme {
             self.theme = look;
             self.material_dirty = true;
@@ -240,6 +245,8 @@ impl VialView {
         if let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) {
             self.name = vial.name.clone().into();
             self.locked = vial.locked;
+            self.icon_size = vial.icon_px();
+            self.title_center = vial.title_center;
             let ids = vial.items;
             self.set_items(ids, cx);
         }
@@ -519,6 +526,41 @@ impl VialView {
         cx.notify();
     }
 
+    /// The vial's own look: icon size, colour, how see-through, where the title sits.
+    fn open_look_menu(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) else { return };
+        let Some(at) = win::cursor_position() else { return };
+        // One entry that changes the vial and tells every window.
+        let entry = |label: String, checked: bool, change: Box<dyn Fn(&mut vials_core::model::Vial)>| {
+            let live = live.clone();
+            MenuEntry::new(label, move |cx| {
+                live.engine.set_look(&live.vial_id, |v| change(v));
+                bump(&live.revision, cx);
+            })
+            .checked(checked)
+        };
+        let mut entries = Vec::new();
+        for (size, label) in [(24u8, "Small icons"), (32, "Medium icons"), (48, "Large icons")] {
+            entries.push(entry(label.to_string(), vial.icon_px() == size, Box::new(move |v| v.icon_size = Some(size))));
+        }
+        entries.push(MenuEntry::separator());
+        entries.push(entry("Default colour".into(), vial.color.is_none(), Box::new(|v| v.color = None)));
+        for (name, hex) in vials_core::model::PANEL_COLORS {
+            entries.push(entry(name.to_string(), vial.color.as_deref() == Some(hex), Box::new(move |v| v.color = Some(hex.to_string()))));
+        }
+        entries.push(MenuEntry::separator());
+        for (label, tint) in [("Default see-through", None), ("Very clear", Some(5u8)), ("Frosted", Some(45)), ("Solid", Some(90))] {
+            entries.push(entry(label.to_string(), vial.tint == tint, Box::new(move |v| v.tint = tint)));
+        }
+        entries.push(MenuEntry::separator());
+        entries.push(entry("Title in the middle".into(), vial.title_center, Box::new({
+            let on = !vial.title_center;
+            move |v| v.title_center = on
+        })));
+        menu::open(cx, at, entries);
+    }
+
     /// The vial's own menu: rename, sort, folders first, new vial, delete.
     fn open_vial_menu(&mut self, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
@@ -567,6 +609,12 @@ impl VialView {
                 })
                 .checked(vial.locked),
             );
+        }
+        {
+            let weak = weak.clone();
+            entries.push(MenuEntry::new("Look...", move |cx| {
+                let _ = weak.update(cx, |view, cx| view.open_look_menu(cx));
+            }));
         }
         entries.push(MenuEntry::separator());
         // While Workspaces runs: which virtual desktop the vial shows on (the current one is checked).
@@ -768,6 +816,7 @@ impl Render for VialView {
                     .px_3()
                     .flex()
                     .items_center()
+                    .when(self.title_center, |d| d.justify_center())
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
                     .on_mouse_down(
@@ -811,6 +860,9 @@ impl Render for VialView {
         let selected = self.selected.clone();
         let bounds = self.bounds.clone();
         let live = self.live.is_some();
+        let icon_px = f32::from(self.icon_size);
+        // The icon plus room for a two-line name on each side.
+        let item_w = icon_px + 52.0;
         let grid = div()
             // Where the items were drawn (window coordinates, one per child): what the box is held against.
             .on_children_prepainted(move |all, _, _| {
@@ -843,15 +895,15 @@ impl Render for VialView {
                 let is_selected = selected.contains(&i);
                 let id = item.id.clone();
                 let icon = match self.icons.get(&item.id) {
-                    Some(image) => img(image.clone()).size(px(32.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
-                    None => div().size(px(32.)).rounded(px(6.)).bg(rgba(t.placeholder)).into_any_element(),
+                    Some(image) => img(image.clone()).size(px(icon_px)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                    None => div().size(px(icon_px)).rounded(px(6.)).bg(rgba(t.placeholder)).into_any_element(),
                 };
                 let remove_id = item.id.clone();
                 div()
                     .id(("item", i))
                     .group("item")
                     .relative()
-                    .w(px(84.))
+                    .w(px(item_w))
                     .py_2()
                     .px_1()
                     .flex()

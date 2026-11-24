@@ -144,6 +144,10 @@ mod tests {
             sort_desc: false,
             folders_first: false,
             locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
         };
         let mut cfg = VialsConfig::default();
         cfg.vials = vec![vial("a", Some("name"), &["c.txt", "a.txt", "b.txt"]), vial("b", None, &["z.txt", "y.txt"])];

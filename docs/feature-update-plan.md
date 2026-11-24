@@ -28,7 +28,7 @@ progress log in the same commit as the work.
 | P1-02 | [x] | Lock a vial (no move, resize, drop-out or rename) | S | `Vial.locked`; menu entry with check mark |
 | P1-03 | [x] | Collapsed vial opens while the pointer is over it | S | Setting; short close delay |
 | P1-04 | [x] | Theme "follow Windows" (light or dark by the Windows setting) | S | Watch `AppsUseLightTheme` |
-| P1-05 | [ ] | Per-vial look: colour, opacity, icon size, title alignment | M | Optional fields on `Vial`; "Look..." in the vial menu |
+| P1-05 | [x] | Per-vial look: colour, opacity, icon size, title alignment | M | Optional fields on `Vial`; "Look..." in the vial menu |
 | P1-06 | [ ] | More rule conditions: modified/created age, size, source folder; run rules now | M | `ItemMatcher` in vials-core, file facts from vials-platform |
 | P1-07 | [ ] | Keyboard in vials: arrows, Enter, F2, menu key, Home/End | M | Headless GPUI tests |
 | P1-08 | [ ] | Undo for vial changes (Ctrl+Z) | M | Engine keeps a short history |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P1-05 per-vial look: vial menu "Look..." sets icon size (24/32/48), panel colour (6 presets), how see-through (5/default/45/90) and the title in the middle. Unit tests for the model fields, fallbacks and the colour on a theme; old configs load. Hand test: how each looks on the desktop, esp. colour on Fluent and Liquid (Liquid ignores the colour).
 - P1-04 theme "Follow Windows": Fluent dark or light by the Windows app setting, re-read about once a second while chosen. Tests for the setting name and that the theme resolves. The old Tauri Vials treats it as dark. Hand test: flip the Windows light/dark setting.
 - P1-03 collapsed vials open on hover (setting "Open collapsed vials on hover", off by default; closes 350 ms after the pointer leaves). Setting covered by a unit test. Hand test: the opening and closing.
 - P1-02 lock a vial: menu entry "Lock" (checked); a locked vial snaps back when moved or resized, cannot be renamed, dragged out or saved at a new place. Unit tests for the model (and old configs load unlocked). Hand test: moving, resizing and dragging out of a locked vial.

@@ -1030,6 +1030,10 @@ fn create_vial_in<R: Runtime>(app: &AppHandle<R>, rect: PixelRect) -> Result<Str
         sort_desc: false,
         folders_first: false,
         locked: false,
+        tint: None,
+        color: None,
+        icon_size: None,
+        title_center: false,
     });
     state.set_config(cfg)?;
     Ok(id)

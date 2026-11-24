@@ -346,10 +346,28 @@ impl Engine {
         self.apply(|cfg| cfg.move_rule(id, delta))
     }
 
-    /// How vials look right now.
-    pub fn look(&self) -> crate::theme::Theme {
+    /// The look of one vial: the common look with this vial's own tint and colour.
+    pub fn look_for(&self, vial_id: &str) -> crate::theme::Theme {
         let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
-        crate::theme::Theme::of(cfg.theme, cfg.glass_tint)
+        let vial = cfg.vial(vial_id);
+        let tint = vial.and_then(|v| v.tint).unwrap_or(cfg.glass_tint);
+        let look = crate::theme::Theme::of(cfg.theme, tint);
+        match vial.and_then(|v| v.color_rgb()) {
+            Some(rgb) => look.with_color(rgb),
+            None => look,
+        }
+    }
+
+    /// Changes how one vial looks (colour, tint, icon size, title). Returns whether anything changed.
+    pub fn set_look(&self, vial_id: &str, change: impl FnOnce(&mut Vial)) -> bool {
+        self.apply(|cfg| match cfg.vials.iter_mut().find(|v| v.id == vial_id) {
+            Some(v) => {
+                let before = v.clone();
+                change(v);
+                *v != before
+            }
+            None => false,
+        })
     }
 
     pub fn config(&self) -> VialsConfig {
@@ -452,6 +470,10 @@ mod tests {
             sort_desc: false,
             folders_first: false,
             locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
         });
         cfg.save(&cfg_path).unwrap();
 
@@ -522,6 +544,10 @@ mod tests {
             sort_desc: false,
             folders_first: false,
             locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
         });
         cfg.rules.push(SortRule {
             id: "r1".into(),
