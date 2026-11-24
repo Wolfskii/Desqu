@@ -1,3 +1,4 @@
+#[cfg(feature = "tauri-plugin")]
 const COMMANDS: &[&str] = &[
     "get_monitors",
     "get_config",
@@ -18,6 +19,10 @@ const COMMANDS: &[&str] = &[
     "set_browser_integration",
 ];
 
+#[cfg(feature = "tauri-plugin")]
 fn main() {
     tauri_plugin::Builder::new(COMMANDS).build();
 }
+
+#[cfg(not(feature = "tauri-plugin"))]
+fn main() {}

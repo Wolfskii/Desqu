@@ -16,6 +16,8 @@ tauri-plugin = { version = "2", features = ["build"] }
 
 [dependencies]
 desqu-desktop = { path = "../../../crates/desqu-desktop" }
+workspaces-core = { path = "../../../crates/workspaces-core" }
+workspaces-platform = { path = "../../../crates/workspaces-platform" }
 desqu-shell = { path = "../../../crates/desqu-shell" }
 tauri = "2"
 serde = { version = "1", features = ["derive"] }

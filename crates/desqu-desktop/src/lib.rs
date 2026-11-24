@@ -36,6 +36,19 @@ pub fn open(owner: &str, journal_path: &Path) -> DesktopResult<Arc<dyn DesktopLa
     platform::open(owner, journal_path)
 }
 
+/// An item's icon as a PNG without opening the layer: read-only, no lock, hides nothing. Slow (about
+/// 6 ms): call off the UI thread and cache.
+pub fn icon_png(item_id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    platform::icon_png_standalone(item_id, size)
+}
+
+/// What Explorer shows for an item as a PNG: a picture of the contents for images, videos and the
+/// like, the icon for everything else. Not square when the picture is not. Same cost and rules as
+/// [`icon_png`].
+pub fn thumbnail_png(item_id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    platform::thumbnail_png_standalone(item_id, size)
+}
+
 /// Restores items listed in another journal (for example a standalone app that crashed while
 /// Desqu hosts the module now) and deletes it. Returns how many items were moved back.
 pub fn recover_from(journal_path: &Path) -> DesktopResult<usize> {
@@ -77,7 +90,34 @@ pub fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
     platform::folder_at(screen)
 }
 
+/// The id of the desktop item under `screen` (screen pixels), or `None` over empty desktop. Read-only.
+pub fn item_at(screen: Point) -> DesktopResult<Option<String>> {
+    platform::item_at(screen)
+}
+
 /// The folders the desktop shows (the user's Desktop, then the Public Desktop), as paths. Read-only.
 pub fn desktop_folders() -> Vec<std::path::PathBuf> {
     platform::desktop_folders()
+}
+
+#[cfg(all(test, windows))]
+mod thumbnail_tests {
+    #[test]
+    fn a_picture_file_gets_a_png_back_from_the_shell() {
+        let dir = std::env::temp_dir().join(format!("desqu-thumb-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("red.png");
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, 8, 4);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header().unwrap().write_image_data(&[255, 0, 0, 255].repeat(32)).unwrap();
+        }
+        std::fs::write(&file, bytes).unwrap();
+        let result = super::thumbnail_png(&file.to_string_lossy(), 64);
+        let _ = std::fs::remove_dir_all(&dir);
+        let png = result.expect("the shell returns a picture or the icon");
+        assert_eq!(&png[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    }
 }

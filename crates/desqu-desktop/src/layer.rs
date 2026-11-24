@@ -24,7 +24,7 @@ pub enum DesktopError {
 pub type DesktopResult<T> = Result<T, DesktopError>;
 
 /// Result of a hide request.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HideReport {
     /// Items now hidden (including ones another owner had already hidden).
     pub hidden: Vec<String>,
@@ -115,6 +115,12 @@ pub trait DesktopLayer: Send + Sync {
 
     /// Whether the icon layer is switched off by an owner (see [`DesktopLayer::set_surface`]).
     fn surface_active(&self) -> bool;
+
+    /// Switches the desktop's icons off for a moment (`true`) and back on (`false`), for example while
+    /// Task View shows, so no one sees the icons of the desktop being left. Only icons this call
+    /// switched off are switched on again; nothing happens while an owner draws the desktop itself.
+    /// The switch is journaled, so a crash does not leave the icons off, and it ends with its owner.
+    fn veil(&self, on: bool) -> DesktopResult<()>;
 
     /// Calls `sink` (on another thread) whenever any owner hides or shows items or the surface is
     /// switched, so a module drawing the desktop can redraw.

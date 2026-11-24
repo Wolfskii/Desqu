@@ -3,6 +3,7 @@
 //! pointer ever crosses threads.
 
 mod lock;
+mod share;
 mod shell;
 mod watch;
 
@@ -36,6 +37,7 @@ enum Command {
     Hidden { owner: String, reply: Reply<Vec<String>> },
     SetSurface { owner: String, on: bool, reply: Reply<()> },
     SurfaceActive(Reply<bool>),
+    Veil { owner: String, on: bool, reply: Reply<()> },
     Shutdown,
 }
 
@@ -47,6 +49,8 @@ struct State {
     surface: Option<String>,
     /// Surface mode: the ids each owner wants hidden.
     claims: HashMap<String, HashSet<String>>,
+    /// The owner that switched the desktop's icons off for a moment (see [`DesktopLayer::veil`]).
+    veil: Option<String>,
     notifier: Arc<Notifier>,
 }
 
@@ -84,17 +88,45 @@ struct Host {
     notifier: Arc<Notifier>,
     tx: Mutex<Sender<Command>>,
     thread: Mutex<Option<JoinHandle<()>>>,
+    /// Serves the layer to the other Desqu programs (see `share`).
+    server: Mutex<Option<share::Server>>,
     _lock: lock::NamedLock,
 }
 
 static HOST: Mutex<Weak<Host>> = Mutex::new(Weak::new());
 
 pub(crate) fn open(owner: &str, journal_path: &Path) -> DesktopResult<Arc<dyn DesktopLayer>> {
+    match open_local(owner, journal_path, None) {
+        // Another Desqu program hosts the layer: use it through that program.
+        Err(DesktopError::OwnedElsewhere) => share::Shared::connect(owner, journal_path),
+        other => other,
+    }
+}
+
+/// A handle on this process's layer, hosting it if needed. `adopt` is the journal of a host that went
+/// away: what it lists is put back before anyone else can reach the new host.
+fn open_local(owner: &str, journal_path: &Path, adopt: Option<&Path>) -> DesktopResult<Arc<dyn DesktopLayer>> {
     let mut slot = HOST.lock().unwrap_or_else(|e| e.into_inner());
     let host = match slot.upgrade() {
         Some(host) => host,
         None => {
             let host = Host::start(journal_path)?;
+            if let Some(old) = adopt.filter(|old| *old != journal_path) {
+                let old = old.to_path_buf();
+                let recovered = std::thread::Builder::new()
+                    .name("desqu-desktop-adopt".into())
+                    .spawn(move || with_com(|| recover_file(&old)))?
+                    .join();
+                match recovered {
+                    Ok(Ok(n)) if n > 0 => tracing::info!("put back {n} items the previous host left hidden"),
+                    Ok(Err(e)) => tracing::warn!("could not put back what the previous host left hidden: {e}"),
+                    _ => {}
+                }
+            }
+            match share::Server::start(Arc::downgrade(&host)) {
+                Ok(server) => *host.server.lock().unwrap_or_else(|e| e.into_inner()) = Some(server),
+                Err(e) => tracing::warn!("the desktop layer is not shared with the other Desqu programs: {e}"),
+            }
             *slot = Arc::downgrade(&host);
             host
         }
@@ -141,6 +173,19 @@ pub(crate) fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
 /// icons"). Read-only, takes no lock.
 pub(crate) fn desktop_folders() -> Vec<PathBuf> {
     shell::desktop_folders()
+}
+
+/// An item's icon without a [`DesktopLayer`]: needs no lock and moves or hides nothing, so a viewer can
+/// call it next to the app that owns the layer.
+pub(crate) fn icon_png_standalone(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    // SAFETY: shell calls on this thread inside its own COM apartment.
+    with_com(|| unsafe { shell::icon_png(id, size) })
+}
+
+/// What Explorer shows for an item (a picture of its contents when it has one), without a layer.
+pub(crate) fn thumbnail_png_standalone(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    // SAFETY: shell calls on this thread inside its own COM apartment.
+    with_com(|| unsafe { shell::thumbnail_png(id, size) })
 }
 
 pub(crate) fn icons_visible() -> DesktopResult<bool> {
@@ -215,8 +260,13 @@ pub(crate) fn surface_probe() -> DesktopResult<(usize, usize, usize, bool)> {
 /// The id of the desktop folder under `screen` (screen pixels), or `None` when the icon under it is not
 /// a folder or there is no icon there. Read-only.
 pub(crate) fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
+    Ok(item_at(screen)?.filter(|id| Path::new(id).is_dir()))
+}
+
+/// The id of the desktop item under `screen` (screen pixels), or `None` over empty desktop. Read-only.
+pub(crate) fn item_at(screen: Point) -> DesktopResult<Option<String>> {
     std::thread::Builder::new()
-        .name("desqu-desktop-folder-at".into())
+        .name("desqu-desktop-item-at".into())
         .spawn(move || {
             with_com(|| {
                 // SAFETY: on a COM thread of its own.
@@ -224,18 +274,14 @@ pub(crate) fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
                     let view = shell::desktop_view()?;
                     let lv = shell::listview()?;
                     let p = shell::screen_to_client(lv, screen);
-                    let Some(index) = shell::hit_item(lv, p) else { return Ok(None) };
                     let raw = shell::list(&view)?;
-                    Ok(raw
-                        .into_iter()
-                        .find(|r| r.index == index)
-                        .filter(|r| Path::new(&r.id).is_dir())
-                        .map(|r| r.id))
+                    let Some(index) = shell::hit_item(&view, &raw, p) else { return Ok(None) };
+                    Ok(raw.into_iter().find(|r| r.index == index).map(|r| r.id))
                 }
             })
         })?
         .join()
-        .map_err(|_| DesktopError::Native { op: "folder at", message: "thread panicked".into() })?
+        .map_err(|_| DesktopError::Native { op: "item at", message: "thread panicked".into() })?
 }
 
 /// How many desktop items are selected right now. Read-only, takes no lock.
@@ -281,6 +327,7 @@ impl Host {
             notifier,
             tx: Mutex::new(tx),
             thread: Mutex::new(Some(thread)),
+            server: Mutex::new(None),
             _lock: lock,
         }))
     }
@@ -304,6 +351,8 @@ impl Drop for Host {
         if let Some(thread) = self.thread.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = thread.join();
         }
+        // Only now, with everything put back, tell the other programs: one of them takes over.
+        drop(self.server.lock().unwrap_or_else(|e| e.into_inner()).take());
     }
 }
 
@@ -311,7 +360,7 @@ impl Drop for Host {
 
 fn worker(rx: Receiver<Command>, path: PathBuf, notifier: Arc<Notifier>) {
     let mut state =
-        State { journal: Journal::load(&path), path, surface: None, claims: HashMap::new(), notifier };
+        State { journal: Journal::load(&path), path, surface: None, claims: HashMap::new(), veil: None, notifier };
     // A journal at startup is a previous run's leftovers (crash or kill): put everything back.
     if let Err(e) = restore_all(&mut state) {
         tracing::warn!("could not restore desktop items left by a previous run: {e}");
@@ -355,6 +404,9 @@ fn worker(rx: Receiver<Command>, path: PathBuf, notifier: Arc<Notifier>) {
             }
             Command::SurfaceActive(reply) => {
                 let _ = reply.send(Ok(state.surface.is_some()));
+            }
+            Command::Veil { owner, on, reply } => {
+                let _ = reply.send(veil(&mut state, &owner, on));
             }
             Command::Shutdown => break,
         }
@@ -618,7 +670,38 @@ fn show_block(state: &mut State, owner: &str, ids: &[String], screen: Point) -> 
     Ok(())
 }
 
+/// Icons off for a moment, or on again. Journaled while off so a crash cannot leave them off.
+fn veil(state: &mut State, owner: &str, on: bool) -> DesktopResult<()> {
+    if state.surface.is_some() {
+        return Ok(());
+    }
+    if on {
+        if state.veil.is_some() {
+            return Ok(());
+        }
+        // SAFETY: on the COM thread.
+        let changed = unsafe { shell::set_icons_hidden(true)? };
+        if changed {
+            state.veil = Some(owner.to_string());
+            state.journal.icons_hidden = true;
+            state.save()?;
+        }
+        return Ok(());
+    }
+    if state.veil.as_deref() != Some(owner) {
+        return Ok(());
+    }
+    state.veil = None;
+    // SAFETY: on the COM thread.
+    unsafe { shell::set_icons_hidden(false)? };
+    state.journal.icons_hidden = false;
+    state.save()
+}
+
 fn show_all(state: &mut State, owner: &str) -> DesktopResult<()> {
+    if state.veil.as_deref() == Some(owner) {
+        veil(state, owner, false)?;
+    }
     if state.surface.is_some() {
         let had = state.claims.remove(owner).is_some_and(|c| !c.is_empty());
         if state.surface.as_deref() == Some(owner) {
@@ -637,6 +720,7 @@ fn show_all(state: &mut State, owner: &str) -> DesktopResult<()> {
 }
 
 fn restore_all(state: &mut State) -> DesktopResult<()> {
+    state.veil = None;
     state.claims.clear();
     state.surface = None;
     let icons = restore_icons(&mut state.journal);
@@ -799,6 +883,10 @@ impl DesktopLayer for Handle {
 
     fn surface_active(&self) -> bool {
         self.host.call(Command::SurfaceActive).unwrap_or(false)
+    }
+
+    fn veil(&self, on: bool) -> DesktopResult<()> {
+        self.host.call(|reply| Command::Veil { owner: self.owner.clone(), on, reply })
     }
 
     fn subscribe_claims(&self, sink: ClaimSink) -> DesktopResult<Subscription> {

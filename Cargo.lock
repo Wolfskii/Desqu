@@ -788,6 +788,7 @@ dependencies = [
 name = "desqu-desktop"
 version = "0.1.0"
 dependencies = [
+ "desqu-ipc",
  "png 0.17.16",
  "serde",
  "serde_json",
@@ -4595,6 +4596,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vials-core"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "vials-module"
 version = "0.3.0"
 dependencies = [
@@ -4606,6 +4617,16 @@ dependencies = [
  "tauri-plugin",
  "thiserror 2.0.21",
  "tracing",
+ "vials-core",
+ "vials-platform",
+]
+
+[[package]]
+name = "vials-platform"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "vials-core",
  "windows",
  "windows-core",
 ]
@@ -5316,6 +5337,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "workspaces-core"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "workspaces-module"
 version = "0.3.0"
 dependencies = [
@@ -5328,6 +5358,19 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "windows",
+ "workspaces-core",
+ "workspaces-platform",
+]
+
+[[package]]
+name = "workspaces-platform"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "serde",
+ "tracing",
+ "windows",
+ "workspaces-core",
 ]
 
 [[package]]

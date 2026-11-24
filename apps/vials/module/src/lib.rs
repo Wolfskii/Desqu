@@ -3,10 +3,10 @@
 //! always restored, via the shared `desqu-desktop` layer).
 
 mod commands;
-pub mod core;
+pub use vials_core as core;
 pub mod engine;
 pub mod plugin;
-mod platform;
+use vials_platform as platform;
 
 pub use plugin::{init, ModuleOptions, VialsModule};
 

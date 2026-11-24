@@ -9,10 +9,10 @@ use super::geometry::Rect;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TransitionSpeed {
-    /// Move in one step.
+    /// Move in one step: the window goes straight to its new size, with no animation.
+    #[default]
     Instant,
     Fast,
-    #[default]
     Normal,
     Slow,
 }

@@ -13,18 +13,21 @@ use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, IServiceProvi
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::Storage::FileSystem::{
-    GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_FLAGS_AND_ATTRIBUTES, INVALID_FILE_ATTRIBUTES,
+    GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_HIDDEN, FILE_FLAGS_AND_ATTRIBUTES,
+    INVALID_FILE_ATTRIBUTES,
 };
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
-use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ATTRIBUTES, SHCNF_PATHW};
+use windows::Win32::UI::Shell::{
+    SHChangeNotify, SHCNE_ATTRIBUTES, SHCNE_CREATE, SHCNE_DELETE, SHCNE_MKDIR, SHCNE_RMDIR, SHCNF_FLUSHNOWAIT, SHCNF_PATHW,
+};
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_PublicDesktop, IFolderView2, IShellBrowser, IShellItem, IShellItemImageFactory,
     IShellWindows, SHCreateItemFromIDList, SHCreateItemFromParsingName, SHGetKnownFolderPath, ShellWindows,
-    KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY, SIIGBF_ICONONLY, SVGIO_ALLVIEW, SVGIO_SELECTION,
+    KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_NORMALDISPLAY, SIIGBF, SIIGBF_ICONONLY, SVGIO_ALLVIEW, SVGIO_SELECTION,
     SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, GetParent, IsWindowVisible, SendMessageTimeoutW, SendMessageW, SMTO_ABORTIFHUNG,
+    EnumWindows, FindWindowExW, GetParent, IsWindowVisible, SendMessageTimeoutW, SMTO_ABORTIFHUNG,
     SMTO_NORMAL,
 };
 
@@ -34,18 +37,6 @@ use crate::model::Point;
 /// `LVM_SETITEMPOSITION`: x and y are packed as signed 16-bit values in `lParam`, so the message
 /// carries no pointer and works across processes.
 const LVM_SETITEMPOSITION: u32 = 0x1000 + 15;
-/// `LVM_HITTEST`: which item of a list view is at a point (client coordinates).
-const LVM_HITTEST: u32 = 0x1000 + 18;
-
-/// `LVHITTESTINFO`
-#[repr(C)]
-struct HitTestInfo {
-    pt: windows::Win32::Foundation::POINT,
-    flags: u32,
-    item: i32,
-    sub_item: i32,
-    group: i32,
-}
 const WM_COMMAND: u32 = 0x0111;
 /// The command Explorer's own "View, Show desktop icons" sends to `SHELLDLL_DefView`.
 const CMD_TOGGLE_DESKTOP_ICONS: usize = 0x7402;
@@ -108,9 +99,12 @@ pub(super) fn is_hidden_attribute(path: &str) -> Option<bool> {
     (attrs != INVALID_FILE_ATTRIBUTES).then_some(attrs & FILE_ATTRIBUTE_HIDDEN.0 != 0)
 }
 
-/// Sets or clears the hidden attribute and tells the shell, so the desktop follows within a
-/// fraction of a second (without the notification it takes several seconds). Other attributes are
-/// kept. The file's contents, name and place are never touched.
+/// Sets or clears the hidden attribute and tells the shell, so the desktop follows at once. Other
+/// attributes are kept. The file's contents, name and place are never touched.
+///
+/// An attribute-change notice alone takes the desktop 1-1.5 s to act on. Saying the item went away
+/// (or came back) takes it about 20 ms and keeps the icon's position; measured with a temporary
+/// file and folder. The attribute notice is still sent, for views that only look at that.
 pub(super) fn set_hidden_attribute(path: &str, hidden: bool) -> DesktopResult<()> {
     let wide = windows::core::HSTRING::from(path);
     // SAFETY: plain file system calls on a string that outlives them.
@@ -123,7 +117,17 @@ pub(super) fn set_hidden_attribute(path: &str, hidden: bool) -> DesktopResult<()
         if next != attrs {
             SetFileAttributesW(&wide, FILE_FLAGS_AND_ATTRIBUTES(next)).map_err(|e| native("SetFileAttributes", e))?;
         }
-        SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW, Some(wide.as_ptr().cast()), None);
+        let folder = attrs & FILE_ATTRIBUTE_DIRECTORY.0 != 0;
+        let event = match (hidden, folder) {
+            (true, false) => SHCNE_DELETE,
+            (true, true) => SHCNE_RMDIR,
+            (false, false) => SHCNE_CREATE,
+            (false, true) => SHCNE_MKDIR,
+        };
+        // FLUSHNOWAIT: delivered now, without waiting on Explorer (which may itself be waiting on
+        // us, when the drop comes from its own drag).
+        SHChangeNotify(event, SHCNF_PATHW | SHCNF_FLUSHNOWAIT, Some(wide.as_ptr().cast()), None);
+        SHChangeNotify(SHCNE_ATTRIBUTES, SHCNF_PATHW | SHCNF_FLUSHNOWAIT, Some(wide.as_ptr().cast()), None);
     }
     Ok(())
 }
@@ -238,17 +242,16 @@ pub(super) unsafe fn screen_to_client(lv: HWND, p: Point) -> Point {
     Point { x: pt.x, y: pt.y }
 }
 
-/// The index of the icon at `p` (client coordinates of the list view `lv`), or `None` over empty space.
-pub(super) unsafe fn hit_item(lv: HWND, p: Point) -> Option<i32> {
-    let mut info = HitTestInfo {
-        pt: windows::Win32::Foundation::POINT { x: p.x, y: p.y },
-        flags: 0,
-        item: -1,
-        sub_item: 0,
-        group: 0,
-    };
-    let index = SendMessageW(lv, LVM_HITTEST, Some(WPARAM(0)), Some(LPARAM(&mut info as *mut HitTestInfo as isize))).0;
-    (index >= 0).then_some(index as i32)
+/// The index of the icon at `p` (client coordinates of the list view), or `None` over empty space.
+/// Worked out from the icon positions and the grid cell size the view reports through COM: a
+/// list-view hit-test message would hand Explorer a pointer into this process, which crashes it.
+pub(super) unsafe fn hit_item(view: &IFolderView2, items: &[RawItem], p: Point) -> Option<i32> {
+    let mut cell = windows::Win32::Foundation::POINT::default();
+    view.GetSpacing(&mut cell).ok()?;
+    items
+        .iter()
+        .find(|r| p.x >= r.pos.x && p.x < r.pos.x + cell.x && p.y >= r.pos.y && p.y < r.pos.y + cell.y)
+        .map(|r| r.index)
 }
 
 /// Moves one item (by its index in the view). Negative coordinates park it off-screen.
@@ -284,13 +287,23 @@ pub(super) fn desktop_folders() -> Vec<PathBuf> {
 
 /// The item's icon as a PNG (`size` x `size`).
 pub(super) unsafe fn icon_png(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    shell_image_png(id, size, SIIGBF_ICONONLY)
+}
+
+/// What Explorer shows for the item at that size: a picture of the contents for images, videos,
+/// documents and the like, the icon for the rest. Not square for a picture that is not.
+pub(super) unsafe fn thumbnail_png(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
+    shell_image_png(id, size, SIIGBF(0))
+}
+
+unsafe fn shell_image_png(id: &str, size: u32, flags: SIIGBF) -> DesktopResult<Vec<u8>> {
     let wide: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
     let item: IShellItem =
         SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).map_err(|_| DesktopError::NotFound(id.to_string()))?;
     let factory: IShellItemImageFactory = item.cast().map_err(|e| native("IShellItemImageFactory", e))?;
     let size = size.clamp(16, 256) as i32;
     let hbitmap = factory
-        .GetImage(SIZE { cx: size, cy: size }, SIIGBF_ICONONLY)
+        .GetImage(SIZE { cx: size, cy: size }, flags)
         .map_err(|e| native("GetImage", e))?;
 
     let mut bitmap = BITMAP::default();
@@ -320,8 +333,13 @@ pub(super) unsafe fn icon_png(id: &str, size: u32) -> DesktopResult<Vec<u8>> {
     if lines == 0 {
         return Err(DesktopError::Native { op: "GetDIBits", message: "no pixels returned".into() });
     }
+    // Some thumbnails come with no alpha at all (every alpha byte 0): they are fully opaque pictures.
+    let opaque = pixels.chunks_exact(4).all(|px| px[3] == 0);
     for px in pixels.chunks_exact_mut(4) {
         px.swap(0, 2); // BGRA -> RGBA
+        if opaque {
+            px[3] = 255;
+        }
     }
     encode_png(width as u32, height as u32, &pixels)
 }

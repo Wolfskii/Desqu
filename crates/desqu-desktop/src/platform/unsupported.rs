@@ -22,6 +22,14 @@ pub(crate) fn selection_count() -> DesktopResult<usize> {
     Err(DesktopError::Unsupported)
 }
 
+pub(crate) fn icon_png_standalone(_id: &str, _size: u32) -> DesktopResult<Vec<u8>> {
+    Err(DesktopError::Unsupported)
+}
+
+pub(crate) fn thumbnail_png_standalone(_id: &str, _size: u32) -> DesktopResult<Vec<u8>> {
+    Err(DesktopError::Unsupported)
+}
+
 pub(crate) fn icons_visible() -> DesktopResult<bool> {
     Err(DesktopError::Unsupported)
 }
@@ -31,6 +39,10 @@ pub(crate) fn nudge_timing(_item_id: &str, _rounds: usize) -> DesktopResult<std:
 }
 
 pub(crate) fn folder_at(_screen: crate::model::Point) -> DesktopResult<Option<String>> {
+    Ok(None)
+}
+
+pub(crate) fn item_at(_screen: crate::model::Point) -> DesktopResult<Option<String>> {
     Ok(None)
 }
 

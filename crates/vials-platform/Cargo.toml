@@ -1,0 +1,39 @@
+[package]
+name = "vials-platform"
+version = "0.3.0"
+description = "Vials' native Windows pieces (item menu, drag out, clipboard, mouse hook, wallpaper). No UI framework."
+authors = ["Desqu contributors"]
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "vials_platform"
+
+[dependencies]
+desqu-desktop = { path = "../desqu-desktop" }
+vials-core = { path = "../vials-core" }
+
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.62"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+]

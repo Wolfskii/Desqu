@@ -1,20 +1,12 @@
 version: "3"
 
-# Repo-wide entry point. Each app keeps its own Taskfile.yml; run `task --list` for all tasks.
+# Repo-wide entry point. The apps are the GPUI ones (see Taskfile.gpui.yml): `task dev` runs Desqu,
+# `task gpui:<name>` runs one app on its own. `task --list` shows everything.
 
 includes:
-  desqu:
-    taskfile: ./apps/desqu/Taskfile.yml
-    dir: ./apps/desqu
-  vials:
-    taskfile: ./apps/vials/Taskfile.yml
-    dir: ./apps/vials
-  workspaces:
-    taskfile: ./apps/workspaces/Taskfile.yml
-    dir: ./apps/workspaces
-  screenbound:
-    taskfile: ./apps/screenbound/Taskfile.yml
-    dir: ./apps/screenbound
+  gpui:
+    taskfile: ./Taskfile.gpui.yml
+    dir: .
   browser:
     taskfile: ./apps/browser-extension/Taskfile.yml
     dir: ./apps/browser-extension
@@ -26,10 +18,21 @@ tasks:
     cmds:
       - task --list
 
+  dev:
+    desc: Run Desqu (GPUI) with its apps, no install (same as gpui:desqu)
+    interactive: true
+    cmds:
+      - task: gpui:desqu
+
   install:
-    desc: Install npm dependencies (all workspaces)
+    desc: Install npm dependencies (the browser extension)
     cmds:
       - npm install
+
+  test:
+    desc: Unit tests for every app and shared crate (same as gpui:test)
+    cmds:
+      - task: gpui:test
 
   crates:
     desc: Unit tests and clippy for the shared crates (desqu-shell, desqu-desktop, desqu-ipc)
@@ -41,14 +44,11 @@ tasks:
     desc: Real-desktop tests (touch only temporary files and windows they create themselves)
     cmds:
       - cargo test -p desqu-desktop --test real_desktop -- --ignored --nocapture
-      - task: screenbound:probe
+      - cargo test -p screenbound-module -- --ignored --nocapture
 
   ci:
     desc: CI for every app and shared crate
     cmds:
       - task: crates
-      - task: screenbound:ci
-      - task: desqu:ci
-      - task: vials:ci
-      - task: workspaces:ci
+      - task: gpui:ci
       - task: browser:ci

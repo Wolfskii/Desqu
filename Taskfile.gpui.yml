@@ -1,0 +1,65 @@
+version: "3"
+
+# The GPUI apps (Rust, no WebView). Each is its own cargo workspace under apps/<name>-gpui.
+# Run from the repo root as `task gpui:<task>`. The first build compiles GPUI and takes a few minutes.
+
+tasks:
+  desqu:
+    aliases: [dev]
+    desc: Run Desqu with its apps locally, no install (it starts the apps that are on)
+    interactive: true
+    cmds:
+      - cargo build --release --manifest-path apps/vials-gpui/Cargo.toml
+      - cargo build --release --manifest-path apps/workspaces-gpui/Cargo.toml
+      - cargo build --release --manifest-path apps/screenbound-gpui/Cargo.toml
+      - cargo build --release --manifest-path apps/desqu-gpui/Cargo.toml
+      # Desqu starts the modules from the folder it runs in, so put them next to it (build output, not tracked).
+      - pwsh -NoProfile -File scripts/stage-gpui-modules.ps1
+      - apps/desqu-gpui/target/release/desqu-gpui.exe
+
+  vials:
+    desc: Run Vials (GPUI) on your real desktop (hides vial items there; they come back on quit)
+    dir: apps/vials-gpui
+    interactive: true
+    cmds:
+      - cargo run --release -- --live
+
+  workspaces:
+    desc: Run Workspaces (GPUI)
+    dir: apps/workspaces-gpui
+    interactive: true
+    cmds:
+      - cargo run --release
+
+  screenbound:
+    desc: Run Screenbound (GPUI)
+    dir: apps/screenbound-gpui
+    interactive: true
+    cmds:
+      - cargo run --release
+
+  test:
+    desc: Unit tests for every GPUI app and its crates
+    cmds:
+      - for: [vials-gpui, workspaces-gpui, screenbound-gpui, desqu-gpui]
+        cmd: cargo test --release --manifest-path apps/{{.ITEM}}/Cargo.toml
+      - cargo test --release -p vials-core -p vials-platform -p workspaces-core -p screenbound-module
+
+  lint:
+    desc: Clippy for every GPUI app
+    cmds:
+      - for: [vials-gpui, workspaces-gpui, screenbound-gpui, desqu-gpui]
+        cmd: cargo clippy --release --all-targets --manifest-path apps/{{.ITEM}}/Cargo.toml
+
+  ci:
+    desc: Unit tests and clippy for every GPUI app and its crates
+    cmds:
+      - task: test
+      - task: lint
+
+  package:
+    desc: "Build an installer: task gpui:package APP=vials|workspaces|screenbound|desqu"
+    requires:
+      vars: [APP]
+    cmds:
+      - pwsh scripts/package-gpui-app.ps1 -App {{.APP}}

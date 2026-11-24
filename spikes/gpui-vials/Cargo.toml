@@ -1,0 +1,22 @@
+[package]
+name = "gpui-vials-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone: not part of the Desqu workspace, so it cannot affect the real builds.
+[workspace]
+
+[dependencies]
+gpui = "0.2.2"
+raw-window-handle = "0.6"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = ["Win32_Foundation", "Win32_Graphics_Dwm"]
