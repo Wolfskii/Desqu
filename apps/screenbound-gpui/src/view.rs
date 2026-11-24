@@ -301,6 +301,7 @@ impl Render for ScreenboundView {
         }));
 
         let expanded = self.expanded.clone();
+        let games_alone = snap.config.as_ref().is_none_or(|c| c.leave_games_alone);
         // The hotkey that snaps the window you are working in into the zone.
         let current_hotkey = snap.config.as_ref().map(|c| c.zone_hotkey.clone()).unwrap_or_default();
         let hotkeys = div().flex().flex_wrap().gap_1().children([("Off", ""), ("Ctrl+Alt+Z", "ctrl+alt+z"), ("Win+Shift+Z", "win+shift+z"), ("Ctrl+Alt+Space", "ctrl+alt+space")].into_iter().enumerate().map(
@@ -415,6 +416,15 @@ impl Render for ScreenboundView {
             .child(presets)
             .child(section("Hotkey: put the window in front into the zone"))
             .child(hotkeys)
+            .child(div().flex().items_center().gap_2().child(
+                button(if games_alone { "On" } else { "Off" }, games_alone).id("games").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.rt.change(move |c| {
+                        c.leave_games_alone = !games_alone;
+                        true
+                    });
+                    cx.notify();
+                })),
+            ).child(div().text_sm().child("Leave games in exclusive fullscreen alone")))
             .child(section("Apps that stay inside the zone"))
             .child(
                 div()

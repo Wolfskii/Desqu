@@ -539,6 +539,10 @@ impl Engine {
         let Ok(identity) = self.platform.identity(id) else {
             return;
         };
+        // A game in exclusive fullscreen owns the screen: nothing is done to its window.
+        if self.config.leave_games_alone && self.platform.exclusive_fullscreen_game() {
+            return;
+        }
         // A window with a fullscreen rule belongs to the zone feature; borderless handles the rest.
         let Some(rule) = self.config.match_fullscreen_rule(&identity) else {
             self.try_borderless(id, identity);

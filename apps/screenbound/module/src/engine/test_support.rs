@@ -82,6 +82,8 @@ pub(crate) struct FakePlatform {
     pub monitors: Vec<MonitorInfo>,
     pub bounds_log: Mutex<Vec<Rect>>,
     pub region_log: Mutex<Vec<Option<Rect>>>,
+    /// Whether a game runs in exclusive fullscreen.
+    pub game: std::sync::atomic::AtomicBool,
 }
 
 impl FakePlatform {
@@ -171,6 +173,9 @@ impl PlatformWindowManager for FakePlatform {
     }
     fn foreground_window(&self) -> Option<WindowId> {
         *self.foreground.lock().unwrap()
+    }
+    fn exclusive_fullscreen_game(&self) -> bool {
+        self.game.load(std::sync::atomic::Ordering::Relaxed)
     }
     fn set_region(&self, _: WindowId, region: Option<Rect>) -> PlatformResult<()> {
         self.region_log.lock().unwrap().push(region);

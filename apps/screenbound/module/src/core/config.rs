@@ -22,6 +22,9 @@ pub struct AppConfig {
     /// How entering and leaving the zone is animated.
     #[serde(default)]
     pub transition: TransitionSpeed,
+    /// A game in exclusive fullscreen is left alone: its window is never moved or resized.
+    #[serde(default = "default_true")]
+    pub leave_games_alone: bool,
     /// A global hotkey (`ctrl+alt+z`) that puts the window you are working in into the zone; empty is off.
     #[serde(default)]
     pub zone_hotkey: String,
@@ -79,6 +82,7 @@ impl Default for AppConfig {
             version: CONFIG_VERSION,
             enabled: true,
             transition: TransitionSpeed::default(),
+            leave_games_alone: true,
             zone_hotkey: String::new(),
             legacy_start_at_boot: None,
             zones: vec![Zone {

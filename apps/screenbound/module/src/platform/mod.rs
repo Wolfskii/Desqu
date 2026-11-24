@@ -114,6 +114,12 @@ pub trait PlatformWindowManager: Send + Sync {
     /// The window the user is working in, if any. A browser asks for fullscreen from the foreground.
     fn foreground_window(&self) -> Option<WindowId>;
 
+    /// A game is running in exclusive fullscreen (Windows' "running D3D full screen" state). Such a game owns the
+    /// screen: moving its window only makes trouble.
+    fn exclusive_fullscreen_game(&self) -> bool {
+        false
+    }
+
     /// Clips the window to `region` (pixels relative to the window), or lifts the clip with `None`.
     fn set_region(&self, window: WindowId, region: Option<Rect>) -> PlatformResult<()>;
 
