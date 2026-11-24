@@ -9,7 +9,7 @@ const ICONS: [(&str, &[u8]); 6] = [
     ("icons/house.svg", include_bytes!("../assets/icons/house.svg")),
     ("icons/settings.svg", include_bytes!("../assets/icons/settings.svg")),
     ("icons/scan.svg", include_bytes!("../assets/icons/scan.svg")),
-    ("icons/layout-grid.svg", include_bytes!("../assets/icons/layout-grid.svg")),
+    ("icons/flask-round.svg", include_bytes!("../assets/icons/flask-round.svg")),
     ("icons/layers.svg", include_bytes!("../assets/icons/layers.svg")),
     ("icons/chevron-right.svg", include_bytes!("../assets/icons/chevron-right.svg")),
 ];

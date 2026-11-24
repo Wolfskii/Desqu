@@ -25,7 +25,7 @@ impl Kind {
     /// The app's icon (a Lucide icon built into the program).
     pub fn icon(self) -> &'static str {
         match self {
-            Kind::Vials => "icons/layout-grid.svg",
+            Kind::Vials => "icons/flask-round.svg",
             Kind::Workspaces => "icons/layers.svg",
             Kind::Screenbound => "icons/scan.svg",
         }
