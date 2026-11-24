@@ -34,7 +34,7 @@ New-Item -ItemType Directory $root | Out-Null
 foreach ($k in $exes.Keys) { Copy-Item $exes[$k] (Join-Path $root (Split-Path $exes[$k] -Leaf)) }
 $env:APPDATA = Join-Path $root 'appdata'
 New-Item -ItemType Directory (Join-Path $env:APPDATA 'io.github.wolfskii.desqu'), (Join-Path $env:APPDATA 'io.github.wolfskii.screenbound') | Out-Null
-@{ vials = $false; workspaces = $true; screenbound = $true } | ConvertTo-Json | Set-Content (Join-Path $env:APPDATA 'io.github.wolfskii.desqu\gpui-shell.json') -Encoding utf8
+@{ vials = $false; workspaces = $true; screenbound = $true; workspacesStartWithSystem = $true; screenboundStartWithSystem = $true } | ConvertTo-Json | Set-Content (Join-Path $env:APPDATA 'io.github.wolfskii.desqu\gpui-shell.json') -Encoding utf8
 @{ version = 1; enabled = $false; zones = @(@{ id = 'z'; name = 'Zone'; rect = @{ x = 0; y = 0; width = 0.75; height = 1 } }); rules = @(); browser = @{ integrationEnabled = $false } } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:APPDATA 'io.github.wolfskii.screenbound\config.json') -Encoding utf8
 $desqu = Join-Path $root 'desqu-gpui.exe'
 function Running($name) { @(Get-Process $name -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root*" }).Count }
@@ -56,10 +56,10 @@ try {
         [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($r[0], $r[1], 0, 0, $bmp.Size)
         $bmp.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)
     }
-    # Client coordinates (620 x 560): the Off/On toggles of the three cards, from the top: Vials, Workspaces, Screenbound.
+    # Client coordinates (1100 x 760, two card columns): Screenbound and Vials in the first row, Workspaces below.
     function Click($x, $y) { [D]::Msg($win, 0x0201, 1, $x, $y); Start-Sleep -Milliseconds 100; [D]::Msg($win, 0x0202, 0, $x, $y); Start-Sleep 1 }
     if ($true) {
-        $t = @(560, 265)   # client x, y of the Workspaces toggle
+        $t = @(605, 267)   # client x, y of the Workspaces on switch
         Click $t[0] $t[1]; Start-Sleep 8
         $res.workspacesStoppedWhenOff = (Running 'workspaces-gpui') -eq 0
         Click $t[0] $t[1]; Start-Sleep 5

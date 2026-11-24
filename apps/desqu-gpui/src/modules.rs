@@ -10,7 +10,8 @@ pub enum Kind {
     Screenbound,
 }
 
-pub const ALL: [Kind; 3] = [Kind::Vials, Kind::Workspaces, Kind::Screenbound];
+/// In the order the window lists them.
+pub const ALL: [Kind; 3] = [Kind::Screenbound, Kind::Vials, Kind::Workspaces];
 
 impl Kind {
     pub fn name(self) -> &'static str {
@@ -23,9 +24,9 @@ impl Kind {
 
     pub fn description(self) -> &'static str {
         match self {
-            Kind::Vials => "Desktop containers for shortcuts, apps and folders",
-            Kind::Workspaces => "Desktop icons that belong to a virtual desktop",
-            Kind::Screenbound => "Keeps fullscreen apps inside a zone of your monitor",
+            Kind::Vials => "Fences-style containers on your desktop: drag a box or right-click the desktop to create one, drag icons in and out, optional auto-sort rules.",
+            Kind::Workspaces => "Tie desktop shortcuts, files and folders to a virtual desktop so each desktop shows only its own.",
+            Kind::Screenbound => "Keep fullscreen windows inside a zone of your monitor instead of covering all of it.",
         }
     }
 
@@ -65,7 +66,7 @@ impl Kind {
     }
 }
 
-/// Saved in the user's config folder: which modules are on.
+/// Saved in the user's config folder: which modules are on, and which of those start at sign-in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -75,6 +76,20 @@ pub struct Settings {
     pub workspaces: bool,
     #[serde(default)]
     pub screenbound: bool,
+    #[serde(default)]
+    pub vials_start_with_system: bool,
+    #[serde(default)]
+    pub workspaces_start_with_system: bool,
+    #[serde(default)]
+    pub screenbound_start_with_system: bool,
+}
+
+/// The "start all apps with system" switch: over the apps that are on, some may start and some not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriState {
+    On,
+    Off,
+    Mixed,
 }
 
 impl Settings {
@@ -86,12 +101,72 @@ impl Settings {
         }
     }
 
+    /// Whether the module starts at sign-in. Only a module that is on can.
+    pub fn start_with_system(&self, kind: Kind) -> bool {
+        self.enabled(kind)
+            && match kind {
+                Kind::Vials => self.vials_start_with_system,
+                Kind::Workspaces => self.workspaces_start_with_system,
+                Kind::Screenbound => self.screenbound_start_with_system,
+            }
+    }
+
+    fn start_flag(&mut self, kind: Kind) -> &mut bool {
+        match kind {
+            Kind::Vials => &mut self.vials_start_with_system,
+            Kind::Workspaces => &mut self.workspaces_start_with_system,
+            Kind::Screenbound => &mut self.screenbound_start_with_system,
+        }
+    }
+
+    /// Turns a module on or off. Turning it off also clears its "start with system".
     pub fn set(&mut self, kind: Kind, on: bool) {
         match kind {
             Kind::Vials => self.vials = on,
             Kind::Workspaces => self.workspaces = on,
             Kind::Screenbound => self.screenbound = on,
         }
+        *self.start_flag(kind) &= on;
+    }
+
+    /// Sets "start with system" for one module. Refused (false) for a module that is off.
+    pub fn set_start_with_system(&mut self, kind: Kind, value: bool) -> bool {
+        if value && !self.enabled(kind) {
+            return false;
+        }
+        *self.start_flag(kind) = value;
+        true
+    }
+
+    /// Sets "start with system" for every module that is on (turning it off applies to all).
+    pub fn set_all_start_with_system(&mut self, value: bool) {
+        for kind in ALL {
+            let on = self.enabled(kind);
+            *self.start_flag(kind) = value && on;
+        }
+    }
+
+    pub fn all_start(&self) -> TriState {
+        let on: Vec<Kind> = ALL.into_iter().filter(|k| self.enabled(*k)).collect();
+        let starting = on.iter().filter(|k| self.start_with_system(**k)).count();
+        if on.is_empty() || starting == 0 {
+            TriState::Off
+        } else if starting == on.len() {
+            TriState::On
+        } else {
+            TriState::Mixed
+        }
+    }
+
+    /// Desqu itself starts with Windows only when at least one module wants to.
+    pub fn should_autostart(&self) -> bool {
+        ALL.into_iter().any(|k| self.start_with_system(k))
+    }
+
+    /// Which modules start when Desqu launches: from sign-in only those marked "start with system";
+    /// a launch by hand starts everything that is on.
+    pub fn to_start(&self, autostart_launch: bool) -> Vec<Kind> {
+        ALL.into_iter().filter(|k| self.enabled(*k) && (!autostart_launch || self.start_with_system(*k))).collect()
     }
 
     pub fn load(path: &std::path::Path) -> Self {
@@ -122,6 +197,38 @@ mod tests {
         assert!(!Kind::Workspaces.start_args().contains(&"--live"));
         assert_eq!(Kind::Vials.open_action(), "settings");
         assert_eq!(Kind::Screenbound.open_action(), "show");
+    }
+
+    #[test]
+    fn start_with_system_follows_the_rules_of_the_old_desqu() {
+        let mut s = Settings::default();
+        assert!(!s.set_start_with_system(Kind::Vials, true), "an app that is off cannot start with Windows");
+        assert!(!s.should_autostart() && s.all_start() == TriState::Off);
+
+        s.set(Kind::Vials, true);
+        s.set(Kind::Screenbound, true);
+        assert!(s.set_start_with_system(Kind::Vials, true));
+        assert_eq!(s.all_start(), TriState::Mixed);
+        assert!(s.should_autostart());
+        assert_eq!(s.to_start(true), vec![Kind::Vials], "from sign-in: only the ones marked");
+        assert_eq!(s.to_start(false), vec![Kind::Screenbound, Kind::Vials], "by hand: everything that is on");
+
+        s.set_all_start_with_system(true);
+        assert_eq!(s.all_start(), TriState::On);
+        assert!(!s.start_with_system(Kind::Workspaces), "the master switch skips apps that are off");
+
+        s.set(Kind::Vials, false);
+        s.set(Kind::Vials, true);
+        assert!(!s.start_with_system(Kind::Vials), "turning an app off clears its start with system");
+
+        s.set_all_start_with_system(false);
+        assert!(!s.should_autostart() && s.all_start() == TriState::Off);
+    }
+
+    #[test]
+    fn an_older_settings_file_still_loads() {
+        let old: Settings = serde_json::from_str(r#"{"vials":true,"workspaces":false,"screenbound":true}"#).unwrap();
+        assert!(old.enabled(Kind::Vials) && old.enabled(Kind::Screenbound) && !old.should_autostart());
     }
 
     #[test]

@@ -60,11 +60,12 @@ fn main() {
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).unwrap_or_default();
     let settings_path = config_dir().join("gpui-shell.json");
     let shell = Arc::new(Shell { supervisor: Arc::new(Supervisor::new(&exe_dir)), settings_path: settings_path.clone(), settings: Mutex::new(Settings::load(&settings_path)) });
-    // The modules that are on start with Desqu.
+    // The modules that are on start with Desqu (from sign-in: only those marked "start with system").
     {
         let (supervisor, settings) = (shell.supervisor.clone(), shell.settings.lock().unwrap_or_else(|e| e.into_inner()).clone());
+        view::sync_autostart(&settings);
         std::thread::spawn(move || {
-            for kind in ALL.into_iter().filter(|k| settings.enabled(*k)) {
+            for kind in settings.to_start(autostarted) {
                 if let Err(e) = supervisor.start(kind) {
                     eprintln!("{e}");
                 }
