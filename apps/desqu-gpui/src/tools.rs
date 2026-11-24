@@ -54,6 +54,8 @@ pub struct Tools {
     /// Windows that were pinned by the hotkey (so they can be let go when the tool is turned off).
     pinned: HashSet<isize>,
     awake: Option<(bool, win::KeepAwake)>,
+    /// Window layouts, while the tool is on.
+    layouts: Option<crate::windowlayout::WindowLayouts>,
     /// The last theme the schedule put on, so the user's own change in between is not undone every minute.
     last_scheduled: Option<bool>,
 }
@@ -77,6 +79,15 @@ impl Tools {
             if self.pin_key.is_none() {
                 self.unpin_all();
             }
+        }
+        // Window layouts: looks at the screens about every second.
+        match (s.tool_layouts, self.layouts.is_some()) {
+            (true, false) => self.layouts = Some(crate::windowlayout::WindowLayouts::new()),
+            (false, true) => self.layouts = None,
+            _ => {}
+        }
+        if let Some(layouts) = self.layouts.as_mut() {
+            layouts.tick();
         }
         // Keep awake.
         match (s.tool_keep_awake, self.awake.as_ref().map(|a| a.0)) {

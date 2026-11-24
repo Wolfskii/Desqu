@@ -82,7 +82,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 | ID | Status | Item | Size | Reuses |
 |---|---|---|---|---|
-| P4-01 | [ ] | Window layouts: remember and restore window places after dock, undock, wake | M | Screenbound engine |
+| P4-01 | [x] | Window layouts: remember and restore window places after dock, undock, wake | M | Screenbound engine |
 | P4-02 | [x] | Always on top (hotkey, border) | S | Screenbound engine |
 | P4-03 | [ ] | Folder rules: Downloads and other folders sort themselves | M | vials-core rules |
 | P4-04 | [x] | Auto dark mode on a schedule or at sunset | S | |
@@ -105,6 +105,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P4-01 window layouts (Tools page): the places of the ordinary windows are written down every 20 s for the screen setup you have (monitor names, sizes, arrangement); when the setup changes and settles (3 s), the windows of the new setup go back to where they were (matched by program, kind and title; maximized and minimized windows follow their monitor by themselves). "Remember them now" / "Put them back now" buttons and two palette commands. Tests: the matching (by title first, once each, ones in place left alone) and the store; the real windows and screens were read once (11 windows, 3 monitors). Hand test: really docking and undocking.
 - P4-04 light and dark by the clock: a switch and times (light from 5-9, dark from 17-22) on the Tools page; Windows and its apps switch at those times and a change by hand stays until the next switch. A fixed clock, not sunrise and sunset (that would need a place). Tests for the schedule and the time reading. Hand test: the switch itself changes your theme.
 - P4-05 keep awake: a switch (and a second one for the screen) on the Tools page keeps the PC from sleeping; test that it starts and ends cleanly. Hand test: leave the PC alone and see it stays awake.
 - P4-02 always on top (a tool built into Desqu, on the new Tools page; see the note under Phase 4): a hotkey (off; Ctrl+Alt+T or Win+Shift+T) pins the window in front above all others with a thin blue border (Windows 11), and lets it go on the next press or when the tool is turned off. Listed in the hotkey list. Hand test: the pin and the border.

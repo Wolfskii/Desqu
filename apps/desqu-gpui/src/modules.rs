@@ -93,6 +93,9 @@ pub struct Settings {
     /// Always on top: the hotkey that pins the window in front (empty: the tool is off).
     #[serde(default)]
     pub tool_pin_hotkey: String,
+    /// Window layouts: the windows are put back where they were after the screens change.
+    #[serde(default)]
+    pub tool_layouts: bool,
     /// Keep awake: the PC does not go to sleep (and, with the second switch, the screen stays on).
     #[serde(default)]
     pub tool_keep_awake: bool,

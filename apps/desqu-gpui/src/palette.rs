@@ -22,6 +22,8 @@ pub enum Action {
     GoToDesktop(usize),
     SaveReport,
     BackUp,
+    SaveLayout,
+    RestoreLayout,
     Quit,
     OpenItem(String),
 }
@@ -68,6 +70,8 @@ pub fn builtin(is_on: impl Fn(Kind) -> bool, desktops: usize) -> Vec<Command> {
     for n in 0..desktops.min(9) {
         out.push(cmd(format!("Go to desktop {}", n + 1), "Workspaces", Action::GoToDesktop(n)));
     }
+    out.push(cmd("Remember the window places", "layouts", Action::SaveLayout));
+    out.push(cmd("Put the windows back", "layouts", Action::RestoreLayout));
     out.push(cmd("Save a report", "help", Action::SaveReport));
     out.push(cmd("Back up the settings", "settings", Action::BackUp));
     out.push(cmd("Quit Desqu", "Desqu", Action::Quit));
@@ -391,6 +395,14 @@ fn run(cx: &mut App, shell: &Arc<Shell>, action: Action) {
             let also = shell.settings.lock().unwrap_or_else(|e| e.into_inner()).backup_onedrive;
             std::thread::spawn(move || {
                 let _ = crate::backup::back_up(&crate::backup::Paths::real(), also);
+            });
+        }
+        Action::SaveLayout => {
+            std::thread::spawn(|| crate::windowlayout::WindowLayouts::new().save_now());
+        }
+        Action::RestoreLayout => {
+            std::thread::spawn(|| {
+                let _ = crate::windowlayout::WindowLayouts::new().restore_now();
             });
         }
         Action::Quit => cx.quit(),

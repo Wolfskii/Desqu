@@ -1097,6 +1097,29 @@ impl DesquView {
             .max_w(px(760.))
             .child(heading(t("Tools")))
             .child(dim("Small tools that run inside Desqu. Each one is off until you turn it on."))
+            .child(
+                card()
+                    .child(card_title("Window layouts"))
+                    .child(dim("Remembers where your windows are for the screens you have now. Dock, undock or wake a monitor and they go back to where they were the last time the screens were like this."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("layouts", s.tool_layouts, cx, |s, v| s.tool_layouts = v)).child(div().child("Keep and restore window places")))
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .child(button("layout-save", "Remember them now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                std::thread::spawn(|| crate::windowlayout::WindowLayouts::new().save_now());
+                                this.note = "Window places saved".into();
+                                cx.notify();
+                            })))
+                            .child(button("layout-restore", "Put them back now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                std::thread::spawn(|| {
+                let _ = crate::windowlayout::WindowLayouts::new().restore_now();
+            });
+                                this.note = "Putting the windows back".into();
+                                cx.notify();
+                            }))),
+                    ),
+            )
             .child(card().child(card_title("Always on top")).child(dim("A hotkey keeps the window in front above all others, with a thin blue border; press it again to let it go.")).child(pin))
             .child(
                 card()
