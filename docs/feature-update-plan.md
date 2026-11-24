@@ -54,7 +54,7 @@ progress log in the same commit as the work.
 | P2-08 | [x] | Note and link items | M | |
 | P2-09 | [x] | Wallpaper-derived vial colour | M | |
 | P2-10 | [x] | Workspaces: startup sets per desktop | M | |
-| P2-11 | [ ] | Workspaces: wallpaper per desktop (Windows 10) | M | |
+| P2-11 | [x] | Workspaces: wallpaper per desktop (Windows 10) | M | |
 | P2-12 | [ ] | Screenbound: zone per app or group, several zones per monitor | M | |
 | P2-13 | [ ] | Screenbound: zones per screen setup | M | |
 | P2-14 | [ ] | Desqu: hotkey manager with clash warnings | M | |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P2-11 wallpaper per desktop: each desktop card on the Workspaces page can keep "my wallpaper now" (the picture Windows shows when you press the button) and puts it on when you switch to the desktop; "Remove" takes it away. Off unless used, so Windows 11's own per-desktop backgrounds are not touched by default. Tests for the config; setting a wallpaper is not run in tests (it would change yours). Hand test: on Windows 10; on Windows 11 check that it does not clash with its own setting.
 - P2-10 startup sets: each desktop card on the Workspaces page has a switch "Open its apps and folders the first time I come here"; the first time you switch to such a desktop in a session its items (up to 8; not vials or system items) are opened with Explorer, one every 0.4 s. Tests for the choice, the limit and the once-per-session rule. Hand test: with real desktops.
 - P2-09 colour from the wallpaper: setting "Colour from the wallpaper" (off by default) gives the panels half the strength of the wallpaper's average colour (a vial with its own colour keeps it; Liquid has no panel). Looked at every ten seconds off the UI thread. Tests: the average and the shading; real wallpaper read once (average 28322a, panel 141915 here). Hand test: how it looks.
 - P2-08 notes and links: "New notes vial here" makes a portal over a folder of the program (APPDATA/.../notes); in it "New note" makes and opens an empty text file, "New link from the clipboard" (shown when a web address is on the clipboard) makes a .url file named after the site. They are plain files: they open in the default program and drag out like any file. Tests for the helpers and for new notes. Hand test: the clipboard read and the opening.

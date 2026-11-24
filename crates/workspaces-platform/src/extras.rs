@@ -356,6 +356,41 @@ pub fn make_overlay(hwnd: isize) {
     }
 }
 
+// ------------------------------------------------------------------------------------ wallpaper
+
+/// The picture file of the wallpaper Windows shows now, from the registry. `None` for a plain colour.
+pub fn current_wallpaper() -> Option<String> {
+    use ::windows::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_SZ};
+    let mut buf = [0u16; 520];
+    let mut len = (buf.len() * 2) as u32;
+    // SAFETY: the buffer outlives the call and `len` is its size in bytes.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Control Panel\\Desktop"),
+            w!("WallPaper"),
+            RRF_RT_REG_SZ,
+            None,
+            Some(buf.as_mut_ptr() as *mut std::ffi::c_void),
+            Some(&mut len),
+        )
+    };
+    if status.0 != 0 {
+        return None;
+    }
+    let n = (len as usize / 2).saturating_sub(1).min(buf.len());
+    let path = String::from_utf16_lossy(&buf[..n]);
+    (!path.is_empty()).then_some(path)
+}
+
+/// Puts a picture on as the wallpaper (and keeps it for the next sign-in).
+pub fn set_wallpaper(path: &str) -> Result<(), String> {
+    use ::windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SPI_SETDESKWALLPAPER};
+    let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: `wide` is a NUL-terminated string that outlives the call.
+    unsafe { SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, Some(wide.as_ptr() as *mut std::ffi::c_void), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE) }.map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

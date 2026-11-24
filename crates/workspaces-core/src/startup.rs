@@ -27,7 +27,7 @@ mod tests {
     use super::*;
 
     fn ws(on: bool, items: &[&str]) -> Workspace {
-        Workspace { desktop_id: "{A}".into(), name: "Work".into(), items: items.iter().map(|s| s.to_string()).collect(), open_on_visit: on }
+        Workspace { desktop_id: "{A}".into(), name: "Work".into(), items: items.iter().map(|s| s.to_string()).collect(), open_on_visit: on, wallpaper: None }
     }
 
     #[test]

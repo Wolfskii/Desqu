@@ -147,6 +147,13 @@ fn main() {
                                 }
                             }
                         }
+                        tray::Event::Action(name) if name.starts_with("wallpaper:") => {
+                            if let Some((desktop, what)) = name.trim_start_matches("wallpaper:").rsplit_once(':') {
+                                if let Err(e) = engine.set_desktop_wallpaper(desktop, what == "keep") {
+                                    eprintln!("wallpaper of {desktop}: {e}");
+                                }
+                            }
+                        }
                         tray::Event::Action(name) if name.starts_with("release-desktop:") => {
                             engine.release_desktop(name.trim_start_matches("release-desktop:"));
                         }

@@ -24,6 +24,9 @@ pub struct Workspace {
     /// The first time you come to this desktop in a session, its apps and folders are opened.
     #[serde(default)]
     pub open_on_visit: bool,
+    /// A wallpaper picture for this desktop (a file); it is put on when you come here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallpaper: Option<String>,
 }
 
 impl Workspace {
@@ -33,6 +36,7 @@ impl Workspace {
             name: name.to_string(),
             items: Vec::new(),
             open_on_visit: false,
+            wallpaper: None,
         }
     }
 }
@@ -193,6 +197,23 @@ impl WorkspacesConfig {
         }
     }
 
+    /// Gives a desktop a wallpaper (or with `None` takes it away). Returns whether anything changed.
+    pub fn set_wallpaper(&mut self, desktop: (&str, &str), path: Option<&str>) -> bool {
+        if !self.workspaces.iter().any(|w| w.desktop_id == desktop.0) {
+            if path.is_none() {
+                return false;
+            }
+            self.workspaces.push(Workspace::new(desktop.0, desktop.1));
+        }
+        match self.workspaces.iter_mut().find(|w| w.desktop_id == desktop.0) {
+            Some(ws) if ws.wallpaper.as_deref() != path => {
+                ws.wallpaper = path.map(str::to_string);
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn remove_workspace(&mut self, desktop_id: &str) -> bool {
         let before = self.workspaces.len();
         self.workspaces.retain(|w| w.desktop_id != desktop_id);
@@ -247,6 +268,17 @@ impl WorkspacesConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_desktop_can_have_a_wallpaper_and_lose_it_again() {
+        let mut cfg = WorkspacesConfig::default();
+        assert!(!cfg.set_wallpaper((ID, "Work"), None), "nothing to take away");
+        assert!(cfg.set_wallpaper((ID, "Work"), Some(r"C:\Pictures\work.jpg")));
+        assert_eq!(cfg.workspace(ID).unwrap().wallpaper.as_deref(), Some(r"C:\Pictures\work.jpg"));
+        assert!(!cfg.set_wallpaper((ID, "Work"), Some(r"C:\Pictures\work.jpg")));
+        assert!(cfg.set_wallpaper((ID, "Work"), None));
+        assert!(cfg.workspace(ID).unwrap().wallpaper.is_none());
+    }
+
     #[test]
     fn the_open_on_visit_choice_makes_a_workspace_and_an_old_config_has_it_off() {
         let mut cfg = WorkspacesConfig::default();

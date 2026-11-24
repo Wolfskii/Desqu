@@ -655,6 +655,40 @@ impl DesquView {
                                 .child(dim("Open its apps and folders the first time I come here")),
                         )
                     })
+                    .when(!c.removed, |d| {
+                        let desktop = c.id.clone();
+                        let (has, label) = match &c.wallpaper {
+                            Some(path) => (true, format!("Wallpaper: {}", path.rsplit(['\\', '/']).next().unwrap_or(path))),
+                            None => (false, "No wallpaper of its own".to_string()),
+                        };
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .child(dim(label).flex_1())
+                                .child({
+                                    let desktop = desktop.clone();
+                                    button(SharedString::from(format!("wp-keep-{desktop}")), "Use my wallpaper now", true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                        if let Err(e) = crate::workspaces_page::set_wallpaper(this.workspaces_running(), &desktop, true) {
+                                            this.note = e;
+                                        }
+                                        this.refresh_soon(cx);
+                                    }))
+                                })
+                                .when(has, |d| {
+                                    d.child(button(SharedString::from(format!("wp-clear-{}", c.id)), "Remove", true).on_click({
+                                        let desktop = c.id.clone();
+                                        cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                            if let Err(e) = crate::workspaces_page::set_wallpaper(this.workspaces_running(), &desktop, false) {
+                                                this.note = e;
+                                            }
+                                            this.refresh_soon(cx);
+                                        })
+                                    }))
+                                }),
+                        )
+                    })
                     .when(c.removed, |d| d.child(dim("This desktop no longer exists, so its items are shown everywhere again.")))
                     .when(!c.removed && count == 0, |d| d.child(dim("Nothing is tied to this desktop yet. Click an item below to tie it here.")))
                     .when(count > 0, |d| d.child(div().flex().flex_wrap().gap(px(6.)).children(c.items.iter().take(40).map(|i| self.item_chip(i, cx))))),

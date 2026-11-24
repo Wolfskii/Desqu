@@ -247,6 +247,13 @@ impl Engine {
         Ok(self.change(|c| c.set_open_on_visit((&id, &name), on)))
     }
 
+    /// "Use the wallpaper I have now for this desktop" (`keep`), or take the desktop's wallpaper away.
+    pub fn set_desktop_wallpaper(&self, desktop_id: &str, keep: bool) -> Result<bool, String> {
+        let (id, name) = self.desktop_named(desktop_id)?;
+        let path = if keep { Some(workspaces_platform::current_wallpaper().ok_or("the wallpaper is a plain colour, not a picture")?) } else { None };
+        Ok(self.change(|c| c.set_wallpaper((&id, &name), path.as_deref())))
+    }
+
     pub fn set_show_name(&self, on: bool) -> bool {
         self.change(|c| {
             let changed = c.show_name != on;
@@ -537,6 +544,14 @@ impl Engine {
             // The first time you come to a desktop that asks for it, its apps and folders are opened.
             if before.as_deref().is_some_and(|b| b != cur) {
                 let config = self.config();
+                // A desktop with a wallpaper of its own puts it on.
+                if let Some(path) = config.workspace(cur).and_then(|w| w.wallpaper.clone()).filter(|p| Path::new(p).is_file()) {
+                    std::thread::spawn(move || {
+                        if let Err(e) = workspaces_platform::set_wallpaper(&path) {
+                            eprintln!("could not set the wallpaper: {e}");
+                        }
+                    });
+                }
                 if startup::first_visit(&mut lock(&self.opened), config.workspace(cur)) {
                     let items = config.workspace(cur).map(startup::items_to_open).unwrap_or_default();
                     std::thread::spawn(move || {
