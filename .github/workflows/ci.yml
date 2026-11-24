@@ -41,6 +41,12 @@ jobs:
         shell: pwsh
         run: ./scripts/check-standalone-deps.ps1
 
+      # The old Tauri apps bundle the browser host as a sidecar and refuse to build without its file. `task ci`
+      # no longer runs their own checks (which made it), so make it here.
+      - name: Build the browser host sidecar
+        shell: pwsh
+        run: ./scripts/prepare-browser-host.ps1
+
       # Each app must build on its own, not only as part of the whole workspace.
       - name: Build every app separately
         shell: pwsh
