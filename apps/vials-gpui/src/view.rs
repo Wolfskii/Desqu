@@ -358,9 +358,17 @@ impl VialView {
     fn drop_paths(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
         let Some(live) = &self.live else { return };
         let paths: Vec<String> = paths.paths().iter().map(|p| p.to_string_lossy().into_owned()).collect();
-        if live.engine.drop_items(&live.vial_id, &paths) {
-            self.announce(cx);
-        }
+        // Never work inside the drop itself: Explorer's drag loop waits for this call to return, and
+        // asking Explorer for its items (or marking files) from in here deadlocks it with several
+        // items. Return at once and do the work afterwards, off the UI thread.
+        let (engine, vial_id) = (live.engine.clone(), live.vial_id.clone());
+        cx.spawn(async move |this, cx| {
+            let changed = cx.background_executor().spawn(async move { engine.drop_items(&vial_id, &paths) }).await;
+            if changed {
+                let _ = this.update(cx, |view, cx| view.announce(cx));
+            }
+        })
+        .detach();
     }
 
     fn remove(&mut self, id: &str, cx: &mut Context<Self>) {
