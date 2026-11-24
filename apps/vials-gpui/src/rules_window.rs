@@ -122,6 +122,11 @@ impl Render for RulesView {
             .gap_2()
             .child(div().text_lg().child("Automatic rules"))
             .child(div().text_xs().text_color(rgba(0xffffff80)).child("New desktop items go to the vial of the first rule that matches."))
+            .child(div().flex().child(button("Sort desktop items now", false).id("sort-now").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                // The same pass that runs by itself when a file appears.
+                this.engine.reconcile();
+                this.changed(cx);
+            }))))
             .child(
                 div()
                     .id("rule-list")

@@ -137,6 +137,16 @@ pub enum ItemMatcher {
     NameContains(String),
     NameStartsWith(String),
     NameEndsWith(String),
+    /// Last changed within this many days.
+    ModifiedWithinDays(u32),
+    /// Not changed for at least this many days.
+    ModifiedOlderThanDays(u32),
+    /// Created within this many days.
+    CreatedWithinDays(u32),
+    /// A file bigger than this many megabytes (folders have no size).
+    SizeOverMb(u64),
+    /// A file smaller than this many megabytes.
+    SizeUnderMb(u64),
     Any(Vec<ItemMatcher>),
     All(Vec<ItemMatcher>),
 }
