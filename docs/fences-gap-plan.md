@@ -132,3 +132,74 @@ for any logic.
 Phase 1 items 1, 2, 3 and 4 first (each small and visible), then 6 and 5. In Phase 2, Folder Portals
 (8) and search (9) together, then Peek (10), Layouts (12) and Privacy (11). Phase 3 after a release
 with Phase 1 and 2.
+
+## Beyond Fences: more ideas for the suite
+
+Ideas that build on what the apps already do (the desktop layer, the window engine, virtual desktops,
+the browser bridge, the tray). Not part of the phases above yet; pick from them after Phase 1.
+
+### Vials
+
+| Idea | What it does | Size |
+|---|---|---|
+| Undo | Ctrl+Z puts back the last move, removal, rename or delete of a vial. | M |
+| Put selection in a new vial | Select desktop icons, then the popup offers "New vial with these". | S |
+| Recent files vial | A built-in vial that lists the files you opened lately (Windows' Recent list). | M |
+| Cleanup rule | Items untouched for N days move to an "Archive" vial or folder (the Downloads mess). | M |
+| Note items | A plain text note or a web link as an item in a vial, without a file on the desktop. | M |
+| Vial actions | "Open all", "Copy paths", "Zip these" and "Move files to folder..." on a vial or a selection. | S |
+| Wallpaper colour | Vials take their tint from the wallpaper behind them (Fences calls it Chameleon). | M |
+
+### Workspaces
+
+| Idea | What it does | Size |
+|---|---|---|
+| Desktop name on switch | A short overlay with the desktop's name when you switch. | S |
+| Jump hotkeys | Win+Ctrl+1..9 goes straight to desktop N. | S |
+| Startup sets | A desktop can open a set of apps and folders the first time you go to it ("Work": VS Code, terminal, project folder). | M |
+| Wallpaper per desktop | Different wallpaper per desktop on Windows 10 too (Windows 11 has it built in). | M |
+| App always on desktop N | Moving another program's window between desktops needs Windows' undocumented COM interface, which changes between Windows builds. Only with a fallback that does nothing when the interface is not there. | L, risky |
+
+### Screenbound
+
+| Idea | What it does | Size |
+|---|---|---|
+| Zone per app or group | Different zones for different apps (games left, videos right), and more than one zone per monitor. | M |
+| Zone hotkey | A hotkey puts the focused window into the zone (or makes it borderless) without a rule. | S |
+| Zones per screen setup | Zones change by themselves when you dock, undock or plug in a monitor. | M |
+| Pause for games | Leave exclusive-fullscreen games alone automatically. | S |
+
+### Desqu itself
+
+| Idea | What it does | Size |
+|---|---|---|
+| Command palette | Alt+Space (configurable) finds vial items, apps, desktops and Desqu actions ("new vial", "go to Work desktop", "release all windows"). Ties the apps together. | L |
+| Hotkey manager | One page with every hotkey of every app, and warnings when two clash or Windows already uses one (PowerToys shows "shortcut conflicts"). | M |
+| Backup and sync | Export and import all settings as one file; optional sync through a OneDrive folder. | M |
+| One update for all | One update check and one installer run for the whole suite, with the changelog. | M |
+| Diagnostics bundle | "Save a report": logs, versions and settings (no file names unless asked) in a zip to attach to a bug. | S |
+| First-run tour | A short walk through the apps the first time Desqu opens. | M |
+
+### New tools for Desqu
+
+Small utilities in the same spirit (the desktop and its windows), each one an app Desqu can turn on
+and off like the others.
+
+| Tool | What it does | Reuses | Size |
+|---|---|---|---|
+| Window layouts | Remembers where every window was and puts them back after you dock, undock, wake the PC or a monitor reconnects. The most common multi-monitor annoyance. | Screenbound's window engine | M |
+| Always on top | A hotkey pins the focused window above all others, with a thin coloured border so you see it. | Screenbound's window engine | S |
+| Folder rules | The Vials rules for any folder: Downloads sorts itself into subfolders by type, name, age or size. | vials-core rules | M |
+| Monitor brightness | Brightness of every monitor from the tray (DDC/CI for external ones), with a schedule. | Tray, monitor list | M |
+| Auto dark mode | Switches Windows between light and dark at set times or sunset; vials follow. | Settings plumbing | S |
+| Keep awake | Keeps the PC from sleeping for a set time or while an app runs. | Tray | S |
+| Focus dimmer | Dims everything except the active window (or the Screenbound zone) while you work. | Screenbound overlays | M |
+| Desktop notes | Sticky notes on the desktop that live with the vials, follow Workspaces and survive restarts. | Vial windows | M |
+
+### Recommended next five
+
+1. **Window layouts**: most daily value for multi-monitor users, and the engine already exists.
+2. **Command palette**: makes the suite feel like one product.
+3. **Folder rules**: the Vials rules are already written and tested; Downloads is where people need them.
+4. **Always on top**: small, often asked for, and easy to show off.
+5. **Hotkey manager**: needed anyway once Peek, the palette and the new tools add hotkeys.
