@@ -8,6 +8,7 @@
 
 mod app_settings;
 mod assets;
+mod hotkeys;
 mod modules;
 mod report;
 mod screenbound_remote;

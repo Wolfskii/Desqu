@@ -11,6 +11,7 @@ use gpui::{
     SharedString, Window, WindowBackgroundAppearance, WindowBounds, WindowOptions,
 };
 
+use screenbound_module::core::config::AppConfig;
 use crate::modules::{Kind, Settings, TriState, ALL};
 use crate::supervisor::{Status, Supervisor};
 
@@ -836,6 +837,34 @@ impl DesquView {
         .detach();
     }
 
+    /// Every hotkey the apps use, with a warning for one that is taken twice or that Windows uses.
+    fn hotkeys_card(&self) -> gpui::Div {
+        use crate::hotkeys::{check, collect, pretty, Problem};
+        let entries = collect(&crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
+        let problems = check(&entries);
+        let mut card = card().gap(px(6.)).child(card_title("Hotkeys"));
+        if entries.is_empty() {
+            return card.child(dim("No app has a hotkey on. Turn them on on the page of each app: the peek of Vials, the jump of Workspaces, the zone of Screenbound."));
+        }
+        for (entry, problem) in entries.iter().zip(problems) {
+            let keys = if entry.app == "Workspaces" { format!("{}+1 to 9", pretty(entry.keys.trim_end_matches("+1"))) } else { pretty(&entry.keys) };
+            card = card.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().flex().gap(px(8.)).child(div().w(px(110.)).font_weight(FontWeight::SEMIBOLD).child(keys)).child(div().flex_1().child(format!("{}: {}", entry.app, entry.what))))
+                    .when_some(problem, |d, p| {
+                        d.child(div().pl(px(118.)).text_size(px(12.)).text_color(rgb(WARN)).child(match p {
+                            Problem::NotAKey => "These are not keys Windows can use.".to_string(),
+                            Problem::Twice(other) => format!("The same keys as {other}: only one of them works."),
+                            Problem::Taken(by) => format!("{by}: it may not work, or it may stop that."),
+                        }))
+                    }),
+            );
+        }
+        card
+    }
+
     fn settings_page(&self, cx: &mut Context<Self>) -> gpui::Div {
         let settings = self.settings();
         let starts = settings.should_autostart();
@@ -882,6 +911,7 @@ impl DesquView {
                     .child(dim("Each app keeps its output in the logs folder, which helps when one stops unexpectedly."))
                     .child(div().flex().child(button("logs", "Open the logs folder", true).on_click(move |_, _, _| open_path(&logs)))),
             )
+            .child(self.hotkeys_card())
             .child(
                 card()
                     .gap(px(6.))
