@@ -54,6 +54,8 @@ pub struct Tools {
     /// Windows that were pinned by the hotkey (so they can be let go when the tool is turned off).
     pinned: HashSet<isize>,
     awake: Option<(bool, win::KeepAwake)>,
+    /// When the folder was last tidied by itself.
+    last_tidy: Option<std::time::Instant>,
     /// Window layouts, while the tool is on.
     layouts: Option<crate::windowlayout::WindowLayouts>,
     /// The last theme the schedule put on, so the user's own change in between is not undone every minute.
@@ -88,6 +90,16 @@ impl Tools {
         }
         if let Some(layouts) = self.layouts.as_mut() {
             layouts.tick();
+        }
+        // Tidy the folder by itself, once an hour.
+        if s.tool_tidy_auto && self.last_tidy.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(3600)) {
+            self.last_tidy = Some(std::time::Instant::now());
+            std::thread::spawn(|| {
+                let moved = crate::tidy::tidy(&crate::tidy::default_folder(), crate::tidy::SETTLED_SECS);
+                if !moved.is_empty() {
+                    crate::tidy::save_journal(&moved);
+                }
+            });
         }
         // Keep awake.
         match (s.tool_keep_awake, self.awake.as_ref().map(|a| a.0)) {

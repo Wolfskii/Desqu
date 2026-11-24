@@ -15,6 +15,7 @@ mod palette;
 mod report;
 mod screenbound_remote;
 mod supervisor;
+mod tidy;
 mod tools;
 mod windowlayout;
 mod tour;

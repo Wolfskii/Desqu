@@ -34,6 +34,11 @@ impl Kind {
         })
     }
 
+    /// The kind a file extension (lower case, no dot) belongs to, if any.
+    pub fn of_extension(ext: &str) -> Option<Kind> {
+        [Kind::Images, Kind::Documents, Kind::Videos, Kind::Audio, Kind::Archives, Kind::Programs, Kind::Shortcuts].into_iter().find(|k| k.extensions().contains(&ext))
+    }
+
     /// The file extensions of the kind (none for folders).
     fn extensions(self) -> &'static [&'static str] {
         match self {

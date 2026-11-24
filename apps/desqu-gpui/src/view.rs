@@ -1120,6 +1120,38 @@ impl DesquView {
                             }))),
                     ),
             )
+            .child(
+                card()
+                    .child(card_title("Tidy Downloads"))
+                    .child(dim("Files that have been in the Downloads folder for a quarter of an hour go into folders by kind: Images, Documents, Videos, Audio, Archives, Programs. Nothing is overwritten, folders and unfinished downloads stay, and the last tidy can be taken back."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("tidy-auto", s.tool_tidy_auto, cx, |s, v| s.tool_tidy_auto = v)).child(div().child("Tidy by itself, once an hour")))
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .child(button("tidy-now", "Tidy now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.note = "Tidying...".into();
+                                cx.notify();
+                                cx.spawn(async move |this, cx| {
+                                    let moved = cx.background_executor().spawn(async { crate::tidy::tidy(&crate::tidy::default_folder(), crate::tidy::SETTLED_SECS) }).await;
+                                    if !moved.is_empty() {
+                                        crate::tidy::save_journal(&moved);
+                                    }
+                                    let _ = this.update(cx, |view, cx| {
+                                        view.note = format!("Moved {} files", moved.len());
+                                        cx.notify();
+                                    });
+                                })
+                                .detach();
+                            })))
+                            .child(button("tidy-undo", "Undo the last tidy", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                let back = crate::tidy::undo(&crate::tidy::load_journal());
+                                crate::tidy::save_journal(&[]);
+                                this.note = format!("Put {back} files back");
+                                cx.notify();
+                            }))),
+                    ),
+            )
             .child(card().child(card_title("Always on top")).child(dim("A hotkey keeps the window in front above all others, with a thin blue border; press it again to let it go.")).child(pin))
             .child(
                 card()

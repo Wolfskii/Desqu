@@ -93,6 +93,9 @@ pub struct Settings {
     /// Always on top: the hotkey that pins the window in front (empty: the tool is off).
     #[serde(default)]
     pub tool_pin_hotkey: String,
+    /// Tidy a folder: files that have been in it a while go into folders by kind, every hour when this is on.
+    #[serde(default)]
+    pub tool_tidy_auto: bool,
     /// Window layouts: the windows are put back where they were after the screens change.
     #[serde(default)]
     pub tool_layouts: bool,
