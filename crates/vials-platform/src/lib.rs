@@ -2,6 +2,8 @@
 
 pub mod facts;
 #[cfg(windows)]
+pub mod actions;
+#[cfg(windows)]
 pub mod clipboard;
 #[cfg(windows)]
 mod drag_image;

@@ -47,7 +47,7 @@ pub struct Meta {
 pub fn file_meta(id: &str) -> Meta {
     let Ok(m) = std::fs::metadata(id) else { return Meta::default() };
     let secs = |t: std::io::Result<std::time::SystemTime>| t.ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
-    Meta { modified: secs(m.modified()), created: secs(m.created()), size: m.is_file().then(|| m.len()) }
+    Meta { modified: secs(m.modified()), created: secs(m.created()), size: m.is_file().then_some(m.len()) }
 }
 
 fn now_secs() -> u64 {

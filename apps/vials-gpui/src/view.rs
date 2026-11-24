@@ -622,6 +622,27 @@ impl VialView {
                 let _ = weak.update(cx, |view, cx| view.open_look_menu(cx));
             }));
         }
+        if !self.items.is_empty() {
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Open all", move |cx| {
+                let _ = w.update(cx, |view, _| view.open_all());
+            }));
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Copy paths", move |cx| {
+                let _ = w.update(cx, |view, _| view.copy_paths());
+            }));
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Zip to the desktop", move |cx| {
+                let _ = w.update(cx, |view, cx| view.zip_items(cx));
+            }));
+            if !vial.locked {
+                let w = weak.clone();
+                entries.push(MenuEntry::new("Move to folder...", move |cx| {
+                    let _ = w.update(cx, |view, cx| view.move_items(cx));
+                }));
+            }
+            entries.push(MenuEntry::separator());
+        }
         if live.engine.can_undo() {
             let weak = weak.clone();
             entries.push(MenuEntry::new("Undo", move |cx| {
@@ -763,6 +784,74 @@ impl VialView {
         } else if k.modifiers.control && (k.key == "c" || k.key == "x") {
             let _ = vials_platform::clipboard::put_files(&ids, k.key == "x");
         }
+    }
+
+    /// The vial's items that exist (a path that is gone cannot be opened, copied or packed).
+    fn existing_items(&self) -> Vec<String> {
+        self.items.iter().filter(|i| !i.missing && !i.id.starts_with("::")).map(|i| i.id.clone()).collect()
+    }
+
+    /// "Open all": every item, like double-clicking each (at most 20 at once).
+    fn open_all(&self) {
+        for id in self.existing_items().into_iter().take(20) {
+            win::open_path(&id);
+        }
+    }
+
+    /// "Copy paths": one path per line, as text.
+    fn copy_paths(&self) {
+        if let Err(e) = vials_platform::actions::put_text(&self.existing_items().join("\r\n")) {
+            eprintln!("could not copy the paths: {e}");
+        }
+    }
+
+    /// "Zip": the items packed into `<vial name>.zip` on the desktop.
+    fn zip_items(&mut self, cx: &mut Context<Self>) {
+        let items = self.existing_items();
+        let Some(folder) = desqu_desktop::desktop_folders().into_iter().next() else { return };
+        let stem = vials_core::clip::file_safe(&self.name);
+        cx.spawn(async move |_, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let name = vials_core::clip::unique_name(|n| folder.join(n).exists(), &stem, "zip");
+                    vials_platform::actions::zip(&items, &folder.join(name))
+                })
+                .await;
+            if let Err(e) = result {
+                eprintln!("could not zip the items: {e}");
+            }
+        })
+        .detach();
+    }
+
+    /// "Move to folder...": pick a folder, move the files there with Explorer's own file operation (its
+    /// progress and conflict questions), and take what moved out of the vial.
+    fn move_items(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let items = self.existing_items();
+        let title = format!("Move the items of {} to", self.name);
+        cx.spawn(async move |this, cx| {
+            let moved = cx
+                .background_executor()
+                .spawn({
+                    let items = items.clone();
+                    async move {
+                        let Some(folder) = vials_platform::actions::pick_folder(&title).ok().flatten() else { return false };
+                        let target = folder.to_string_lossy().into_owned();
+                        vials_platform::clipboard::transfer(&items, true, &target, false).is_ok()
+                    }
+                })
+                .await;
+            if moved {
+                // What is no longer on the desktop leaves the vial.
+                for id in items.iter().filter(|id| !std::path::Path::new(id).exists()) {
+                    live.engine.remove_item(id);
+                }
+                let _ = this.update(cx, |view, cx| view.announce(cx));
+            }
+        })
+        .detach();
     }
 
     /// Takes back the last change (any vial's).

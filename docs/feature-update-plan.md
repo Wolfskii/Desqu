@@ -33,7 +33,7 @@ progress log in the same commit as the work.
 | P1-07 | [x] | Keyboard in vials: arrows, Enter, F2, menu key, Home/End | M | Headless GPUI tests |
 | P1-08 | [x] | Undo for vial changes (Ctrl+Z) | M | Engine keeps a short history |
 | P1-09 | [x] | "New vial with these" for selected desktop icons | S | Offer in the create popup |
-| P1-10 | [ ] | Vial actions: open all, copy paths, zip, move to folder | S | On a vial or selection |
+| P1-10 | [x] | Vial actions: open all, copy paths, zip, move to folder | S | On a vial or selection |
 | P1-11 | [ ] | Workspaces: desktop name overlay on switch | S | |
 | P1-12 | [ ] | Workspaces: jump hotkeys Win+Ctrl+1..9 | S | Check clashes with Windows |
 | P1-13 | [ ] | Screenbound: hotkey puts the focused window in the zone | S | |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P1-10 vial actions in the vial menu: Open all (up to 20), Copy paths (text), Zip to the desktop (PowerShell Compress-Archive, name made safe and unique) and Move to folder... (folder picker, then Explorer's own move, items leave the vial). Tests for the zip (real PowerShell on temp files) and the name helpers. Hand test: the folder picker and the move.
 - P1-09 "New vial with these": a box dragged over desktop icons can offer a vial that takes them (setting "Offer a vial for selected icons", off by default so selecting icons stays quiet). New read-only desqu-desktop::selected_items (checked against the real desktop, ignored test). Hand test: the popup and the vial that takes the icons.
 - P1-08 undo for vials: Ctrl+Z in a vial and "Undo" in the vial menu take back the last 30 things you did (drops, drags out, new/deleted/renamed vials, sorts, rules, look, lock); not window moves, settings, collapse or automatic sorting. Unit tests for the history and for restoring content while keeping places and settings. Hand test: undo of a drag into a vial and of a deleted vial.
 - P1-07 keyboard in vials: arrows, Home/End, Shift+arrows, Enter opens, F2 renames the vial, Esc clears, menu key or Shift+F10 opens the item menu. Unit tests for the movement (vials-core nav) and a headless GPUI test of the keys. Hand test: the item menu from the keyboard.
