@@ -369,6 +369,13 @@ impl Engine {
         });
     }
 
+    /// Switches the desktop's own icons off (and back on): what quick-hide does besides hiding the vials.
+    pub fn set_veil(&self, on: bool) {
+        if let Err(e) = self.layer.veil(on) {
+            eprintln!("could not {} the desktop icons: {e}", if on { "hide" } else { "show" });
+        }
+    }
+
     /// Puts every hidden item back on the desktop.
     pub fn restore(&self) {
         let _ = self.layer.show_all();

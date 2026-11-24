@@ -24,7 +24,7 @@ progress log in the same commit as the work.
 
 | ID | Status | Item | Size | Notes |
 |---|---|---|---|---|
-| P1-01 | [ ] | Quick-hide: double-click empty desktop hides or shows all icons and vials | S | Setting on/off; reuse `veil` and the desktop-press event. Hand test |
+| P1-01 | [x] | Quick-hide: double-click empty desktop hides or shows all icons and vials | S | Setting on/off; reuse `veil` and the desktop-press event. Hand test |
 | P1-02 | [ ] | Lock a vial (no move, resize, drop-out or rename) | S | `Vial.locked`; menu entry with check mark |
 | P1-03 | [ ] | Collapsed vial opens while the pointer is over it | S | Setting; short close delay |
 | P1-04 | [ ] | Theme "follow Windows" (light or dark by the Windows setting) | S | Watch `AppsUseLightTheme` |
@@ -103,4 +103,5 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P1-01 quick-hide: double-click empty desktop hides or shows vials and desktop icons (setting on by default, on the Vials page in Desqu and in Vials settings). Unit tests for the double-click timing and the setting. Hand test: the real double-click and the icons coming back.
 - 2026-11-24: plan written.

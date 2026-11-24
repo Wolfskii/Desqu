@@ -288,13 +288,25 @@ fn main() {
         // Looked up at once, while the icon is still where it was pressed.
         let press: Arc<Mutex<Press>> = Arc::default();
         let press_hook = press.clone();
+        // Double-click on empty desktop: quick-hide.
+        let (quick_tx, quick_rx) = std::sync::mpsc::channel::<()>();
+        let clicks: Arc<Mutex<gesture::DoubleClick>> = Arc::default();
+        let clock = std::time::Instant::now();
+        let quick_engine = engine.clone();
         let mouse = MouseWatcher::start(Box::new(move |e| {
             if let MouseEvent::DesktopDown(at) = e {
                 *press_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some((at, None));
                 let press = press_hook.clone();
+                let (quick_engine, clicks, quick_tx) = (quick_engine.clone(), clicks.clone(), quick_tx.clone());
                 std::thread::spawn(move || {
                     let hit = desqu_desktop::item_at(desqu_desktop::Point { x: at.0, y: at.1 });
                     let on_item = !matches!(hit, Ok(None));
+                    if !on_item && quick_engine.config().quick_hide {
+                        let at_ms = clock.elapsed().as_millis() as u64;
+                        if clicks.lock().unwrap_or_else(|e| e.into_inner()).press(at_ms, at) {
+                            let _ = quick_tx.send(());
+                        }
+                    }
                     let mut slot = press.lock().unwrap_or_else(|e| e.into_inner());
                     if matches!(*slot, Some((p, None)) if p == at) {
                         *slot = Some((at, Some(on_item)));
@@ -314,6 +326,7 @@ fn main() {
             }
         }
         let context_point: Rc<Cell<Option<(i32, i32)>>> = Rc::new(Cell::new(None));
+        let quick_hidden = Rc::new(Cell::new(false));
         let engine = engine.clone();
         cx.spawn(async move |cx| {
             // Owned by this task: dropped (tray icon removed, hook released) when the app ends.
@@ -378,6 +391,20 @@ fn main() {
                         }
                         tray::Event::Action(_) | tray::Event::Menu(_) => {}
                     }
+                }
+                // Quick-hide: a double-click on the empty desktop hides every vial and the desktop icons; another shows them.
+                while quick_rx.try_recv().is_ok() {
+                    let hide = !quick_hidden.get();
+                    quick_hidden.set(hide);
+                    let handles: Vec<AnyWindowHandle> = windows.borrow().values().copied().collect();
+                    for handle in handles {
+                        let _ = handle.update(cx, |_, window, _| {
+                            if let Some(hwnd) = win::hwnd(window) {
+                                win::set_visible(hwnd, !hide);
+                            }
+                        });
+                    }
+                    engine.set_veil(hide);
                 }
                 while let Ok(event) = mouse_rx.try_recv() {
                     match event {

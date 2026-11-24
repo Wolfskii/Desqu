@@ -182,6 +182,9 @@ pub struct VialsConfig {
     /// "Create vial here" in the desktop's right-click menu.
     #[serde(default = "yes")]
     pub context_menu: bool,
+    /// A double-click on the empty desktop hides every vial and the desktop icons; another shows them.
+    #[serde(default = "yes")]
+    pub quick_hide: bool,
     #[serde(default)]
     pub theme: VialTheme,
     #[serde(default)]
@@ -205,6 +208,7 @@ impl Default for VialsConfig {
             draw_desktop: false,
             create_on_drag: true,
             context_menu: true,
+            quick_hide: true,
             theme: VialTheme::default(),
             glass_blur: GlassBlur::default(),
             glass_tint: default_glass_tint(),
@@ -242,6 +246,7 @@ impl VialsConfig {
             "hideOnDesktop" => self.hide_on_desktop = flag()?,
             "createOnDrag" => self.create_on_drag = flag()?,
             "contextMenu" => self.context_menu = flag()?,
+            "quickHide" => self.quick_hide = flag()?,
             other => return Err(format!("unknown setting {other}")),
         }
         Ok(())
@@ -503,6 +508,8 @@ mod tests {
         c.set_setting("theme", "fluentLight").unwrap();
         c.set_setting("glassTint", "35").unwrap();
         c.set_setting("autoSort", "false").unwrap();
+        c.set_setting("quickHide", "false").unwrap();
+        assert!(!c.quick_hide);
         assert_eq!((c.theme, c.glass_tint, c.auto_sort), (VialTheme::FluentLight, 35, false));
         assert!(c.set_setting("glassTint", "101").is_err());
         assert!(c.set_setting("theme", "neon").is_err());

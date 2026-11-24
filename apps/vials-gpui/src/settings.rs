@@ -222,6 +222,7 @@ impl Render for SettingsView {
                 ),
             )
             .child(toggle("Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, |c, v| c.context_menu = v))
+            .child(toggle("Quick-hide", "Double-click the empty desktop to hide or show everything", cfg.quick_hide, |c, v| c.quick_hide = v))
             .child(
                 div().flex().gap_2().pt_3().child(
                     button("Edit rules", false).id("edit-rules").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {

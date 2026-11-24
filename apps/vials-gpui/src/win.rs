@@ -99,6 +99,14 @@ pub fn place_on_top(hwnd: HWND, rect: &PixelRect) {
     }
 }
 
+/// Shows or hides a window without taking the focus.
+pub fn set_visible(hwnd: HWND, visible: bool) {
+    // SAFETY: our own window.
+    unsafe {
+        let _ = ShowWindow(hwnd, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
+    }
+}
+
 /// Where the pointer is, in physical screen pixels.
 pub fn cursor_position() -> Option<(i32, i32)> {
     vials_platform::cursor_position()
