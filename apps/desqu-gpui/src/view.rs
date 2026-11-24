@@ -170,11 +170,17 @@ impl DesquView {
         sync_autostart(&s);
     }
 
+    /// What the on/off switch shows: on only while the app is wanted and has not stopped by itself.
+    fn shown_on(&self, kind: Kind) -> bool {
+        self.settings().enabled(kind) && self.shell.supervisor.status(kind) != Status::Stopped
+    }
+
     fn toggle(&mut self, kind: Kind, cx: &mut Context<Self>) {
         if self.busy.contains(&kind) {
             return;
         }
-        let on = !self.settings().enabled(kind);
+        // An app that ended by itself shows as off, so the next click turns it on (starts it again).
+        let on = !self.shown_on(kind);
         self.note.clear();
         self.edit(|s| s.set(kind, on));
         self.busy.insert(kind);
@@ -319,7 +325,7 @@ impl DesquView {
         let busy = self.busy.contains(&kind);
         let usable = status != Status::Missing && !busy;
         let enabled = settings.enabled(kind);
-        let on = switch(SharedString::from(format!("on-{}", kind.name())), on_off(enabled), usable)
+        let on = switch(SharedString::from(format!("on-{}", kind.name())), on_off(self.shown_on(kind)), usable)
             .when(usable, |d| d.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle(kind, cx))));
         let start_usable = usable && enabled;
         let start = div()
@@ -429,7 +435,7 @@ impl DesquView {
         let explain = match status {
             Status::Running => format!("{} is running. Its settings are below; its own window has the rest.", kind.name()),
             Status::RunningElsewhere => format!("A copy of {} that Desqu did not start is running. Desqu leaves it alone.", kind.name()),
-            Status::Stopped => format!("{} ended unexpectedly. Its log says why; turning it off and on starts it again.", kind.name()),
+            Status::Stopped => format!("{} ended unexpectedly. Its log says why; turn it on to start it again.", kind.name()),
             Status::Off => format!("{} is off. Turn it on to use it.", kind.name()),
             Status::Missing => format!("{} is not installed next to Desqu.", kind.exe()),
         };
