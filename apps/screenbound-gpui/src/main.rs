@@ -2,6 +2,9 @@
 //!   screenbound-gpui [--config-dir <folder>] [--autostart] [--action=show|pause|resume|quit] [--unregister-browser]
 //! It lives in the tray; a second launch brings its window up (or hands over its `--action`).
 
+// A program with no console: started from the desktop menu, the tray or a sign-in it must not open a terminal.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 

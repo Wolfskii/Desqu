@@ -6,6 +6,9 @@
 //! paste, new, delete), new desktop files are sorted into vials by the rules, and a moved vial
 //! saves its place.
 
+// A program with no console: started from the desktop menu, the tray or a sign-in it must not open a terminal.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod engine;
 mod field;
 mod liquid;

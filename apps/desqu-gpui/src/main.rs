@@ -3,6 +3,9 @@
 //! the tray icon, the list of which modules are on, and starting them at sign-in.
 //!   desqu-gpui [--config-dir <folder>] [--autostart] [--action=show|quit]
 
+// A program with no console: started from the desktop menu, the tray or a sign-in it must not open a terminal.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod app_settings;
 mod assets;
 mod modules;

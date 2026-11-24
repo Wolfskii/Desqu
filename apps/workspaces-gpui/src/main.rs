@@ -2,6 +2,9 @@
 //!   workspaces-gpui [--config <path to config.json>] [--autostart] [--action=show|quit]
 //! It lives in the tray; a second launch brings its window up (or hands over its `--action`).
 
+// A program with no console: started from the desktop menu, the tray or a sign-in it must not open a terminal.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod engine;
 mod view;
 
