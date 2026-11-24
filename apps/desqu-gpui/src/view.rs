@@ -169,6 +169,8 @@ struct DesquView {
     busy: HashSet<Kind>,
     /// The Workspaces item whose desktop is being chosen.
     picked: Option<String>,
+    /// The step of the first-run tour that shows (`None` once it is over).
+    tour: Option<usize>,
     /// Screenbound's own views, made the first time its page is opened.
     screenbound: Option<ScreenboundViews>,
     note: String,
@@ -421,6 +423,35 @@ impl DesquView {
             )
     }
 
+    /// The tour's card: a step, with buttons to go on, to turn the app on and to leave.
+    fn tour_card(&self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        let step = self.tour?;
+        let current = crate::tour::STEPS.get(step)?;
+        let last = step + 1 == crate::tour::STEPS.len();
+        let mut buttons = div().flex().gap(px(8.));
+        if let Some(kind) = current.app {
+            let on = self.settings().enabled(kind);
+            buttons = buttons.child(button("tour-app", if on { format!("{} is on", kind.name()) } else { format!("Turn {} on", kind.name()) }, !on).when(!on, |d| d.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle(kind, cx)))));
+        }
+        buttons = buttons
+            .child(button("tour-next", if last { "Done" } else { "Next" }, true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                if last {
+                    this.end_tour(cx);
+                } else {
+                    this.tour = Some(step + 1);
+                    cx.notify();
+                }
+            })))
+            .when(!last, |d| d.child(button("tour-skip", "Skip the tour", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.end_tour(cx)))));
+        Some(card().border_color(rgb(ACCENT)).child(dim(format!("Step {} of {}", step + 1, crate::tour::STEPS.len()))).child(card_title(current.title)).child(div().child(current.text)).child(buttons))
+    }
+
+    fn end_tour(&mut self, cx: &mut Context<Self>) {
+        self.tour = None;
+        self.edit(|s| s.tour_done = true);
+        cx.notify();
+    }
+
     fn home(&self, cx: &mut Context<Self>) -> gpui::Div {
         let settings = self.settings();
         let all = settings.all_start();
@@ -431,6 +462,7 @@ impl DesquView {
             .flex_col()
             .gap(px(14.))
             .max_w(px(900.))
+            .when_some(self.tour_card(cx), |d, c| d.child(c))
             .child(
                 div()
                     .flex()
@@ -1139,7 +1171,8 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
                     }
                 })
                 .detach();
-                DesquView { shell, page: Page::Home, busy: HashSet::new(), picked: None, screenbound: None, note: String::new(), update_note: String::new(), update_url: None }
+                let tour = (!shell.settings.lock().unwrap_or_else(|e| e.into_inner()).tour_done).then_some(0);
+                DesquView { page: Page::Home, busy: HashSet::new(), picked: None, tour, shell, screenbound: None, note: String::new(), update_note: String::new(), update_url: None }
             })
         },
     );

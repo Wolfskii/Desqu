@@ -14,6 +14,7 @@ mod modules;
 mod report;
 mod screenbound_remote;
 mod supervisor;
+mod tour;
 mod workspaces_page;
 mod view;
 
