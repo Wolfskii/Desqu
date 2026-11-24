@@ -96,7 +96,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 | ID | Status | Item | Notes |
 |---|---|---|---|
 | R-01 | [ ] | Signed installers and update feeds | Needed before P2-16 |
-| R-02 | [ ] | Dragging several desktop items into a vial shows one icon | Own overlay instead of Explorer's picture |
+| R-02 | [x] | Dragging several desktop items into a vial shows one icon | Own overlay instead of Explorer's picture |
 | R-03 | [ ] | Right-click selected desktop items to pick a workspace | Needs a shell extension: only on the owner's go-ahead |
 | R-04 | [ ] | Remove the old Tauri app folders and their docs | On the owner's go-ahead |
 | R-05 | [ ] | Try on a real desktop: Task View icon hiding, "Paste on this workspace", dark item menus, Desqu settings pages | Hand test |
@@ -105,6 +105,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- R-02 several items dragged into a vial: Explorer's own picture of them cannot be shown over our windows without the drop-target wrapper that hung Vials, so the vial says how many are coming instead: a label "Drop N items here" at the bottom while an Explorer drag is over it (gone when the pointer leaves or the drop is done). Not tested by a headless test (GPUI's test platform has no outside drag). Hand test: drag 3 items in.
 - P4-08 desktop notes: dropped as a separate tool. The notes vial (P2-08) already puts notes and links on the desktop as real files in a vial of their own, which open in any editor and survive anything; a second kind of note window would only duplicate it.
 - P4-07 focus dimmer (Tools page): a dark, click-through window per monitor with a hole cut where the window in front is, followed ten times a second (the desktop and the taskbar count as no window, then nothing is dimmed); three strengths. Test for the hole's geometry. It was NOT started here (it would darken your screens): hand test it, and watch for the dark window sitting above a pop-up menu.
 - P4-06 monitor brightness (Tools page): "Look for monitors" asks the external monitors that speak DDC/CI (one answered here: Generic PnP Monitor, 75 %) and each gets 0/25/50/75/100 % buttons. Laptop screens are not set from here. Tests for the percent/raw conversion; the monitors were asked once without changing anything. Hand test: the buttons change the real brightness (some monitors are slow or ignore it).

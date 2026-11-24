@@ -127,6 +127,9 @@ pub struct VialView {
     /// Icon size in pixels, and whether the title is centred: from the vial's own look.
     icon_size: u8,
     title_center: bool,
+    /// How many items an Explorer drag over this window carries (0 when none): the picture Explorer draws is a single
+    /// icon over our windows, so the window says how many are coming.
+    incoming: usize,
     /// Privacy mode is on: names and pictures are hidden until the pointer is over the vial.
     privacy_mask: bool,
     /// A collapsed vial is open for the moment because the pointer is over it.
@@ -252,6 +255,7 @@ impl VialView {
             search: None,
             search_gen: Default::default(),
             search_results: None,
+            incoming: 0,
             privacy_mask: live.as_ref().is_some_and(|l| l.engine.config().privacy_mask),
             portal: None,
             cursor: None,
@@ -665,6 +669,10 @@ impl VialView {
     fn on_hover_change(&mut self, over: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.hovered = over;
         self.hover_gen += 1;
+        if !over && self.incoming != 0 {
+            self.incoming = 0;
+            cx.notify();
+        }
         if self.privacy_mask {
             cx.notify();
         }
@@ -709,6 +717,8 @@ impl VialView {
     }
 
     fn drop_paths(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
+        self.incoming = 0;
+        cx.notify();
         let Some(live) = &self.live else { return };
         let paths: Vec<String> = paths.paths().iter().map(|p| p.to_string_lossy().into_owned()).collect();
         // Never work inside the drop itself: Explorer's drag loop waits for this call to return, and
@@ -1663,6 +1673,13 @@ impl Render for VialView {
             )
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.drop_paths(paths, cx)))
             .drag_over::<ExternalPaths>(|s, _, _, _| s.border_color(rgba(0xaad2ffd9)).bg(rgba(0x78afff30)))
+            .on_drag_move(cx.listener(|this, e: &gpui::DragMoveEvent<ExternalPaths>, _, cx| {
+                let count = e.drag(cx).paths().len();
+                if this.incoming != count {
+                    this.incoming = count;
+                    cx.notify();
+                }
+            }))
             .size_full()
             .rounded(px(t.radius))
             .border_1()
@@ -1715,6 +1732,19 @@ impl Render for VialView {
                 )
             })
             .when(!self.shown_collapsed(), |d| d.child(grid))
+            .when(self.incoming > 0, |d| {
+                let n = self.incoming;
+                d.child(
+                    div()
+                        .absolute()
+                        .bottom(px(10.))
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(div().px_3().py_1().rounded(px(6.)).bg(rgba(0x000000b0)).text_sm().child(if n == 1 { "Drop 1 item here".to_string() } else { format!("Drop {n} items here") })),
+                )
+            })
             .when_some(self.marquee.as_ref(), |d, m| {
                 let (left, top) = (f32::from(m.start.x.min(m.now.x)), f32::from(m.start.y.min(m.now.y)));
                 let (width, height) = (f32::from((m.start.x - m.now.x).abs()), f32::from((m.start.y - m.now.y).abs()));
