@@ -105,6 +105,10 @@ fn main() {
                                 }
                             });
                         }
+                        // From Desqu's page for Workspaces: `set-setting:autoAssignNew:<true|false>`.
+                        tray::Event::Action(name) if name.starts_with("set-setting:autoAssignNew:") => {
+                            engine.set_auto_assign(name.ends_with(":true"));
+                        }
                         // From Vials' right-click menu: `assign-vial:<vial id>:<virtual desktop id, or all>`.
                         tray::Event::Action(name) if name.starts_with("assign-vial:") => {
                             let rest = name.trim_start_matches("assign-vial:");

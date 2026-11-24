@@ -3,6 +3,7 @@
 //! the tray icon, the list of which modules are on, and starting them at sign-in.
 //!   desqu-gpui [--config-dir <folder>] [--autostart] [--action=show|quit]
 
+mod app_settings;
 mod modules;
 mod supervisor;
 mod view;

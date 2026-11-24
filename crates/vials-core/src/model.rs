@@ -224,6 +224,29 @@ pub enum ConfigError {
 }
 
 impl VialsConfig {
+    /// Sets one option by the name the settings pages use (`theme`, `glassTint`, `autoSort`,
+    /// `hideOnDesktop`, `createOnDrag`, `contextMenu`). Both Desqu and Vials go through this, so a
+    /// change means the same thing wherever it is made.
+    pub fn set_setting(&mut self, key: &str, value: &str) -> Result<(), String> {
+        let flag = || match value {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            other => Err(format!("{key}: expected true or false, got {other}")),
+        };
+        match key {
+            "theme" => {
+                self.theme = serde_json::from_value(serde_json::Value::String(value.to_string())).map_err(|_| format!("theme: unknown look {value}"))?
+            }
+            "glassTint" => self.glass_tint = value.parse::<u8>().ok().filter(|v| *v <= 100).ok_or(format!("glassTint: expected 0 to 100, got {value}"))?,
+            "autoSort" => self.auto_sort = flag()?,
+            "hideOnDesktop" => self.hide_on_desktop = flag()?,
+            "createOnDrag" => self.create_on_drag = flag()?,
+            "contextMenu" => self.context_menu = flag()?,
+            other => return Err(format!("unknown setting {other}")),
+        }
+        Ok(())
+    }
+
     pub fn vial(&self, id: &str) -> Option<&Vial> {
         self.vials.iter().find(|v| v.id == id)
     }
@@ -473,6 +496,19 @@ impl VialsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_are_set_by_name_and_bad_values_are_refused() {
+        let mut c = VialsConfig::default();
+        c.set_setting("theme", "fluentLight").unwrap();
+        c.set_setting("glassTint", "35").unwrap();
+        c.set_setting("autoSort", "false").unwrap();
+        assert_eq!((c.theme, c.glass_tint, c.auto_sort), (VialTheme::FluentLight, 35, false));
+        assert!(c.set_setting("glassTint", "101").is_err());
+        assert!(c.set_setting("theme", "neon").is_err());
+        assert!(c.set_setting("autoSort", "maybe").is_err());
+        assert!(c.set_setting("nope", "true").is_err());
+    }
 
     fn vial(id: &str, items: &[&str]) -> Vial {
         Vial {

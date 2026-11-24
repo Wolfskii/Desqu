@@ -347,6 +347,20 @@ fn main() {
                             let (engine, revision) = (engine.clone(), revision.clone());
                             let _ = cx.update(|cx| rules_window::open(cx, engine, revision));
                         }
+                        // From Desqu's page for Vials: `set-setting:<name>:<value>`.
+                        tray::Event::Action(name) if name.starts_with("set-setting:") => {
+                            if let Some((key, value)) = name.trim_start_matches("set-setting:").split_once(':') {
+                                if let Err(e) = engine.config().set_setting(key, value) {
+                                    eprintln!("{e}");
+                                } else {
+                                    let (key, value) = (key.to_string(), value.to_string());
+                                    if engine.edit_settings(|c| drop(c.set_setting(&key, &value))) {
+                                        let revision = revision.clone();
+                                        let _ = cx.update(|cx| bump(&revision, cx));
+                                    }
+                                }
+                            }
+                        }
                         tray::Event::Action(name) if name == "quit" => {
                             let _ = cx.update(|cx| cx.quit());
                         }

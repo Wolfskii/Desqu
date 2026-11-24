@@ -1278,6 +1278,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "desqu-desktop"
+version = "0.1.0"
+dependencies = [
+ "desqu-ipc",
+ "png 0.17.16",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "desqu-gpui"
 version = "1.0.0"
 dependencies = [
@@ -1285,7 +1298,16 @@ dependencies = [
  "gpui",
  "serde",
  "serde_json",
+ "vials-core",
  "winresource",
+ "workspaces-core",
+]
+
+[[package]]
+name = "desqu-ipc"
+version = "0.1.0"
+dependencies = [
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -5925,6 +5947,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "vials-core"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6812,6 +6844,15 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "workspaces-core"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "writeable"

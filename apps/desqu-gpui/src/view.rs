@@ -427,7 +427,7 @@ impl DesquView {
         let alive = matches!(status, Status::Running | Status::RunningElsewhere);
         let (on, start) = self.switches(kind, &settings, cx);
         let explain = match status {
-            Status::Running => format!("{} is running. Its settings are in its own window.", kind.name()),
+            Status::Running => format!("{} is running. Its settings are below; its own window has the rest.", kind.name()),
             Status::RunningElsewhere => format!("A copy of {} that Desqu did not start is running. Desqu leaves it alone.", kind.name()),
             Status::Stopped => format!("{} ended unexpectedly. Its log says why; turning it off and on starts it again.", kind.name()),
             Status::Off => format!("{} is off. Turn it on to use it.", kind.name()),
@@ -463,6 +463,96 @@ impl DesquView {
                             .child(button("page-log", "Show its log", true).on_click(move |_, _, _| open_path(&crate::supervisor::log_path(kind)))),
                     ),
             )
+            .when_some(self.options(kind, cx), |d, options| d.child(options))
+    }
+
+    /// Changes one option of an app: the running app takes it (and saves it), an app that is off has
+    /// its file changed. The page looks again a moment later, once the app has saved.
+    fn set_option(&mut self, kind: Kind, key: &'static str, value: String, cx: &mut Context<Self>) {
+        let running = matches!(self.shell.supervisor.status(kind), Status::Running | Status::RunningElsewhere);
+        if let Err(e) = crate::app_settings::apply(kind, running, key, &value) {
+            self.note = e;
+        }
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(400)).await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
+    }
+
+    /// A row with a label, a hint and a switch for an option that is on or off.
+    fn option_switch(&self, kind: Kind, key: &'static str, label: &'static str, hint: &'static str, on: bool, cx: &mut Context<Self>) -> gpui::Div {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .child(div().flex_1().child(div().child(label)).child(div().text_size(px(12.)).text_color(rgb(TEXT_DIM)).child(hint)))
+            .child(
+                switch(SharedString::from(format!("opt-{}-{key}", kind.name())), on_off(on), true)
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_option(kind, key, (!on).to_string(), cx))),
+            )
+    }
+
+    /// The options of an app that has some here (Vials, Workspaces); the app's window has the rest.
+    fn options(&self, kind: Kind, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        use vials_core::model::VialTheme;
+        match kind {
+            Kind::Vials => {
+                let cfg = crate::app_settings::vials();
+                let themes = [
+                    (VialTheme::Glass, "glass", "Glass"),
+                    (VialTheme::Liquid, "liquid", "Liquid"),
+                    (VialTheme::Classic, "classic", "Classic"),
+                    (VialTheme::Fluent, "fluent", "Fluent dark"),
+                    (VialTheme::FluentLight, "fluentLight", "Fluent light"),
+                ];
+                let look = div().flex().flex_wrap().gap(px(6.)).children(themes.into_iter().map(|(theme, value, label)| {
+                    button(SharedString::from(format!("look-{value}")), label, true)
+                        .when(cfg.theme == theme, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_option(Kind::Vials, "theme", value.to_string(), cx)))
+                }));
+                let tints = div().flex().gap(px(6.)).children([0u8, 25, 50, 75, 100].into_iter().map(|tint| {
+                    button(SharedString::from(format!("tint-{tint}")), tint.to_string(), true)
+                        .when(cfg.glass_tint.abs_diff(tint) <= 12, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_option(Kind::Vials, "glassTint", tint.to_string(), cx)))
+                }));
+                let alive = matches!(self.shell.supervisor.status(kind), Status::Running | Status::RunningElsewhere);
+                Some(
+                    card()
+                        .child(card_title("Settings"))
+                        .child(div().child("Look of vials"))
+                        .child(look)
+                        .child(div().child("Glass tint (lower is clearer)"))
+                        .child(tints)
+                        .child(self.option_switch(kind, "autoSort", "Sort new desktop items", "Put new files into a vial by its rules", cfg.auto_sort, cx))
+                        .child(self.option_switch(kind, "hideOnDesktop", "Hide items on the desktop", "Items in a vial leave the desktop", cfg.hide_on_desktop, cx))
+                        .child(self.option_switch(kind, "createOnDrag", "Create vials by dragging a box", "Drag over empty desktop", cfg.create_on_drag, cx))
+                        .child(self.option_switch(kind, "contextMenu", "Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, cx))
+                        .child(
+                            div().child(
+                                button("vials-rules", "Edit rules...", alive).when(alive, |d| {
+                                    d.on_click(cx.listener(|_, _: &ClickEvent, _, _| {
+                                        let _ = desqu_native_shell::tray::forward_action(&Kind::Vials.identity(), "rules");
+                                    }))
+                                }),
+                            ),
+                        ),
+                )
+            }
+            Kind::Workspaces => {
+                let on = crate::app_settings::workspaces_auto_assign();
+                Some(card().child(card_title("Settings")).child(self.option_switch(
+                    kind,
+                    "autoAssignNew",
+                    "New files join the desktop you are on",
+                    "A file that appears on the desktop belongs to the current virtual desktop",
+                    on,
+                    cx,
+                )))
+            }
+            Kind::Screenbound => None,
+        }
     }
 
     fn settings_page(&self, cx: &mut Context<Self>) -> gpui::Div {
