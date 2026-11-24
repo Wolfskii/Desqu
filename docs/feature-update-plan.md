@@ -78,13 +78,15 @@ progress log in the same commit as the work.
 
 Each is a new app Desqu can turn on and off, with its own page.
 
+**Decision while building:** the tools are built into Desqu itself, on a Tools page with a switch each, and not as programs of their own. They are small, they need Desqu running anyway for their hotkeys and settings, and a program each would have meant four more installers, tray entries and processes. If one grows (the window layouts, say) it can be moved out later.
+
 | ID | Status | Item | Size | Reuses |
 |---|---|---|---|---|
 | P4-01 | [ ] | Window layouts: remember and restore window places after dock, undock, wake | M | Screenbound engine |
-| P4-02 | [ ] | Always on top (hotkey, border) | S | Screenbound engine |
+| P4-02 | [x] | Always on top (hotkey, border) | S | Screenbound engine |
 | P4-03 | [ ] | Folder rules: Downloads and other folders sort themselves | M | vials-core rules |
-| P4-04 | [ ] | Auto dark mode on a schedule or at sunset | S | |
-| P4-05 | [ ] | Keep awake | S | Tray |
+| P4-04 | [x] | Auto dark mode on a schedule or at sunset | S | |
+| P4-05 | [x] | Keep awake | S | Tray |
 | P4-06 | [ ] | Monitor brightness (DDC/CI) | M | |
 | P4-07 | [ ] | Focus dimmer | M | |
 | P4-08 | [ ] | Desktop notes | M | Vial windows |
@@ -103,6 +105,9 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P4-04 light and dark by the clock: a switch and times (light from 5-9, dark from 17-22) on the Tools page; Windows and its apps switch at those times and a change by hand stays until the next switch. A fixed clock, not sunrise and sunset (that would need a place). Tests for the schedule and the time reading. Hand test: the switch itself changes your theme.
+- P4-05 keep awake: a switch (and a second one for the screen) on the Tools page keeps the PC from sleeping; test that it starts and ends cleanly. Hand test: leave the PC alone and see it stays awake.
+- P4-02 always on top (a tool built into Desqu, on the new Tools page; see the note under Phase 4): a hotkey (off; Ctrl+Alt+T or Win+Shift+T) pins the window in front above all others with a thin blue border (Windows 11), and lets it go on the next press or when the tool is turned off. Listed in the hotkey list. Hand test: the pin and the border.
 - P3-01 tabs: the vial menu has "Merge into <vial> as a tab" (the window and its tabs go into another vial, never nested) and "Split this tab out"; a vial with tabs shows a tab bar under its title, the tab that is open decides which items show, where drops go, and the sorting and folder choices of the menu; lock and look stay with the window's own vial; deleting the vial that shows tabs frees them. Tests for merging (no nesting, tabs come along), splitting and deleting in the model. NOT covered by a test: the window side (tab bar, drops into the open tab). Hand test it.
 - P3-03 languages: a small translation layer (desqu-native-shell i18n: look a text up by its English wording, English comes back when there is no translation) with Swedish and Polish for the Desqu window: sidebar, Home, status texts, the descriptions of the apps, the first-run tour, the Settings page (language, palette, backup, report, updates, about). A Language card on the Settings page (Automatic follows Windows). Tests: the tables, and a guard that every text the window passes through t() has both translations. NOT done: the texts inside the apps' own screens on their pages (the option names, the vial menus, the Screenbound views, the palette) are still English; a text with a number or a name in it (format!) is not translated yet. German, French and Spanish are not added.
 - P3-05 accessibility: blocked by GPUI. Version 0.2.2 has no UI Automation provider (no WM_GETOBJECT, nothing about accessibility in its source), so a screen reader sees none of the text in any of our windows. What exists instead: everything in a vial works from the keyboard (P1-07), the palette and menus are keyboard driven, and Windows' own item menus are accessible. Revisit when GPUI gets accessibility support (or by hosting a UIA provider per window, a big job).

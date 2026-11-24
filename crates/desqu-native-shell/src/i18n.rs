@@ -101,6 +101,7 @@ pub fn is_translated(lang: Lang, english: &str) -> bool {
 
 const SV: &[(&str, &str)] = &[
     ("Home", "Hem"),
+    ("Tools", "Verktyg"),
     ("Settings", "Inställningar"),
     ("APPS", "APPAR"),
     ("Your apps", "Dina appar"),
@@ -148,6 +149,7 @@ const SV: &[(&str, &str)] = &[
 
 const PL: &[(&str, &str)] = &[
     ("Home", "Start"),
+    ("Tools", "Narzędzia"),
     ("Settings", "Ustawienia"),
     ("APPS", "APLIKACJE"),
     ("Your apps", "Twoje aplikacje"),

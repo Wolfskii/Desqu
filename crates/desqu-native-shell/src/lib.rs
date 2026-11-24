@@ -10,6 +10,7 @@ pub mod power;
 pub mod stdio;
 pub mod tray;
 pub mod update;
+pub mod windowtools;
 
 /// Who the app is: names derived from it keep two apps from ever sharing a mutex, a window class or a
 /// startup entry.

@@ -55,6 +55,7 @@ impl Global for Open {}
 pub enum Page {
     Home,
     App(Kind),
+    Tools,
     Settings,
 }
 
@@ -324,6 +325,12 @@ impl DesquView {
             })))
             .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child(t("APPS")))
             .children(apps)
+            .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child("MORE"))
+            .child(item("nav-tools".into(), self.page == Page::Tools).child(icon("icons/wrench.svg", 16., TEXT)).child(t("Tools")).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.page = Page::Tools;
+                this.note.clear();
+                cx.notify();
+            })))
             .child(div().flex_1())
             .child(item("nav-settings".into(), self.page == Page::Settings).child(icon("icons/settings.svg", 16., TEXT)).child(t("Settings")).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.page = Page::Settings;
@@ -1025,7 +1032,8 @@ impl DesquView {
     fn hotkeys_card(&self) -> gpui::Div {
         use crate::hotkeys::{check, collect, pretty, Problem};
         let palette = self.settings().palette_keys().to_string();
-        let entries = collect(&palette, &crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
+        let pin = self.settings().tool_pin_hotkey;
+        let entries = collect(&palette, &pin, &crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
         let problems = check(&entries);
         let mut card = card().gap(px(6.)).child(card_title(t("Hotkeys")));
         if entries.is_empty() {
@@ -1048,6 +1056,65 @@ impl DesquView {
             );
         }
         card
+    }
+
+    /// A row of time buttons that sets one time of the schedule.
+    fn time_buttons(&self, id: &'static str, times: &[u16], current: u16, cx: &mut Context<Self>, set: fn(&mut Settings, u16)) -> gpui::Div {
+        div().flex().flex_wrap().gap(px(6.)).children(times.iter().map(|minutes| {
+            let minutes = *minutes;
+            button(SharedString::from(format!("{id}-{minutes}")), crate::tools::clock(minutes), true)
+                .when(current == minutes, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.edit(|s| set(s, minutes));
+                    cx.notify();
+                }))
+        }))
+    }
+
+    /// A switch that sets one on-or-off choice of the settings.
+    fn tool_switch(&self, id: &'static str, on: bool, cx: &mut Context<Self>, set: fn(&mut Settings, bool)) -> gpui::Stateful<gpui::Div> {
+        switch(id, on_off(on), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+            this.edit(|s| set(s, !on));
+            cx.notify();
+        }))
+    }
+
+    /// The small tools that live in Desqu: each has a switch.
+    fn tools_page(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let s = self.settings();
+        let pin = div().flex().flex_wrap().gap(px(6.)).children([("Off", ""), ("Ctrl+Alt+T", "ctrl+alt+t"), ("Win+Shift+T", "win+shift+t")].into_iter().map(|(label, value)| {
+            button(SharedString::from(format!("pin-{value}")), t(label), true)
+                .when(s.tool_pin_hotkey == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.edit(|s| s.tool_pin_hotkey = value.to_string());
+                    cx.notify();
+                }))
+        }));
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .max_w(px(760.))
+            .child(heading(t("Tools")))
+            .child(dim("Small tools that run inside Desqu. Each one is off until you turn it on."))
+            .child(card().child(card_title("Always on top")).child(dim("A hotkey keeps the window in front above all others, with a thin blue border; press it again to let it go.")).child(pin))
+            .child(
+                card()
+                    .child(card_title("Keep awake"))
+                    .child(dim("The PC does not go to sleep while this is on."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("awake", s.tool_keep_awake, cx, |s, v| s.tool_keep_awake = v)).child(div().child("Keep the PC awake")))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("awake-screen", s.tool_keep_display, cx, |s, v| s.tool_keep_display = v)).child(div().child("Keep the screen on too"))),
+            )
+            .child(
+                card()
+                    .child(card_title("Light and dark by the clock"))
+                    .child(dim("Windows and its apps switch to the light theme in the morning and the dark one in the evening. Change it by hand in between and it stays until the next switch."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("autodark", s.tool_auto_dark, cx, |s, v| s.tool_auto_dark = v)).child(div().child("Switch by the clock")))
+                    .child(dim("Light from"))
+                    .child(self.time_buttons("light", &[5 * 60, 6 * 60, 7 * 60, 8 * 60, 9 * 60], s.light_from(), cx, |s, m| s.tool_light_from = Some(m)))
+                    .child(dim("Dark from"))
+                    .child(self.time_buttons("dark", &[17 * 60, 18 * 60, 19 * 60, 20 * 60, 21 * 60, 22 * 60], s.dark_from(), cx, |s, m| s.tool_dark_from = Some(m))),
+            )
     }
 
     fn settings_page(&self, cx: &mut Context<Self>) -> gpui::Div {
@@ -1127,6 +1194,7 @@ impl Render for DesquView {
         let page = match self.page {
             Page::Home => self.home(cx),
             Page::App(kind) => self.app_page(kind, cx),
+            Page::Tools => self.tools_page(cx),
             Page::Settings => self.settings_page(cx),
         };
         div()

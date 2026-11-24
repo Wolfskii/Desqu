@@ -15,6 +15,7 @@ mod palette;
 mod report;
 mod screenbound_remote;
 mod supervisor;
+mod tools;
 mod tour;
 mod workspaces_page;
 mod view;
@@ -112,6 +113,9 @@ fn main() {
         let last = 1;
         cx.spawn(async move |cx| {
             let _keep = &tray;
+            // The small tools of Desqu (always on top, keep awake, light and dark by the clock).
+            let mut tools = tools::Tools::default();
+            let (tool_tx, tool_rx) = std::sync::mpsc::channel::<tools::ToolEvent>();
             // The command palette's hotkey follows the setting.
             let mut palette_key: Option<(String, desqu_native_shell::hotkey::Hotkey)> = None;
             let (palette_tx, palette_rx) = std::sync::mpsc::channel::<()>();
@@ -131,6 +135,13 @@ fn main() {
                             }
                         }
                     }
+                }
+                if tick.is_multiple_of(10) {
+                    let current = shell.settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    tools.apply(&current, &tool_tx);
+                }
+                while let Ok(tools::ToolEvent::TogglePin) = tool_rx.try_recv() {
+                    tools.toggle_pin();
                 }
                 tick = tick.wrapping_add(1);
                 while palette_rx.try_recv().is_ok() {

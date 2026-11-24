@@ -90,6 +90,21 @@ pub struct Settings {
     /// The first-run tour was finished or skipped.
     #[serde(default)]
     pub tour_done: bool,
+    /// Always on top: the hotkey that pins the window in front (empty: the tool is off).
+    #[serde(default)]
+    pub tool_pin_hotkey: String,
+    /// Keep awake: the PC does not go to sleep (and, with the second switch, the screen stays on).
+    #[serde(default)]
+    pub tool_keep_awake: bool,
+    #[serde(default)]
+    pub tool_keep_display: bool,
+    /// Light and dark by the clock: the minute of the day each starts (7:00 and 19:00 when not chosen).
+    #[serde(default)]
+    pub tool_auto_dark: bool,
+    #[serde(default)]
+    pub tool_light_from: Option<u16>,
+    #[serde(default)]
+    pub tool_dark_from: Option<u16>,
     /// The language of the window: `None` follows Windows, otherwise a code such as `sv`.
     #[serde(default)]
     pub language: Option<String>,
@@ -102,6 +117,16 @@ pub struct Settings {
 pub const DEFAULT_PALETTE_KEYS: &str = "ctrl+alt+space";
 
 impl Settings {
+    /// When the light theme starts on the schedule, in minutes since midnight.
+    pub fn light_from(&self) -> u16 {
+        self.tool_light_from.unwrap_or(7 * 60)
+    }
+
+    /// When the dark theme starts on the schedule.
+    pub fn dark_from(&self) -> u16 {
+        self.tool_dark_from.unwrap_or(19 * 60)
+    }
+
     /// The language to show: the chosen one, or Windows' own.
     pub fn language(&self) -> desqu_native_shell::i18n::Lang {
         use desqu_native_shell::i18n::Lang;
