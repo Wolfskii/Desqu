@@ -89,7 +89,7 @@ impl Shell {
         let live = self.engine.as_ref().map(|e| Live { engine: Arc::clone(e), revision: self.revision.clone(), vial_id: vial.id.clone() });
         let title = name.clone();
         let look = match &self.engine {
-            Some(e) => e.look(),
+            Some(e) => e.look_for(&vial.id),
             None => theme::Theme::of(self.theme, self.tint),
         };
 
@@ -120,6 +120,9 @@ impl Shell {
 
     /// Brings the open windows in line with the vials: new vials get a window, deleted ones lose it.
     fn sync(&self, cx: &mut App, windows: &Windows, vials: &[Vial]) {
+        // A tab of another vial has no window: the vial it is in shows it.
+        let vials: Vec<Vial> = vials.iter().filter(|v| v.tab_host.is_none()).cloned().collect();
+        let vials = &vials[..];
         let wanted: Vec<&str> = vials.iter().map(|v| v.id.as_str()).collect();
         let gone: Vec<String> = windows.borrow().keys().filter(|id| !wanted.contains(&id.as_str())).cloned().collect();
         for id in gone {
@@ -139,6 +142,41 @@ impl Shell {
 }
 
 /// Puts vial windows on the virtual desktops Workspaces tied them to (or back on the current one).
+/// Puts every vial window where the saved places say (after a layout came back or the screens changed).
+fn place_all(cx: &mut App, windows: &Windows, engine: &Engine) {
+    let monitors = win::monitors();
+    for vial in engine.vials() {
+        let Some(handle) = windows.borrow().get(&vial.id).copied() else { continue };
+        let Some(monitor) = layout::pick_monitor(vial.monitor.as_deref(), &monitors) else { continue };
+        let mut rect = layout::resolve(&vial.rect, &monitor.bounds);
+        rect.bottom = rect.top + layout::window_height(rect.height(), vial.collapsed, monitor.scale).max(1);
+        let _ = handle.update(cx, |_, window, _| {
+            if let Some(hwnd) = win::hwnd(window) {
+                win::place_at_bottom(hwnd, &rect);
+            }
+        });
+    }
+}
+
+/// Brings every vial above the open windows (a peek), or puts them back below.
+fn raise_all(cx: &mut App, windows: &Windows, above: bool) {
+    let handles: Vec<AnyWindowHandle> = windows.borrow().values().copied().collect();
+    for handle in handles {
+        let _ = handle.update(cx, |_, window, _| {
+            if let Some(hwnd) = win::hwnd(window) {
+                win::set_visible(hwnd, true);
+                win::raise(hwnd, above);
+            }
+        });
+    }
+}
+
+/// Where every vial window is now (screen pixels).
+fn window_rects(cx: &mut App, windows: &Windows) -> Vec<vials_core::model::PixelRect> {
+    let handles: Vec<AnyWindowHandle> = windows.borrow().values().copied().collect();
+    handles.into_iter().filter_map(|h| h.update(cx, |_, window, _| win::hwnd(window).and_then(win::window_rect)).ok().flatten()).collect()
+}
+
 fn apply_moves(cx: &mut App, windows: &Windows, moves: Vec<(String, desktops::Move)>) {
     if moves.is_empty() {
         return;
@@ -245,7 +283,13 @@ fn main() {
         // Vials added or deleted anywhere (menu, drop...) change the set of windows.
         {
             let (shell, windows, engine) = (shell.clone(), windows.clone(), engine.clone());
-            cx.observe(&revision, move |_, cx| shell.sync(cx, &windows, &engine.vials())).detach();
+            cx.observe(&revision, move |_, cx| {
+                shell.sync(cx, &windows, &engine.vials());
+                if engine.take_places_changed() {
+                    place_all(cx, &windows, &engine);
+                }
+            })
+            .detach();
         }
         // The desktop's files changed: rules sort new ones into vials, sorted vials keep their order.
         let (tx, rx) = std::sync::mpsc::channel::<()>();
@@ -254,10 +298,19 @@ fn main() {
         });
         let _ = engine.reconcile();
         let (engine_for_desktop, revision_for_desktop) = (engine.clone(), revision.clone());
-        cx.spawn(async move |cx| loop {
+        cx.spawn(async move |cx| {
+            // Rules about age ("not changed for 30 days") start to apply as time passes, with no event to say so:
+            // look again every ten minutes.
+            let mut idle = 0u32;
+            loop {
             let (engine, revision) = (&engine_for_desktop, &revision_for_desktop);
             let mut changed = false;
             while rx.try_recv().is_ok() {
+                changed = true;
+            }
+            idle += 1;
+            if idle >= 2000 {
+                idle = 0;
                 changed = true;
             }
             if changed {
@@ -271,6 +324,7 @@ fn main() {
                 }
             }
             cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
+            }
         })
         .detach();
 
@@ -288,13 +342,25 @@ fn main() {
         // Looked up at once, while the icon is still where it was pressed.
         let press: Arc<Mutex<Press>> = Arc::default();
         let press_hook = press.clone();
+        // Double-click on empty desktop: quick-hide.
+        let (quick_tx, quick_rx) = std::sync::mpsc::channel::<()>();
+        let clicks: Arc<Mutex<gesture::DoubleClick>> = Arc::default();
+        let clock = std::time::Instant::now();
+        let quick_engine = engine.clone();
         let mouse = MouseWatcher::start(Box::new(move |e| {
             if let MouseEvent::DesktopDown(at) = e {
                 *press_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some((at, None));
                 let press = press_hook.clone();
+                let (quick_engine, clicks, quick_tx) = (quick_engine.clone(), clicks.clone(), quick_tx.clone());
                 std::thread::spawn(move || {
                     let hit = desqu_desktop::item_at(desqu_desktop::Point { x: at.0, y: at.1 });
                     let on_item = !matches!(hit, Ok(None));
+                    if !on_item && quick_engine.config().quick_hide {
+                        let at_ms = clock.elapsed().as_millis() as u64;
+                        if clicks.lock().unwrap_or_else(|e| e.into_inner()).press(at_ms, at) {
+                            let _ = quick_tx.send(());
+                        }
+                    }
                     let mut slot = press.lock().unwrap_or_else(|e| e.into_inner());
                     if matches!(*slot, Some((p, None)) if p == at) {
                         *slot = Some((at, Some(on_item)));
@@ -314,6 +380,8 @@ fn main() {
             }
         }
         let context_point: Rc<Cell<Option<(i32, i32)>>> = Rc::new(Cell::new(None));
+        let quick_hidden = Rc::new(Cell::new(false));
+        let peeking = Rc::new(Cell::new(false));
         let engine = engine.clone();
         cx.spawn(async move |cx| {
             // Owned by this task: dropped (tray icon removed, hook released) when the app ends.
@@ -321,7 +389,67 @@ fn main() {
             // Workspaces can tie a vial to a virtual desktop: look at its config about once a second.
             let mut follower = desktops::Follower::new(desktops::workspaces_config_path());
             let mut tick = 0u32;
+            let mut windows_light = vials_platform::apps_use_light_theme();
+            // The peek hotkey follows the setting; pressing it brings the vials above the windows.
+            let mut peek_key: Option<(String, desqu_native_shell::hotkey::Hotkey)> = None;
+            let (peek_tx, peek_rx) = std::sync::mpsc::channel::<()>();
+            // Docking or undocking: the vials go where they were the last time the screens were like this.
+            let mut screens = vials_core::layouts::setup_key(&win::monitors());
             loop {
+                if tick.is_multiple_of(20) {
+                    let now = vials_core::layouts::setup_key(&win::monitors());
+                    if now != screens {
+                        let old = std::mem::replace(&mut screens, now.clone());
+                        // The screens need a moment to settle before windows are put on them.
+                        cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+                        if engine.switch_setup(&old, &now) {
+                            let (engine, windows) = (engine.clone(), windows.clone());
+                            let _ = cx.update(|cx| place_all(cx, &windows, &engine));
+                        }
+                    }
+                }
+                if tick.is_multiple_of(10) {
+                    let wanted = engine.config().peek_hotkey;
+                    if peek_key.as_ref().map_or("", |(text, _)| text.as_str()) != wanted {
+                        peek_key = None;
+                        if !wanted.is_empty() {
+                            let for_press = peek_tx.clone();
+                            match desqu_native_shell::hotkey::Hotkey::register(&wanted, Box::new(move || {
+                                let _ = for_press.send(());
+                            })) {
+                                Ok(h) => peek_key = Some((wanted, h)),
+                                Err(e) => eprintln!("{e}"),
+                            }
+                        }
+                    }
+                }
+                while peek_rx.try_recv().is_ok() {
+                    let above = !peeking.get();
+                    peeking.set(above);
+                    let _ = cx.update(|cx| raise_all(cx, &windows, above));
+                }
+                // Esc ends a peek.
+                if peeking.get() && win::escape_down() {
+                    peeking.set(false);
+                    let _ = cx.update(|cx| raise_all(cx, &windows, false));
+                }
+                // "Follow Windows": look at the Windows light/dark setting about once a second.
+                if tick.is_multiple_of(10) && engine.config().theme == vials_core::model::VialTheme::System {
+                    let now = vials_platform::apps_use_light_theme();
+                    if now != windows_light {
+                        windows_light = now;
+                        let revision = revision.clone();
+                        let _ = cx.update(|cx| bump(&revision, cx));
+                    }
+                }
+                // The wallpaper's colour for the panels (when the setting is on): look every ten seconds, off the UI thread.
+                if tick.is_multiple_of(100) {
+                    let engine = engine.clone();
+                    if cx.background_executor().spawn(async move { engine.refresh_wallpaper_color() }).await {
+                        let revision = revision.clone();
+                        let _ = cx.update(|cx| bump(&revision, cx));
+                    }
+                }
                 if tick.is_multiple_of(10) {
                     let ids: Vec<String> = windows.borrow().keys().cloned().collect();
                     if let Some(moves) = follower.poll(&ids) {
@@ -379,10 +507,34 @@ fn main() {
                         tray::Event::Action(_) | tray::Event::Menu(_) => {}
                     }
                 }
+                // Quick-hide: a double-click on the empty desktop hides every vial and the desktop icons; another shows them.
+                while quick_rx.try_recv().is_ok() {
+                    let hide = !quick_hidden.get();
+                    quick_hidden.set(hide);
+                    let handles: Vec<AnyWindowHandle> = windows.borrow().values().copied().collect();
+                    for handle in handles {
+                        let _ = handle.update(cx, |_, window, _| {
+                            if let Some(hwnd) = win::hwnd(window) {
+                                win::set_visible(hwnd, !hide);
+                            }
+                        });
+                    }
+                    engine.set_veil(hide);
+                }
                 while let Ok(event) = mouse_rx.try_recv() {
                     match event {
                         MouseEvent::ContextDown(at) => context_point.set(Some(at)),
-                        MouseEvent::ButtonDown(_) | MouseEvent::DesktopDown(_) => {}
+                        // A click outside every vial ends a peek.
+                        MouseEvent::ButtonDown(at) => {
+                            if peeking.get() {
+                                let rects = cx.update(|cx| window_rects(cx, &windows)).unwrap_or_default();
+                                if !gesture::point_in_any(&rects, at) {
+                                    peeking.set(false);
+                                    let _ = cx.update(|cx| raise_all(cx, &windows, false));
+                                }
+                            }
+                        }
+                        MouseEvent::DesktopDown(_) => {}
                         MouseEvent::Marquee(down, up) => {
                             // A box dragged on empty desktop offers a vial there; a box that caught icons
                             // is a selection, which Explorer needs a moment to settle.
@@ -404,18 +556,30 @@ fn main() {
                                         _ => break,
                                     }
                                 }
-                                let empty = matches!(desqu_desktop::selection_count(), Ok(0));
-                                if !empty {
+                                // A box over icons selects them: with the setting on, offer a vial that takes them.
+                                let picked = desqu_desktop::selected_items().unwrap_or_default();
+                                if !picked.is_empty() && !engine.config().offer_for_selection {
                                     return;
                                 }
                                 let _ = cx.update(|cx| {
-                                    let entry = MenuEntry::new("Create vial here", move |cx| {
-                                        if engine.create_vial(rect).is_some() {
+                                    let label = match picked.len() {
+                                        0 => "Create vial here".to_string(),
+                                        1 => "New vial with this item".to_string(),
+                                        n => format!("New vial with these {n} items"),
+                                    };
+                                    let portal_live = view::Live { engine: engine.clone(), revision: revision.clone(), vial_id: String::new() };
+                                    let none_picked = picked.is_empty();
+                                    let entry = MenuEntry::new(label, move |cx| {
+                                        if engine.create_vial_with(rect, &picked).is_some() {
                                             bump(&revision, cx);
                                         }
                                     })
                                     .icon(menu::Icon::Add);
-                                    menu::open(cx, up, vec![entry]);
+                                    let mut entries = vec![entry];
+                                    if none_picked {
+                                        entries.push(MenuEntry::new("New folder portal here...", move |cx| view::new_portal(cx, portal_live.clone(), None, Some(rect))).icon(menu::Icon::Add));
+                                    }
+                                    menu::open(cx, up, entries);
                                 });
                             })
                             .detach();

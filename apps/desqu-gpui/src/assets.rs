@@ -5,13 +5,14 @@ use std::borrow::Cow;
 
 use gpui::{AssetSource, Result, SharedString};
 
-const ICONS: [(&str, &[u8]); 6] = [
+const ICONS: [(&str, &[u8]); 7] = [
     ("icons/house.svg", include_bytes!("../assets/icons/house.svg")),
     ("icons/settings.svg", include_bytes!("../assets/icons/settings.svg")),
     ("icons/scan.svg", include_bytes!("../assets/icons/scan.svg")),
     ("icons/flask-round.svg", include_bytes!("../assets/icons/flask-round.svg")),
     ("icons/layers.svg", include_bytes!("../assets/icons/layers.svg")),
     ("icons/chevron-right.svg", include_bytes!("../assets/icons/chevron-right.svg")),
+    ("icons/wrench.svg", include_bytes!("../assets/icons/wrench.svg")),
 ];
 
 pub struct Assets;

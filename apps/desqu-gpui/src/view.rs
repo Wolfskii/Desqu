@@ -11,6 +11,8 @@ use gpui::{
     SharedString, Window, WindowBackgroundAppearance, WindowBounds, WindowOptions,
 };
 
+use screenbound_module::core::config::AppConfig;
+use desqu_native_shell::i18n::t;
 use crate::modules::{Kind, Settings, TriState, ALL};
 use crate::supervisor::{Status, Supervisor};
 
@@ -50,20 +52,21 @@ struct Open(Option<AnyWindowHandle>);
 impl Global for Open {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Page {
+pub enum Page {
     Home,
     App(Kind),
+    Tools,
     Settings,
 }
 
 /// What a status is called in the window.
 pub fn status_text(status: Status) -> &'static str {
     match status {
-        Status::Off => "Off",
-        Status::Running => "On",
-        Status::RunningElsewhere => "Running on its own",
-        Status::Stopped => "Stopped unexpectedly",
-        Status::Missing => "Not installed",
+        Status::Off => t("Off"),
+        Status::Running => t("On"),
+        Status::RunningElsewhere => t("Running on its own"),
+        Status::Stopped => t("Stopped unexpectedly"),
+        Status::Missing => t("Not installed"),
     }
 }
 
@@ -159,6 +162,8 @@ pub struct Shell {
     pub supervisor: Arc<Supervisor>,
     pub settings_path: PathBuf,
     pub settings: std::sync::Mutex<Settings>,
+    /// A page to go to the next time the window is drawn (the command palette asks for one).
+    pub nav: std::sync::Mutex<Option<Page>>,
 }
 
 struct DesquView {
@@ -168,6 +173,10 @@ struct DesquView {
     busy: HashSet<Kind>,
     /// The Workspaces item whose desktop is being chosen.
     picked: Option<String>,
+    /// The step of the first-run tour that shows (`None` once it is over).
+    tour: Option<usize>,
+    /// The monitors that take brightness, once they have been looked for.
+    brightness: Option<Vec<desqu_native_shell::windowtools::Brightness>>,
     /// Screenbound's own views, made the first time its page is opened.
     screenbound: Option<ScreenboundViews>,
     note: String,
@@ -312,14 +321,20 @@ impl DesquView {
             .border_r_1()
             .border_color(rgb(BORDER))
             .child(div().px(px(10.)).pt(px(4.)).pb(px(12.)).text_size(px(16.)).font_weight(FontWeight::BOLD).child("Desqu"))
-            .child(item("nav-home".into(), self.page == Page::Home).child(icon("icons/house.svg", 16., TEXT)).child("Home").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .child(item("nav-home".into(), self.page == Page::Home).child(icon("icons/house.svg", 16., TEXT)).child(t("Home")).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.page = Page::Home;
                 cx.notify();
             })))
-            .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child("APPS"))
+            .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child(t("APPS")))
             .children(apps)
+            .child(div().px(px(10.)).pt(px(12.)).pb(px(4.)).text_size(px(11.)).text_color(rgb(TEXT_DIM)).child("MORE"))
+            .child(item("nav-tools".into(), self.page == Page::Tools).child(icon("icons/wrench.svg", 16., TEXT)).child(t("Tools")).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.page = Page::Tools;
+                this.note.clear();
+                cx.notify();
+            })))
             .child(div().flex_1())
-            .child(item("nav-settings".into(), self.page == Page::Settings).child(icon("icons/settings.svg", 16., TEXT)).child("Settings").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .child(item("nav-settings".into(), self.page == Page::Settings).child(icon("icons/settings.svg", 16., TEXT)).child(t("Settings")).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.page = Page::Settings;
                 this.note.clear();
                 cx.notify();
@@ -345,7 +360,7 @@ impl DesquView {
                 switch(SharedString::from(format!("start-{}", kind.name())), on_off(settings.start_with_system(kind)), start_usable)
                     .when(start_usable, |d| d.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle_start(kind, cx)))),
             )
-            .child(dim(if enabled { "Start with system" } else { "Start with system (turn the app on first)" }));
+            .child(dim(if enabled { t("Start with system") } else { "Start with system (turn the app on first)" }));
         (on, start)
     }
 
@@ -402,7 +417,7 @@ impl DesquView {
                                     .child(div().font_weight(FontWeight::SEMIBOLD).child(name))
                                     .child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))),
                             )
-                            .child(div().text_size(px(12.)).text_color(rgb(TEXT_DIM)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(kind.description())),
+                            .child(div().text_size(px(12.)).text_color(rgb(TEXT_DIM)).overflow_hidden().whitespace_nowrap().text_ellipsis().child(t(kind.description()))),
                     ),
             )
             .child(on)
@@ -420,6 +435,35 @@ impl DesquView {
             )
     }
 
+    /// The tour's card: a step, with buttons to go on, to turn the app on and to leave.
+    fn tour_card(&self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        let step = self.tour?;
+        let current = crate::tour::STEPS.get(step)?;
+        let last = step + 1 == crate::tour::STEPS.len();
+        let mut buttons = div().flex().gap(px(8.));
+        if let Some(kind) = current.app {
+            let on = self.settings().enabled(kind);
+            buttons = buttons.child(button("tour-app", if on { format!("{} is on", kind.name()) } else { format!("Turn {} on", kind.name()) }, !on).when(!on, |d| d.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle(kind, cx)))));
+        }
+        buttons = buttons
+            .child(button("tour-next", if last { t("Done") } else { t("Next") }, true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                if last {
+                    this.end_tour(cx);
+                } else {
+                    this.tour = Some(step + 1);
+                    cx.notify();
+                }
+            })))
+            .when(!last, |d| d.child(button("tour-skip", t("Skip the tour"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.end_tour(cx)))));
+        Some(card().border_color(rgb(ACCENT)).child(dim(format!("Step {} of {}", step + 1, crate::tour::STEPS.len()))).child(card_title(t(current.title))).child(div().child(t(current.text))).child(buttons))
+    }
+
+    fn end_tour(&mut self, cx: &mut Context<Self>) {
+        self.tour = None;
+        self.edit(|s| s.tour_done = true);
+        cx.notify();
+    }
+
     fn home(&self, cx: &mut Context<Self>) -> gpui::Div {
         let settings = self.settings();
         let all = settings.all_start();
@@ -430,20 +474,21 @@ impl DesquView {
             .flex_col()
             .gap(px(14.))
             .max_w(px(900.))
+            .when_some(self.tour_card(cx), |d, c| d.child(c))
             .child(
                 div()
                     .flex()
                     .items_start()
                     .justify_between()
                     .gap(px(16.))
-                    .child(div().child(heading("Your apps")).child(dim("Turn on what you need. Each app runs on its own, and Desqu keeps them together.")))
+                    .child(div().child(heading(t("Your apps"))).child(dim(t("Turn on what you need. Each app runs on its own, and Desqu keeps them together."))))
                     .child(
                         div()
                             .flex()
                             .items_center()
                             .gap(px(8.))
                             .child(switch("start-all", on_off(all == TriState::On), any_on).when(any_on, |d| d.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_all_start(cx)))))
-                            .child(dim("Start all apps with system")),
+                            .child(dim(t("Start all apps with system"))),
                     ),
             )
             .child(div().flex().flex_col().rounded(px(6.)).border_1().border_color(rgb(BORDER)).bg(rgb(SURFACE_1)).children(rows))
@@ -466,7 +511,7 @@ impl DesquView {
             .gap(px(12.))
             .max_w(px(760.))
             .child(heading(kind.name()))
-            .child(dim(kind.description()))
+            .child(dim(t(kind.description())))
             .child(
                 card()
                     .child(
@@ -474,7 +519,7 @@ impl DesquView {
                             .flex()
                             .items_center()
                             .gap(px(12.))
-                            .child(div().flex_1().child(card_title("Running")).child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))))
+                            .child(div().flex_1().child(card_title(t("Running"))).child(div().text_size(px(12.)).text_color(rgb(status_color(status))).child(status_text(status))))
                             .child(on),
                     )
                     .child(start)
@@ -483,7 +528,7 @@ impl DesquView {
                         div()
                             .flex()
                             .gap(px(8.))
-                            .child(button("page-log", "Show its log", true).on_click(move |_, _, _| open_path(&crate::supervisor::log_path(kind)))),
+                            .child(button("page-log", t("Show its log"), true).on_click(move |_, _, _| open_path(&crate::supervisor::log_path(kind)))),
                     ),
             )
             .when_some(self.options(kind, cx), |d, options| d.child(options))
@@ -637,6 +682,58 @@ impl DesquView {
                                 )
                             }),
                     )
+                    .when(!c.removed, |d| {
+                        let (desktop, on) = (c.id.clone(), c.open_on_visit);
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(10.))
+                                .child(
+                                    switch(SharedString::from(format!("visit-{desktop}")), on_off(on), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                        if let Err(e) = crate::workspaces_page::set_open_on_visit(this.workspaces_running(), &desktop, !on) {
+                                            this.note = e;
+                                        }
+                                        this.refresh_soon(cx);
+                                    })),
+                                )
+                                .child(dim("Open its apps and folders the first time I come here")),
+                        )
+                    })
+                    .when(!c.removed, |d| {
+                        let desktop = c.id.clone();
+                        let (has, label) = match &c.wallpaper {
+                            Some(path) => (true, format!("Wallpaper: {}", path.rsplit(['\\', '/']).next().unwrap_or(path))),
+                            None => (false, "No wallpaper of its own".to_string()),
+                        };
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .child(dim(label).flex_1())
+                                .child({
+                                    let desktop = desktop.clone();
+                                    button(SharedString::from(format!("wp-keep-{desktop}")), "Use my wallpaper now", true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                        if let Err(e) = crate::workspaces_page::set_wallpaper(this.workspaces_running(), &desktop, true) {
+                                            this.note = e;
+                                        }
+                                        this.refresh_soon(cx);
+                                    }))
+                                })
+                                .when(has, |d| {
+                                    d.child(button(SharedString::from(format!("wp-clear-{}", c.id)), "Remove", true).on_click({
+                                        let desktop = c.id.clone();
+                                        cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                            if let Err(e) = crate::workspaces_page::set_wallpaper(this.workspaces_running(), &desktop, false) {
+                                                this.note = e;
+                                            }
+                                            this.refresh_soon(cx);
+                                        })
+                                    }))
+                                }),
+                        )
+                    })
                     .when(c.removed, |d| d.child(dim("This desktop no longer exists, so its items are shown everywhere again.")))
                     .when(!c.removed && count == 0, |d| d.child(dim("Nothing is tied to this desktop yet. Click an item below to tie it here.")))
                     .when(count > 0, |d| d.child(div().flex().flex_wrap().gap(px(6.)).children(c.items.iter().take(40).map(|i| self.item_chip(i, cx))))),
@@ -677,6 +774,8 @@ impl DesquView {
                     (VialTheme::Classic, "classic", "Classic"),
                     (VialTheme::Fluent, "fluent", "Fluent dark"),
                     (VialTheme::FluentLight, "fluentLight", "Fluent light"),
+                    (VialTheme::System, "system", "Follow Windows"),
+                    (VialTheme::Mica, "mica", "Mica (try it)"),
                 ];
                 let look = div().flex().flex_wrap().gap(px(6.)).children(themes.into_iter().map(|(theme, value, label)| {
                     button(SharedString::from(format!("look-{value}")), label, true)
@@ -691,7 +790,7 @@ impl DesquView {
                 let alive = matches!(self.shell.supervisor.status(kind), Status::Running | Status::RunningElsewhere);
                 Some(
                     card()
-                        .child(card_title("Settings"))
+                        .child(card_title(t("Settings")))
                         .child(div().child("Look of vials"))
                         .child(look)
                         .child(div().child("Glass tint (lower is clearer)"))
@@ -700,6 +799,18 @@ impl DesquView {
                         .child(self.option_switch(kind, "hideOnDesktop", "Hide items on the desktop", "Items in a vial leave the desktop", cfg.hide_on_desktop, cx))
                         .child(self.option_switch(kind, "createOnDrag", "Create vials by dragging a box", "Drag over empty desktop", cfg.create_on_drag, cx))
                         .child(self.option_switch(kind, "contextMenu", "Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, cx))
+                        .child(self.option_switch(kind, "offerForSelection", "Offer a vial for selected icons", "A box dragged over icons offers \"New vial with these\"", cfg.offer_for_selection, cx))
+                        .child(self.option_switch(kind, "hoverOpen", "Open collapsed vials on hover", "A collapsed vial opens while the pointer is over it", cfg.hover_open, cx))
+                        .child(self.option_switch(kind, "wallpaperTint", "Colour from the wallpaper", "Vials take a dark shade of the wallpaper", cfg.wallpaper_tint, cx))
+                        .child(self.option_switch(kind, "privacyMask", "Privacy mode", "Names and pictures stay hidden until the pointer is over a vial", cfg.privacy_mask, cx))
+                        .child(self.option_switch(kind, "hideFromCapture", "Hide vials from screen sharing", "They do not show in shares, recordings or screenshots", cfg.hide_from_capture, cx))
+                        .child(card_title("Peek hotkey"))
+                        .child(div().flex().flex_wrap().gap(px(6.)).children([(t("Off"), ""), ("Win+Shift+Space", "win+shift+space"), ("Ctrl+Alt+V", "ctrl+alt+v")].into_iter().map(|(label, value)| {
+                            button(SharedString::from(format!("peek-{value}")), label, true)
+                                .when(cfg.peek_hotkey == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_option(Kind::Vials, "peekHotkey", value.to_string(), cx)))
+                        })))
+                        .child(self.option_switch(kind, "quickHide", "Quick-hide", "Double-click the empty desktop to hide or show all vials and icons", cfg.quick_hide, cx))
                         .child(
                             div().child(
                                 button("vials-rules", "Edit rules...", alive).when(alive, |d| {
@@ -712,21 +823,23 @@ impl DesquView {
                 )
             }
             Kind::Workspaces => {
-                let on = crate::app_settings::workspaces_auto_assign();
+                let cfg = crate::app_settings::workspaces();
                 Some(
                     div()
                         .flex()
                         .flex_col()
                         .gap(px(12.))
-                        .child(card().child(card_title("Settings")).child(self.option_switch(
+                        .child(card().child(card_title(t("Settings"))).child(self.option_switch(
                             kind,
                             "autoAssignNew",
                             "New files join the desktop you are on",
                             "A file that appears on the desktop belongs to the current virtual desktop",
-                            on,
+                            cfg.auto_assign_new,
                             cx,
-                        )))
-                        .child(card_title("Desktops"))
+                        ))
+                        .child(self.option_switch(kind, "showName", "Show the desktop's name when you switch", "A short note in the middle of the screen", cfg.show_name, cx))
+                        .child(self.option_switch(kind, "jumpHotkeys", "Win+Ctrl+1..9 jumps to a desktop", "Goes straight to desktop 1 to 9", cfg.jump_hotkeys, cx)))
+                        .child(card_title(t("Desktops")))
                         .child(self.workspaces_section(cx)),
                 )
             }
@@ -735,12 +848,403 @@ impl DesquView {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(card_title("Zone and apps"))
+                    .child(card_title(t("Zone and apps")))
                     .child(div().w_full().min_w(px(0.)).h(px(980.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.main.clone()))
-                    .child(card_title("Groups, rules and browser"))
+                    .child(card_title(t("Groups, rules and browser")))
                     .child(div().w_full().min_w(px(0.)).h(px(660.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.manage.clone()))
             }),
         }
+    }
+
+    /// t("Save a report"): a zip with versions, a summary of the settings and the tail of each log, on the desktop.
+    fn save_report(&mut self, cx: &mut Context<Self>) {
+        let Some(folder) = desqu_desktop::desktop_folders().into_iter().next() else {
+            self.note = "The Desktop folder was not found".into();
+            return;
+        };
+        let supervisor = self.shell.supervisor.clone();
+        self.note = "Saving the report...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { crate::report::save(&folder, |kind| supervisor.status(kind)) }).await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(path) => {
+                        view.note = format!("Saved {}", path.display());
+                        // Show it in Explorer, selected.
+                        let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{}", path.display())).spawn();
+                    }
+                    Err(e) => view.note = format!("Could not save the report: {e}"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// The language of the window.
+    fn language_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        use desqu_native_shell::i18n::Lang;
+        let chosen = self.settings().language.clone();
+        let options: Vec<(String, Option<&'static str>)> = std::iter::once((t("Automatic").to_string(), None)).chain(Lang::ALL.into_iter().map(|l| (l.name().to_string(), Some(l.code())))).collect();
+        card().gap(px(6.)).child(card_title(t("Language"))).child(div().flex().flex_wrap().gap(px(6.)).children(options.into_iter().map(|(label, code)| {
+            button(SharedString::from(format!("lang-{}", code.unwrap_or("auto"))), label, true)
+                .when(chosen.as_deref() == code, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.edit(|s| s.language = code.map(str::to_string));
+                    desqu_native_shell::i18n::set(this.settings().language());
+                    cx.notify();
+                }))
+        })))
+    }
+
+    /// The command palette: which keys open it.
+    fn palette_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let current = self.settings().palette_keys().to_string();
+        card()
+            .gap(px(6.))
+            .child(card_title(t("Command palette")))
+            .child(dim("A small window where you type what you want: go to a page, turn an app on or off, make a vial, go to a virtual desktop, open an item of a vial."))
+            .child(div().flex().flex_wrap().gap(px(6.)).children([(t("Off"), ""), ("Ctrl+Alt+Space", "ctrl+alt+space"), ("Alt+Space", "alt+space"), ("Win+Shift+P", "win+shift+p")].into_iter().map(|(label, value)| {
+                button(SharedString::from(format!("palette-{value}")), label, true)
+                    .when(current == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.edit(|s| s.palette_hotkey = Some(value.to_string()));
+                        cx.notify();
+                    }))
+            })))
+    }
+
+    /// Every hotkey the apps use, with a warning for one that is taken twice or that Windows uses.
+    /// Makes a backup of every app's settings now.
+    fn back_up_now(&mut self, cx: &mut Context<Self>) {
+        let also = self.settings().backup_onedrive;
+        self.note = "Backing up...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { crate::backup::back_up(&crate::backup::Paths::real(), also) }).await;
+            let _ = this.update(cx, |view, cx| {
+                view.note = match result {
+                    Ok(zip) => format!("Saved {}", zip.display()),
+                    Err(e) => format!("Could not back up: {e}"),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Puts the settings of a backup back. The apps that run are stopped for it and started again after.
+    fn restore_backup(&mut self, zip: std::path::PathBuf, cx: &mut Context<Self>) {
+        let shell = self.shell.clone();
+        self.note = "Restoring...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    // The apps would write their own settings over the restored ones.
+                    let running: Vec<Kind> = ALL.into_iter().filter(|k| matches!(shell.supervisor.status(*k), Status::Running)).collect();
+                    for kind in &running {
+                        shell.supervisor.stop(*kind);
+                    }
+                    let restored = crate::backup::restore(&crate::backup::Paths::real(), &zip);
+                    // Desqu's own choices (which apps are on) come from the restored file too.
+                    *shell.settings.lock().unwrap_or_else(|e| e.into_inner()) = Settings::load(&shell.settings_path);
+                    for kind in running {
+                        let _ = shell.supervisor.start(kind);
+                    }
+                    restored
+                })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                view.note = match result {
+                    Ok(done) => format!("Restored {} settings files", done.len()),
+                    Err(e) => format!("Could not restore: {e}"),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Back up and restore the settings of all the apps.
+    fn backup_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let backups: Vec<std::path::PathBuf> = crate::backup::list(&crate::backup::folder()).into_iter().take(5).collect();
+        let cloud = crate::backup::onedrive_folder();
+        let cloud_latest = cloud.as_ref().and_then(|c| crate::backup::list(c).into_iter().next());
+        let on = self.settings().backup_onedrive;
+        let folder = crate::backup::folder();
+        let mut card = card()
+            .gap(px(6.))
+            .child(card_title(t("Back up your settings")))
+            .child(dim("One zip holds the settings of every app. Desqu makes one a day and keeps the newest 14."))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(8.))
+                    .child(button("backup-now", t("Back up now"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.back_up_now(cx))))
+                    .child(button("backup-folder", t("Open the backup folder"), true).on_click({
+                        let folder = folder.clone();
+                        move |_, _, _| {
+                            let _ = std::fs::create_dir_all(&folder);
+                            open_path(&folder);
+                        }
+                    })),
+            );
+        for (i, zip) in backups.into_iter().enumerate() {
+            let when = crate::backup::stamp_of(&zip).map(|s| ago_text(crate::backup::now_secs().saturating_sub(s))).unwrap_or_default();
+            card = card.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(div().flex_1().child(format!("Backup from {when}")))
+                    .child(button(SharedString::from(format!("restore-{i}")), t("Restore"), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.restore_backup(zip.clone(), cx)))),
+            );
+        }
+        if cloud.is_some() {
+            card = card
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(switch("backup-onedrive", on_off(on), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.edit(|s| s.backup_onedrive = !on);
+                            cx.notify();
+                        })))
+                        .child(dim("Also keep a copy in OneDrive, for another PC")),
+                )
+                .when_some(cloud_latest, |d, zip| {
+                    let when = crate::backup::stamp_of(&zip).map(|s| ago_text(crate::backup::now_secs().saturating_sub(s))).unwrap_or_default();
+                    d.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(div().flex_1().child(format!("OneDrive copy from {when}")))
+                            .child(button("restore-cloud", "Restore it", true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.restore_backup(zip.clone(), cx)))),
+                    )
+                });
+        }
+        card
+    }
+
+    fn hotkeys_card(&self) -> gpui::Div {
+        use crate::hotkeys::{check, collect, pretty, Problem};
+        let palette = self.settings().palette_keys().to_string();
+        let pin = self.settings().tool_pin_hotkey;
+        let entries = collect(&palette, &pin, &crate::app_settings::vials(), &crate::app_settings::workspaces(), &AppConfig::load(&crate::screenbound_remote::config_path()).unwrap_or_default());
+        let problems = check(&entries);
+        let mut card = card().gap(px(6.)).child(card_title(t("Hotkeys")));
+        if entries.is_empty() {
+            return card.child(dim("No app has a hotkey on. Turn them on on the page of each app: the peek of Vials, the jump of Workspaces, the zone of Screenbound."));
+        }
+        for (entry, problem) in entries.iter().zip(problems) {
+            let keys = if entry.app == "Workspaces" { format!("{}+1 to 9", pretty(entry.keys.trim_end_matches("+1"))) } else { pretty(&entry.keys) };
+            card = card.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().flex().gap(px(8.)).child(div().w(px(110.)).font_weight(FontWeight::SEMIBOLD).child(keys)).child(div().flex_1().child(format!("{}: {}", entry.app, entry.what))))
+                    .when_some(problem, |d, p| {
+                        d.child(div().pl(px(118.)).text_size(px(12.)).text_color(rgb(WARN)).child(match p {
+                            Problem::NotAKey => "These are not keys Windows can use.".to_string(),
+                            Problem::Twice(other) => format!("The same keys as {other}: only one of them works."),
+                            Problem::Taken(by) => format!("{by}: it may not work, or it may stop that."),
+                        }))
+                    }),
+            );
+        }
+        card
+    }
+
+    /// A row of time buttons that sets one time of the schedule.
+    fn time_buttons(&self, id: &'static str, times: &[u16], current: u16, cx: &mut Context<Self>, set: fn(&mut Settings, u16)) -> gpui::Div {
+        div().flex().flex_wrap().gap(px(6.)).children(times.iter().map(|minutes| {
+            let minutes = *minutes;
+            button(SharedString::from(format!("{id}-{minutes}")), crate::tools::clock(minutes), true)
+                .when(current == minutes, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.edit(|s| set(s, minutes));
+                    cx.notify();
+                }))
+        }))
+    }
+
+    /// Looks for the monitors that take brightness (it asks each one over its cable, so it takes a moment).
+    fn find_monitors(&mut self, cx: &mut Context<Self>) {
+        self.note = "Asking the monitors...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let found = cx.background_executor().spawn(async { desqu_native_shell::windowtools::monitors_brightness() }).await;
+            let _ = this.update(cx, |view, cx| {
+                view.note = if found.is_empty() { "No monitor answered: only external monitors with DDC/CI switched on can be set from here".into() } else { String::new() };
+                view.brightness = Some(found);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Sets one monitor to a brightness in percent.
+    fn set_brightness(&mut self, index: usize, percent: u32, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { desqu_native_shell::windowtools::set_brightness(index, percent) }).await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(()) => {
+                        if let Some(monitors) = view.brightness.as_mut() {
+                            if let Some(m) = monitors.iter_mut().find(|m| m.index == index) {
+                                m.current = desqu_native_shell::windowtools::raw_from_percent(percent, m.min, m.max);
+                            }
+                        }
+                    }
+                    Err(e) => view.note = e,
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// A switch that sets one on-or-off choice of the settings.
+    fn tool_switch(&self, id: &'static str, on: bool, cx: &mut Context<Self>, set: fn(&mut Settings, bool)) -> gpui::Stateful<gpui::Div> {
+        switch(id, on_off(on), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+            this.edit(|s| set(s, !on));
+            cx.notify();
+        }))
+    }
+
+    /// The small tools that live in Desqu: each has a switch.
+    fn tools_page(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let s = self.settings();
+        let pin = div().flex().flex_wrap().gap(px(6.)).children([("Off", ""), ("Ctrl+Alt+T", "ctrl+alt+t"), ("Win+Shift+T", "win+shift+t")].into_iter().map(|(label, value)| {
+            button(SharedString::from(format!("pin-{value}")), t(label), true)
+                .when(s.tool_pin_hotkey == value, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.edit(|s| s.tool_pin_hotkey = value.to_string());
+                    cx.notify();
+                }))
+        }));
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .max_w(px(760.))
+            .child(heading(t("Tools")))
+            .child(dim("Small tools that run inside Desqu. Each one is off until you turn it on."))
+            .child(
+                card()
+                    .child(card_title("Window layouts"))
+                    .child(dim("Remembers where your windows are for the screens you have now. Dock, undock or wake a monitor and they go back to where they were the last time the screens were like this."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("layouts", s.tool_layouts, cx, |s, v| s.tool_layouts = v)).child(div().child("Keep and restore window places")))
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .child(button("layout-save", "Remember them now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                std::thread::spawn(|| crate::windowlayout::WindowLayouts::new().save_now());
+                                this.note = "Window places saved".into();
+                                cx.notify();
+                            })))
+                            .child(button("layout-restore", "Put them back now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                std::thread::spawn(|| {
+                let _ = crate::windowlayout::WindowLayouts::new().restore_now();
+            });
+                                this.note = "Putting the windows back".into();
+                                cx.notify();
+                            }))),
+                    ),
+            )
+            .child(
+                card()
+                    .child(card_title("Tidy Downloads"))
+                    .child(dim("Files that have been in the Downloads folder for a quarter of an hour go into folders by kind: Images, Documents, Videos, Audio, Archives, Programs. Nothing is overwritten, folders and unfinished downloads stay, and the last tidy can be taken back."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("tidy-auto", s.tool_tidy_auto, cx, |s, v| s.tool_tidy_auto = v)).child(div().child("Tidy by itself, once an hour")))
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .child(button("tidy-now", "Tidy now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.note = "Tidying...".into();
+                                cx.notify();
+                                cx.spawn(async move |this, cx| {
+                                    let moved = cx.background_executor().spawn(async { crate::tidy::tidy(&crate::tidy::default_folder(), crate::tidy::SETTLED_SECS) }).await;
+                                    if !moved.is_empty() {
+                                        crate::tidy::save_journal(&moved);
+                                    }
+                                    let _ = this.update(cx, |view, cx| {
+                                        view.note = format!("Moved {} files", moved.len());
+                                        cx.notify();
+                                    });
+                                })
+                                .detach();
+                            })))
+                            .child(button("tidy-undo", "Undo the last tidy", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                let back = crate::tidy::undo(&crate::tidy::load_journal());
+                                crate::tidy::save_journal(&[]);
+                                this.note = format!("Put {back} files back");
+                                cx.notify();
+                            }))),
+                    ),
+            )
+            .child(
+                card()
+                    .child(card_title("Focus dimmer"))
+                    .child(dim("Darkens everything except the window you are working in, on every screen. Clicks go through the dark to the windows below."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("dimmer", s.tool_dimmer, cx, |s, v| s.tool_dimmer = v)).child(div().child("Dim everything else")))
+                    .child(div().flex().gap(px(6.)).children([("Light", 90u8), ("Medium", 140), ("Strong", 190)].into_iter().map(|(label, level)| {
+                        button(SharedString::from(format!("dim-{level}")), label, true)
+                            .when(s.dim_level() == level, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.edit(|s| s.tool_dim_level = Some(level));
+                                cx.notify();
+                            }))
+                    }))),
+            )
+            .child(self.brightness_card(cx))
+            .child(card().child(card_title("Always on top")).child(dim("A hotkey keeps the window in front above all others, with a thin blue border; press it again to let it go.")).child(pin))
+            .child(
+                card()
+                    .child(card_title("Keep awake"))
+                    .child(dim("The PC does not go to sleep while this is on."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("awake", s.tool_keep_awake, cx, |s, v| s.tool_keep_awake = v)).child(div().child("Keep the PC awake")))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("awake-screen", s.tool_keep_display, cx, |s, v| s.tool_keep_display = v)).child(div().child("Keep the screen on too"))),
+            )
+            .child(
+                card()
+                    .child(card_title("Light and dark by the clock"))
+                    .child(dim("Windows and its apps switch to the light theme in the morning and the dark one in the evening. Change it by hand in between and it stays until the next switch."))
+                    .child(div().flex().items_center().gap(px(10.)).child(self.tool_switch("autodark", s.tool_auto_dark, cx, |s, v| s.tool_auto_dark = v)).child(div().child("Switch by the clock")))
+                    .child(dim("Light from"))
+                    .child(self.time_buttons("light", &[5 * 60, 6 * 60, 7 * 60, 8 * 60, 9 * 60], s.light_from(), cx, |s, m| s.tool_light_from = Some(m)))
+                    .child(dim("Dark from"))
+                    .child(self.time_buttons("dark", &[17 * 60, 18 * 60, 19 * 60, 20 * 60, 21 * 60, 22 * 60], s.dark_from(), cx, |s, m| s.tool_dark_from = Some(m))),
+            )
+    }
+
+    /// The brightness of the monitors that take it.
+    fn brightness_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        use desqu_native_shell::windowtools::percent_from_raw;
+        let mut card = card()
+            .child(card_title("Monitor brightness"))
+            .child(dim("Sets the brightness of external monitors over the cable (DDC/CI). A laptop screen is not set from here."))
+            .child(div().flex().child(button("find-monitors", "Look for monitors", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.find_monitors(cx)))));
+        for m in self.brightness.iter().flatten() {
+            let (index, now) = (m.index, percent_from_raw(m.current, m.min, m.max));
+            let mut buttons = Vec::new();
+            for p in [0u32, 25, 50, 75, 100] {
+                buttons.push(
+                    button(SharedString::from(format!("bright-{index}-{p}")), format!("{p}%"), true)
+                        .when(now.abs_diff(p) <= 12, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_brightness(index, p, cx))),
+                );
+            }
+            card = card.child(div().flex().flex_wrap().items_center().gap(px(6.)).child(div().w(px(200.)).child(m.name.clone())).children(buttons));
+        }
+        card
     }
 
     fn settings_page(&self, cx: &mut Context<Self>) -> gpui::Div {
@@ -753,11 +1257,11 @@ impl DesquView {
             .flex_col()
             .gap(px(12.))
             .max_w(px(760.))
-            .child(heading("Settings"))
+            .child(heading(t("Settings")))
             .child(
                 card()
                     .gap(px(6.))
-                    .child(card_title("Start with system"))
+                    .child(card_title(t("Start with system")))
                     .child(dim(if starts {
                         format!("Desqu starts with Windows and starts {}.", marked.join(", "))
                     } else {
@@ -770,31 +1274,45 @@ impl DesquView {
             .child(
                 card()
                     .gap(px(6.))
-                    .child(card_title("Updates"))
+                    .child(card_title(t("Updates")))
                     .child(
                         div()
                             .flex()
                             .items_center()
                             .gap(px(8.))
                             .child(dim(if self.update_note.is_empty() { format!("Version {}", env!("CARGO_PKG_VERSION")) } else { self.update_note.clone() }).flex_1())
-                            .when_some(self.update_url.clone(), |d, url| d.child(button("download", "Download", true).on_click(move |_, _, _| open_url(&url))))
-                            .child(button("check", "Check now", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.check_update(cx)))),
+                            .when_some(self.update_url.clone(), |d, url| d.child(button("download", t("Download"), true).on_click(move |_, _, _| open_url(&url))))
+                            .child(button("check", t("Check now"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.check_update(cx)))),
                     ),
             )
             .child(
                 card()
                     .gap(px(6.))
-                    .child(card_title("About"))
+                    .child(card_title(t("About")))
                     .child(div().flex().gap(px(24.)).child("Desqu").child(dim(env!("CARGO_PKG_VERSION"))))
                     .child(dim("Each app keeps its output in the logs folder, which helps when one stops unexpectedly."))
-                    .child(div().flex().child(button("logs", "Open the logs folder", true).on_click(move |_, _, _| open_path(&logs)))),
+                    .child(div().flex().child(button("logs", t("Open the logs folder"), true).on_click(move |_, _, _| open_path(&logs)))),
             )
-            .child(div().flex().child(button("quit", "Quit Desqu and its apps", true).on_click(|_, _, cx| cx.quit())))
+            .child(self.language_card(cx))
+            .child(self.palette_card(cx))
+            .child(self.hotkeys_card())
+            .child(self.backup_card(cx))
+            .child(
+                card()
+                    .gap(px(6.))
+                    .child(card_title(t("Report a problem")))
+                    .child(dim("Saves a zip on your desktop to attach to a bug report: the versions, which apps are running, a summary of the settings (options and counts, not your file names) and the last lines of each app's log. Your user folder is hidden in it."))
+                    .child(div().flex().child(button("report", t("Save a report"), true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.save_report(cx))))),
+            )
+            .child(div().flex().child(button("quit", t("Quit Desqu and its apps"), true).on_click(|_, _, cx| cx.quit())))
     }
 }
 
 impl Render for DesquView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(page) = self.shell.nav.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            self.page = page;
+        }
         // Screenbound's views are made the first time its page is shown.
         if self.page == Page::App(Kind::Screenbound) && self.screenbound.is_none() {
             let remote = crate::screenbound_remote::Remote::start();
@@ -806,6 +1324,7 @@ impl Render for DesquView {
         let page = match self.page {
             Page::Home => self.home(cx),
             Page::App(kind) => self.app_page(kind, cx),
+            Page::Tools => self.tools_page(cx),
             Page::Settings => self.settings_page(cx),
         };
         div()
@@ -850,6 +1369,17 @@ fn open_url(url: &str) {
     let _ = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();
 }
 
+/// How long ago, for people: "just now", "5 minutes ago", "3 hours ago", "2 days ago".
+fn ago_text(secs: u64) -> String {
+    let plural = |n: u64, unit: &str| format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" });
+    match secs {
+        0..=59 => "just now".to_string(),
+        60..=3599 => plural(secs / 60, "minute"),
+        3600..=86_399 => plural(secs / 3600, "hour"),
+        _ => plural(secs / 86_400, "day"),
+    }
+}
+
 /// Opens a file or folder the way Explorer does (a log opens in the text editor).
 fn open_path(path: &std::path::Path) {
     let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
@@ -881,7 +1411,8 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
                     }
                 })
                 .detach();
-                DesquView { shell, page: Page::Home, busy: HashSet::new(), picked: None, screenbound: None, note: String::new(), update_note: String::new(), update_url: None }
+                let tour = (!shell.settings.lock().unwrap_or_else(|e| e.into_inner()).tour_done).then_some(0);
+                DesquView { page: Page::Home, busy: HashSet::new(), picked: None, tour, brightness: None, shell, screenbound: None, note: String::new(), update_note: String::new(), update_url: None }
             })
         },
     );
@@ -892,6 +1423,46 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
 
 #[cfg(test)]
 mod tests {
+    /// Every text the window passes through `t("...")` has a Swedish and a Polish version, so a text added
+    /// later without one is caught here.
+    #[test]
+    fn every_translated_text_of_the_window_exists_in_both_languages() {
+        use desqu_native_shell::i18n::{is_translated, Lang};
+        // Only the program, not these tests.
+        let source = include_str!("view.rs").split("#[cfg(test)]").next().unwrap_or_default();
+        let mut found = 0;
+        for part in source.split("t(\"").skip(1) {
+            let Some(end) = part.find("\")") else { continue };
+            let text = &part[..end];
+            // Only the calls of `t`, not other functions whose name ends in t.
+            if text.contains('\n') || text.len() < 2 || text == "..." {
+                continue;
+            }
+            found += 1;
+            for lang in [Lang::Sv, Lang::Pl] {
+                assert!(is_translated(lang, text), "{text:?} has no {} translation", lang.code());
+            }
+        }
+        assert!(found > 20, "the scan found the texts ({found})");
+    }
+
+    #[test]
+    fn the_chosen_language_wins_over_windows_and_automatic_follows_it() {
+        use desqu_native_shell::i18n::Lang;
+        let chosen = crate::modules::Settings { language: Some("pl".into()), ..Default::default() };
+        assert_eq!(chosen.language(), Lang::Pl);
+        let unknown = crate::modules::Settings { language: Some("xx".into()), ..Default::default() };
+        assert_eq!(unknown.language(), desqu_native_shell::i18n::system_language());
+    }
+
+    #[test]
+    fn how_long_ago_is_said_for_people() {
+        assert_eq!(ago_text(5), "just now");
+        assert_eq!(ago_text(60), "1 minute ago");
+        assert_eq!(ago_text(7_200), "2 hours ago");
+        assert_eq!(ago_text(86_400 * 3), "3 days ago");
+    }
+
     use super::*;
 
     #[test]
@@ -899,7 +1470,7 @@ mod tests {
         for s in [Status::Off, Status::Running, Status::RunningElsewhere, Status::Stopped, Status::Missing] {
             assert!(!status_text(s).is_empty());
         }
-        assert_eq!(status_text(Status::Running), "On", "the same word as the Tauri Desqu");
+        assert_eq!(status_text(Status::Running), t("On"), "the same word as the Tauri Desqu");
         assert!(status_text(Status::Stopped).contains("unexpectedly"));
     }
 }

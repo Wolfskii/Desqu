@@ -21,6 +21,12 @@ pub struct Workspace {
     /// Desktop item ids (absolute parsing names) that belong to this desktop.
     #[serde(default)]
     pub items: Vec<String>,
+    /// The first time you come to this desktop in a session, its apps and folders are opened.
+    #[serde(default)]
+    pub open_on_visit: bool,
+    /// A wallpaper picture for this desktop (a file); it is put on when you come here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallpaper: Option<String>,
 }
 
 impl Workspace {
@@ -29,6 +35,8 @@ impl Workspace {
             desktop_id: desktop_id.to_string(),
             name: name.to_string(),
             items: Vec::new(),
+            open_on_visit: false,
+            wallpaper: None,
         }
     }
 }
@@ -54,6 +62,12 @@ pub struct WorkspacesConfig {
     /// The first-run question ("which desktop do your current items belong to?") was answered.
     #[serde(default)]
     pub initialized: bool,
+    /// Win+Ctrl+1..9 goes straight to that virtual desktop.
+    #[serde(default)]
+    pub jump_hotkeys: bool,
+    /// A short note with the desktop's name shows when you switch desktops.
+    #[serde(default = "yes")]
+    pub show_name: bool,
 }
 
 impl Default for WorkspacesConfig {
@@ -63,6 +77,8 @@ impl Default for WorkspacesConfig {
             workspaces: Vec::new(),
             auto_assign_new: true,
             initialized: false,
+            jump_hotkeys: false,
+            show_name: true,
         }
     }
 }
@@ -163,6 +179,41 @@ impl WorkspacesConfig {
     }
 
     /// Forgets a workspace: its items are shown on every desktop again. Returns whether it existed.
+    /// Turns "open its items the first time you come here" on or off for a desktop (which then has a
+    /// workspace even with no items). Returns whether anything changed.
+    pub fn set_open_on_visit(&mut self, desktop: (&str, &str), on: bool) -> bool {
+        if !self.workspaces.iter().any(|w| w.desktop_id == desktop.0) {
+            if !on {
+                return false;
+            }
+            self.workspaces.push(Workspace::new(desktop.0, desktop.1));
+        }
+        match self.workspaces.iter_mut().find(|w| w.desktop_id == desktop.0) {
+            Some(ws) if ws.open_on_visit != on => {
+                ws.open_on_visit = on;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Gives a desktop a wallpaper (or with `None` takes it away). Returns whether anything changed.
+    pub fn set_wallpaper(&mut self, desktop: (&str, &str), path: Option<&str>) -> bool {
+        if !self.workspaces.iter().any(|w| w.desktop_id == desktop.0) {
+            if path.is_none() {
+                return false;
+            }
+            self.workspaces.push(Workspace::new(desktop.0, desktop.1));
+        }
+        match self.workspaces.iter_mut().find(|w| w.desktop_id == desktop.0) {
+            Some(ws) if ws.wallpaper.as_deref() != path => {
+                ws.wallpaper = path.map(str::to_string);
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn remove_workspace(&mut self, desktop_id: &str) -> bool {
         let before = self.workspaces.len();
         self.workspaces.retain(|w| w.desktop_id != desktop_id);
@@ -217,6 +268,36 @@ impl WorkspacesConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_desktop_can_have_a_wallpaper_and_lose_it_again() {
+        let mut cfg = WorkspacesConfig::default();
+        assert!(!cfg.set_wallpaper((ID, "Work"), None), "nothing to take away");
+        assert!(cfg.set_wallpaper((ID, "Work"), Some(r"C:\Pictures\work.jpg")));
+        assert_eq!(cfg.workspace(ID).unwrap().wallpaper.as_deref(), Some(r"C:\Pictures\work.jpg"));
+        assert!(!cfg.set_wallpaper((ID, "Work"), Some(r"C:\Pictures\work.jpg")));
+        assert!(cfg.set_wallpaper((ID, "Work"), None));
+        assert!(cfg.workspace(ID).unwrap().wallpaper.is_none());
+    }
+
+    #[test]
+    fn the_open_on_visit_choice_makes_a_workspace_and_an_old_config_has_it_off() {
+        let mut cfg = WorkspacesConfig::default();
+        assert!(!cfg.set_open_on_visit((ID, "Work"), false), "nothing to turn off");
+        assert!(cfg.set_open_on_visit((ID, "Work"), true));
+        assert!(cfg.workspace(ID).unwrap().open_on_visit);
+        assert!(!cfg.set_open_on_visit((ID, "Work"), true));
+        assert!(cfg.set_open_on_visit((ID, "Work"), false));
+        let old: Workspace = serde_json::from_str(&format!(r#"{{"desktopId":"{ID}","items":[]}}"#)).unwrap();
+        assert!(!old.open_on_visit);
+    }
+
+    #[test]
+    fn an_old_config_gets_the_new_options_at_their_defaults() {
+        let cfg: WorkspacesConfig = serde_json::from_str(r#"{"version":1,"workspaces":[]}"#).unwrap();
+        assert!(!cfg.jump_hotkeys, "the hotkeys are opt-in");
+        assert!(cfg.show_name, "the name note is on");
+    }
+
     use super::*;
 
     #[test]

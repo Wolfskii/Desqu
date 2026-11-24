@@ -27,8 +27,8 @@ pub fn vials() -> VialsConfig {
     VialsConfig::load(&vials_path()).unwrap_or_default()
 }
 
-pub fn workspaces_auto_assign() -> bool {
-    WorkspacesConfig::load(&workspaces_path()).map(|c| c.auto_assign_new).unwrap_or(true)
+pub fn workspaces() -> WorkspacesConfig {
+    WorkspacesConfig::load(&workspaces_path()).unwrap_or_default()
 }
 
 /// Changes one option of `kind`. `running`: the app is up and takes the change itself.
@@ -50,11 +50,14 @@ fn apply_to_vials_file(path: &Path, key: &str, value: &str) -> Result<(), String
 }
 
 fn apply_to_workspaces_file(path: &Path, key: &str, value: &str) -> Result<(), String> {
-    if key != "autoAssignNew" {
-        return Err(format!("unknown setting {key}"));
-    }
     let mut cfg = WorkspacesConfig::load(path).map_err(|e| e.to_string())?;
-    cfg.auto_assign_new = value.parse::<bool>().map_err(|_| format!("{key}: expected true or false"))?;
+    let flag = value.parse::<bool>().map_err(|_| format!("{key}: expected true or false"))?;
+    match key {
+        "autoAssignNew" => cfg.auto_assign_new = flag,
+        "jumpHotkeys" => cfg.jump_hotkeys = flag,
+        "showName" => cfg.show_name = flag,
+        _ => return Err(format!("unknown setting {key}")),
+    }
     cfg.save(path).map_err(|e| e.to_string())
 }
 
@@ -84,6 +87,10 @@ mod tests {
         let path = temp("workspaces");
         apply_to_workspaces_file(&path, "autoAssignNew", "false").unwrap();
         assert!(!WorkspacesConfig::load(&path).unwrap().auto_assign_new);
+        apply_to_workspaces_file(&path, "jumpHotkeys", "true").unwrap();
+        apply_to_workspaces_file(&path, "showName", "false").unwrap();
+        let cfg = WorkspacesConfig::load(&path).unwrap();
+        assert!(cfg.jump_hotkeys && !cfg.show_name);
         assert!(apply_to_workspaces_file(&path, "other", "true").is_err());
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }

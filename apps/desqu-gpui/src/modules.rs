@@ -84,6 +84,75 @@ pub struct Settings {
     pub workspaces_start_with_system: bool,
     #[serde(default)]
     pub screenbound_start_with_system: bool,
+    /// Each backup of the settings also goes to the Desqu folder in OneDrive.
+    #[serde(default)]
+    pub backup_onedrive: bool,
+    /// The first-run tour was finished or skipped.
+    #[serde(default)]
+    pub tour_done: bool,
+    /// Always on top: the hotkey that pins the window in front (empty: the tool is off).
+    #[serde(default)]
+    pub tool_pin_hotkey: String,
+    /// Tidy a folder: files that have been in it a while go into folders by kind, every hour when this is on.
+    #[serde(default)]
+    pub tool_tidy_auto: bool,
+    /// Focus dimmer: everything but the window in front is darkened; how dark is `tool_dim_level` (0 to 255).
+    #[serde(default)]
+    pub tool_dimmer: bool,
+    #[serde(default)]
+    pub tool_dim_level: Option<u8>,
+    /// Window layouts: the windows are put back where they were after the screens change.
+    #[serde(default)]
+    pub tool_layouts: bool,
+    /// Keep awake: the PC does not go to sleep (and, with the second switch, the screen stays on).
+    #[serde(default)]
+    pub tool_keep_awake: bool,
+    #[serde(default)]
+    pub tool_keep_display: bool,
+    /// Light and dark by the clock: the minute of the day each starts (7:00 and 19:00 when not chosen).
+    #[serde(default)]
+    pub tool_auto_dark: bool,
+    #[serde(default)]
+    pub tool_light_from: Option<u16>,
+    #[serde(default)]
+    pub tool_dark_from: Option<u16>,
+    /// The language of the window: `None` follows Windows, otherwise a code such as `sv`.
+    #[serde(default)]
+    pub language: Option<String>,
+    /// The hotkey of the command palette: `None` is the usual one, an empty text is off.
+    #[serde(default)]
+    pub palette_hotkey: Option<String>,
+}
+
+/// The palette's hotkey when none was chosen.
+pub const DEFAULT_PALETTE_KEYS: &str = "ctrl+alt+space";
+
+impl Settings {
+    /// How dark the focus dimmer is (a medium one when not chosen).
+    pub fn dim_level(&self) -> u8 {
+        self.tool_dim_level.unwrap_or(140)
+    }
+
+    /// When the light theme starts on the schedule, in minutes since midnight.
+    pub fn light_from(&self) -> u16 {
+        self.tool_light_from.unwrap_or(7 * 60)
+    }
+
+    /// When the dark theme starts on the schedule.
+    pub fn dark_from(&self) -> u16 {
+        self.tool_dark_from.unwrap_or(19 * 60)
+    }
+
+    /// The language to show: the chosen one, or Windows' own.
+    pub fn language(&self) -> desqu_native_shell::i18n::Lang {
+        use desqu_native_shell::i18n::Lang;
+        self.language.as_deref().and_then(Lang::from_code).unwrap_or_else(desqu_native_shell::i18n::system_language)
+    }
+
+    /// The keys of the command palette (empty: off).
+    pub fn palette_keys(&self) -> &str {
+        self.palette_hotkey.as_deref().unwrap_or(DEFAULT_PALETTE_KEYS)
+    }
 }
 
 /// The "start all apps with system" switch: over the apps that are on, some may start and some not.

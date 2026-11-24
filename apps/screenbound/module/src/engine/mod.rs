@@ -8,6 +8,8 @@ mod browser_zone;
 mod handle;
 pub mod journal;
 #[cfg(test)]
+mod snap_tests;
+#[cfg(test)]
 mod test_support;
 #[cfg(all(test, windows))]
 mod real_tests;
@@ -537,6 +539,10 @@ impl Engine {
         let Ok(identity) = self.platform.identity(id) else {
             return;
         };
+        // A game in exclusive fullscreen owns the screen: nothing is done to its window.
+        if self.config.leave_games_alone && self.platform.exclusive_fullscreen_game() {
+            return;
+        }
         // A window with a fullscreen rule belongs to the zone feature; borderless handles the rest.
         let Some(rule) = self.config.match_fullscreen_rule(&identity) else {
             self.try_borderless(id, identity);
@@ -1824,6 +1830,25 @@ impl Engine {
         }
         self.save_journal();
         (self.notify)(Notification::ManagedChanged);
+    }
+
+    /// Puts the window the user is working in into the first zone, once: it is moved and sized like a
+    /// window by hand and is not held there afterwards. Returns what was done, in words.
+    pub fn snap_foreground_to_zone(&mut self) -> Result<String, String> {
+        self.refresh_monitors();
+        let id = self.platform.foreground_window().ok_or("no window is in front")?;
+        if self.platform.process_id(id) == Some(std::process::id()) {
+            return Err("that is Screenbound's own window".into());
+        }
+        let state = self.platform.state(id).map_err(|e| e.to_string())?;
+        let zone = self.config.zones.first().ok_or("there is no zone yet")?;
+        let window_monitor = state.monitor.as_ref().and_then(|mid| self.monitors.iter().find(|m| &m.id == mid));
+        let monitor = zone.target_monitor(&self.monitors, window_monitor).ok_or("no monitor for the zone")?;
+        let target = zone.resolve_on(monitor);
+        self.platform.set_bounds(id, compensate_invisible_frame(target, &state)).map_err(|e| e.to_string())?;
+        let note = format!("Put in the zone {}", zone.name);
+        self.log(ActivityLevel::Info, self.platform.identity(id).ok().map(|i| label(&i, id)), note.clone());
+        Ok(note)
     }
 
     pub fn release_window(&mut self, id: WindowId) {

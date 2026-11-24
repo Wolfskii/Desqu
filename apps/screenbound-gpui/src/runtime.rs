@@ -233,6 +233,16 @@ impl Runtime {
         std::thread::spawn(move || shared.sync_bridge());
     }
 
+    /// Puts the window in front into the zone (the zone hotkey).
+    pub fn snap_foreground(&self) {
+        self.shared.handle.post(|e| {
+            if let Err(err) = e.snap_foreground_to_zone() {
+                eprintln!("zone hotkey: {err}");
+            }
+        });
+        self.shared.poke();
+    }
+
     /// Gives every constrained window its original size and position back.
     pub fn release_all(&self) {
         self.shared.handle.post(|e| e.release_all());

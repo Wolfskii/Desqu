@@ -83,6 +83,11 @@ impl Wallpaper {
         Self { sharp, soft, original: size, style, tile, modified }
     }
 
+    /// The average colour of the wallpaper (`0xRRGGBB`), from its small blurred copy.
+    pub fn average_color(&self) -> Option<u32> {
+        vials_core::chameleon::average(self.soft.pixels().map(|p| [p.0[0], p.0[1], p.0[2]]))
+    }
+
     /// Reads the current wallpaper from disk.
     pub fn load() -> Result<Self, String> {
         let (path, style, tile) = vials_platform::wallpaper()?;
@@ -217,6 +222,16 @@ pub fn render(wp: &Wallpaper, p: &Params) -> RgbaImage {
 
 #[cfg(test)]
 mod tests {
+    /// Reads the real wallpaper (changes nothing): run by hand with `--ignored`.
+    #[test]
+    #[ignore = "reads the real wallpaper"]
+    fn the_wallpaper_has_an_average_colour() {
+        let wallpaper = current().expect("a wallpaper");
+        let average = wallpaper.average_color().expect("an average");
+        println!("average {average:06x}, panel {:06x}", vials_core::chameleon::panel_color(average));
+        assert!(average <= 0xFFFFFF);
+    }
+
     use super::*;
 
     fn flat(rgb: [u8; 3], w: u32, h: u32) -> Wallpaper {

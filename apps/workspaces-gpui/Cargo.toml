@@ -13,6 +13,7 @@ winresource = "0.1"
 
 [dependencies]
 gpui = "0.2.2"
+raw-window-handle = "0.6"
 desqu-desktop = { path = "../../crates/desqu-desktop" }
 desqu-native-shell = { path = "../../crates/desqu-native-shell" }
 vials-core = { path = "../../crates/vials-core" }

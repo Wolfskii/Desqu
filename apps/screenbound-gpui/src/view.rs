@@ -149,6 +149,8 @@ pub struct ScreenboundView {
     apps_scroll: gpui::ScrollHandle,
     /// The app of the list whose details are shown.
     expanded: Option<String>,
+    /// The zone that is drawn and changed now (the first when it is unknown).
+    zone_id: Option<String>,
 }
 
 impl ScreenboundView {
@@ -201,6 +203,13 @@ impl ScreenboundView {
         self.avail.get().clamp(240.0, PREVIEW_W)
     }
 
+    /// The zone being worked on: the chosen one, else the first.
+    fn current_zone_id(&self) -> String {
+        let snap = self.rt.snapshot();
+        let zones = snap.config.as_ref().map(|c| c.zones.as_slice()).unwrap_or_default();
+        self.zone_id.clone().filter(|id| zones.iter().any(|z| &z.id == id)).or_else(|| zones.first().map(|z| z.id.clone())).unwrap_or_default()
+    }
+
     fn zone_from_drag(&self, monitors: &[Placed], drag: &Drag) -> Option<NormalizedRect> {
         let m = monitors.iter().find(|m| m.index == drag.monitor)?;
         let rel = |p: (f32, f32)| (f64::from((p.0 - m.x) / m.w.max(1.0)), f64::from((p.1 - m.y) / m.h.max(1.0)));
@@ -213,7 +222,11 @@ impl Render for ScreenboundView {
         self.remember_apps();
         let snap = self.rt.snapshot();
         let enabled = snap.config.as_ref().is_none_or(|c| c.enabled);
-        let zone = snap.config.as_ref().and_then(|c| c.zones.first()).map(|z| z.rect);
+        // The zones: the one being worked on (drawn strongly) and the others.
+        let zones: Vec<(String, String, NormalizedRect)> = snap.config.as_ref().map(|c| c.zones.iter().map(|z| (z.id.clone(), z.name.clone(), z.rect)).collect()).unwrap_or_default();
+        let current = self.zone_id.clone().filter(|id| zones.iter().any(|z| &z.0 == id)).or_else(|| zones.first().map(|z| z.0.clone())).unwrap_or_default();
+        let zone = zones.iter().find(|z| z.0 == current).map(|z| z.2);
+        let other_zones: Vec<NormalizedRect> = zones.iter().filter(|z| z.0 != current).map(|z| z.2).collect();
         let preview_w = self.preview_w();
         let placed = layout_monitors(&snap.monitors, preview_w, PREVIEW_H);
         let drag_rect = self.drag.as_ref().and_then(|d| self.zone_from_drag(&placed, d));
@@ -234,6 +247,7 @@ impl Render for ScreenboundView {
             .child(canvas(move |bounds, _, _| origin.set(bounds.origin), |_, _, _, _| {}).absolute().size_full())
             .children(placed.iter().map(|m| {
                 let tint = shown_zone.map(|z| (z.x as f32, z.y as f32, z.width as f32, z.height as f32));
+                let others = other_zones.clone();
                 div()
                     .absolute()
                     .left(px(m.x))
@@ -243,6 +257,9 @@ impl Render for ScreenboundView {
                     .border_1()
                     .border_color(rgba(0xffffff50))
                     .bg(rgba(0xffffff12))
+                    .children(others.into_iter().map(|z| {
+                        div().absolute().left(px(m.w * z.x as f32)).top(px(m.h * z.y as f32)).w(px(m.w * z.width as f32)).h(px(m.h * z.height as f32)).border_1().border_color(rgba(0xaad2ff60)).bg(rgba(0x78afff18))
+                    }))
                     .when_some(tint, |d, (x, y, w, h)| {
                         d.child(
                             div()
@@ -284,23 +301,73 @@ impl Render for ScreenboundView {
                         let snap = this.rt.snapshot();
                         let placed = layout_monitors(&snap.monitors, this.preview_w(), PREVIEW_H);
                         if let Some(rect) = this.zone_from_drag(&placed, &d) {
-                            this.rt.change(move |c| model::set_zone(c, rect));
+                            let id = this.current_zone_id();
+                            this.rt.change(move |c| model::set_zone_of(c, &id, rect));
                         }
                         cx.notify();
                     }
                 }),
             );
 
+        let zone_row = {
+            let many = zones.len() > 1;
+            let current_for_delete = current.clone();
+            div()
+                .flex()
+                .flex_wrap()
+                .gap_1()
+                .children(zones.iter().enumerate().map(|(i, (id, name, _))| {
+                    let id = id.clone();
+                    button(name.clone(), *id == current).id(("zone", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.zone_id = Some(id.clone());
+                        cx.notify();
+                    }))
+                }))
+                .child(button("+ Add zone", false).id("zone-add").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                    let snap = this.rt.snapshot();
+                    let Some(config) = snap.config.as_ref() else { return };
+                    let id = model::next_zone_id(config);
+                    this.zone_id = Some(id.clone());
+                    this.rt.change(move |c| model::add_zone(c, &id));
+                    cx.notify();
+                })))
+                .when(many, |d| {
+                    d.child(button("Delete this zone", false).id("zone-del").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        let id = current_for_delete.clone();
+                        this.zone_id = None;
+                        this.rt.change(move |c| model::delete_zone(c, &id));
+                        cx.notify();
+                    })))
+                })
+        };
+
         let presets = tag(div().flex().flex_wrap().gap_1(), "presets").children(PRESETS.iter().enumerate().map(|(i, preset)| {
             let monitor = snap.monitors.iter().find(|m| m.is_primary).or(snap.monitors.first()).cloned();
             button(preset.label, false).id(("preset", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 let rect = (PRESETS[i].rect)(monitor.as_ref());
-                this.rt.change(move |c| model::set_zone(c, rect));
+                let id = this.current_zone_id();
+                this.rt.change(move |c| model::set_zone_of(c, &id, rect));
                 cx.notify();
             }))
         }));
 
         let expanded = self.expanded.clone();
+        let games_alone = snap.config.as_ref().is_none_or(|c| c.leave_games_alone);
+        // The hotkey that snaps the window you are working in into the zone.
+        let current_hotkey = snap.config.as_ref().map(|c| c.zone_hotkey.clone()).unwrap_or_default();
+        let hotkeys = div().flex().flex_wrap().gap_1().children([("Off", ""), ("Ctrl+Alt+Z", "ctrl+alt+z"), ("Win+Shift+Z", "win+shift+z"), ("Ctrl+Alt+Space", "ctrl+alt+space")].into_iter().enumerate().map(
+            |(i, (label, value))| {
+                button(label, current_hotkey == value).id(("hotkey", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.rt.change(move |c| {
+                        let changed = c.zone_hotkey != value;
+                        c.zone_hotkey = value.to_string();
+                        changed
+                    });
+                    cx.notify();
+                }))
+            },
+        ));
+
         let app_list = apps.iter().enumerate().map(|(i, row)| {
             let name = row.process_name.clone();
             let on = row.applied;
@@ -392,12 +459,24 @@ impl Render for ScreenboundView {
                     }))),
             )
             .child(div().text_xs().text_color(rgba(0xffffff80)).child("When an app goes fullscreen, it stays inside the zone. Everything else stays visible."))
-            .child(section("Zone: drag on a monitor, or pick a preset"))
+            .child(section("Zones: pick one, then drag on a monitor or pick a preset"))
+            .child(zone_row)
             .child({
                 let avail = self.avail.clone();
                 div().relative().w_full().child(canvas(move |b, _, _| avail.set(f32::from(b.size.width)), |_, _, _, _| {}).absolute().size_full()).child(preview)
             })
             .child(presets)
+            .child(section("Hotkey: put the window in front into the zone"))
+            .child(hotkeys)
+            .child(div().flex().items_center().gap_2().child(
+                button(if games_alone { "On" } else { "Off" }, games_alone).id("games").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.rt.change(move |c| {
+                        c.leave_games_alone = !games_alone;
+                        true
+                    });
+                    cx.notify();
+                })),
+            ).child(div().text_sm().child("Leave games in exclusive fullscreen alone")))
             .child(section("Apps that stay inside the zone"))
             .child(
                 div()
@@ -479,7 +558,7 @@ fn create(rt: Arc<dyn Backend>, embedded: bool, cx: &mut App) -> Entity<Screenbo
             }
         })
         .detach();
-        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), avail: Rc::new(Cell::new(PREVIEW_W)), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0, apps_scroll: gpui::ScrollHandle::new(), expanded: None }
+        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), avail: Rc::new(Cell::new(PREVIEW_W)), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0, apps_scroll: gpui::ScrollHandle::new(), expanded: None, zone_id: None }
     })
 }
 

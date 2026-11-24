@@ -43,6 +43,19 @@ pub fn plan_paste(paths: &[String], cut: bool, desktop_folders: &[String]) -> Pa
     plan
 }
 
+/// A file name `stem.ext` that is not taken: `Vial 1.zip`, then `Vial 1 (2).zip`, `Vial 1 (3).zip`...
+pub fn unique_name(taken: impl Fn(&str) -> bool, stem: &str, ext: &str) -> String {
+    let name = |n: u32| if n == 1 { format!("{stem}.{ext}") } else { format!("{stem} ({n}).{ext}") };
+    (1..).map(name).find(|candidate| !taken(candidate)).expect("endless range")
+}
+
+/// A name that can be a file name: the characters Windows does not allow are replaced.
+pub fn file_safe(name: &str) -> String {
+    let cleaned: String = name.chars().map(|c| if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() { '_' } else { c }).collect();
+    let cleaned = cleaned.trim().trim_end_matches('.').to_string();
+    if cleaned.is_empty() { "Vial".to_string() } else { cleaned }
+}
+
 /// The ids (as the desktop lists them) that any of `paths` stands for. Anything that is not a known id
 /// is ignored, so a clipboard can never tie an arbitrary path to a vial.
 pub fn matching_ids(paths: &[String], ids: &[String]) -> Vec<String> {
@@ -52,6 +65,15 @@ pub fn matching_ids(paths: &[String], ids: &[String]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_free_file_name_is_found_and_a_vial_name_is_made_safe() {
+        let taken = |n: &str| n == "Work.zip" || n == "Work (2).zip";
+        assert_eq!(unique_name(taken, "Work", "zip"), "Work (3).zip");
+        assert_eq!(unique_name(|_| false, "Work", "zip"), "Work.zip");
+        assert_eq!(file_safe("Docs: a/b?"), "Docs_ a_b_");
+        assert_eq!(file_safe("  .. "), "Vial");
+    }
+
     use super::*;
 
     fn v(xs: &[&str]) -> Vec<String> {

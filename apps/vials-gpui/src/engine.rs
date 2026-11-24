@@ -18,6 +18,12 @@ pub struct Engine {
     path: PathBuf,
     monitors: Vec<MonitorRef>,
     watch: Mutex<Option<desqu_desktop::Subscription>>,
+    /// The panel colour taken from the wallpaper (set by [`Engine::refresh_wallpaper_color`]).
+    wallpaper_color: Mutex<Option<u32>>,
+    /// The vials were put at other places (a layout came back): the windows have to follow.
+    places_changed: std::sync::atomic::AtomicBool,
+    /// What the vials looked like before the last few changes the user made: for undo.
+    history: Mutex<vials_core::history::History<VialsConfig>>,
 }
 
 impl Engine {
@@ -29,7 +35,7 @@ impl Engine {
             desqu_desktop::DesktopError::OwnedElsewhere => "the desktop is held by an older Desqu, Vials or Workspaces that does not share it: quit that one first".to_string(),
             other => other.to_string(),
         })?;
-        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None) });
+        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None), places_changed: Default::default(), wallpaper_color: Mutex::new(None), history: Mutex::new(vials_core::history::History::new(30)) });
         engine.hide_vial_items();
         Ok(engine)
     }
@@ -54,6 +60,9 @@ impl Engine {
 
     /// The user moved or resized a vial window: remember it as fractions of its monitor.
     pub fn persist_rect(&self, vial_id: &str, pixels: PixelRect) {
+        if self.is_locked(vial_id) {
+            return;
+        }
         let Some(monitor) = layout::monitor_containing(&pixels, &self.monitors) else { return };
         let mut cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
         let Some(vial) = cfg.vials.iter_mut().find(|v| v.id == vial_id) else { return };
@@ -91,10 +100,20 @@ impl Engine {
     /// Changes the config with `edit`, saves it, and hides the items that entered a vial / shows the
     /// ones that left. Returns whether anything changed.
     fn apply(&self, edit: impl FnOnce(&mut VialsConfig) -> bool) -> bool {
+        self.apply_with(true, edit)
+    }
+
+    /// Like `apply`; `record` says whether undo can take the change back (what the user did, not what
+    /// the desktop or a setting did).
+    fn apply_with(&self, record: bool, edit: impl FnOnce(&mut VialsConfig) -> bool) -> bool {
         let mut cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
         let before: HashSet<String> = cfg.assigned_ids().into_iter().collect();
+        let snapshot = record.then(|| cfg.clone());
         if !edit(&mut cfg) {
             return false;
+        }
+        if let Some(snapshot) = snapshot {
+            self.history.lock().unwrap_or_else(|e| e.into_inner()).push(snapshot);
         }
         let after: HashSet<String> = cfg.assigned_ids().into_iter().collect();
         if let Err(e) = cfg.save(&self.path) {
@@ -123,8 +142,18 @@ impl Engine {
         self.apply(|cfg| ids.iter().fold(false, |changed, id| cfg.assign(id, Some(vial_id)) | changed))
     }
 
+    /// A new vial in `rect` holding the desktop items `ids` (those that really are on the desktop).
+    pub fn create_vial_with(&self, rect: PixelRect, ids: &[String]) -> Option<String> {
+        let vial = self.create_vial(rect)?;
+        self.drop_items(&vial, ids);
+        Some(vial)
+    }
+
     /// Takes an item out of its vial: it is back on the desktop.
     pub fn remove_item(&self, id: &str) -> bool {
+        if self.vial_id_of(id).is_some_and(|v| self.is_locked(&v)) {
+            return false;
+        }
         self.apply(|cfg| cfg.assign(id, None))
     }
 
@@ -177,7 +206,7 @@ impl Engine {
         // The desktop keeps listing a deleted file for a few seconds: never put such a ghost in a vial.
         let items: Vec<_> = items.into_iter().filter(|i| i.id.starts_with("::") || Path::new(&i.id).exists()).collect();
         let names: std::collections::HashMap<&str, &str> = items.iter().map(|i| (i.id.as_str(), i.name.as_str())).collect();
-        let changed = self.apply(|cfg| {
+        let changed = self.apply_with(false, |cfg| {
             let assignments = rules::assign_new_items(cfg, &items);
             for (item, vial) in &assignments {
                 cfg.assign(item, Some(vial));
@@ -281,6 +310,37 @@ impl Engine {
 
     /// A new empty vial of the default size (380 x 260 dip) with its corner at `point` (physical screen
     /// pixels), kept on its monitor. `None` point: the middle of the primary monitor.
+    /// A folder portal: a vial that shows `folder`, in `rect`.
+    pub fn create_portal(&self, rect: PixelRect, folder: &str) -> Option<String> {
+        let monitor = layout::monitor_containing(&rect, &self.monitors)?;
+        let normalized = layout::to_normalized(&rect, &monitor.bounds);
+        let name = monitor.name.clone();
+        let mut id = None;
+        self.apply(|cfg| {
+            id = Some(cfg.add_portal(normalized, Some(name), folder));
+            true
+        });
+        id
+    }
+
+    /// A folder portal of the usual size at a point (the pointer, say).
+    pub fn create_portal_at(&self, point: Option<(i32, i32)>, folder: &str) -> Option<String> {
+        let rect = self.popup_rect(point)?;
+        self.create_portal(rect, folder)
+    }
+
+    /// Where a new vial of the usual size goes when it is made at `point` (the middle of the primary monitor
+    /// without one), kept on its monitor.
+    fn popup_rect(&self, point: Option<(i32, i32)>) -> Option<PixelRect> {
+        let primary = self.monitors.iter().find(|m| m.primary).or(self.monitors.first())?;
+        let point = point.unwrap_or(((primary.bounds.left + primary.bounds.right) / 2, (primary.bounds.top + primary.bounds.bottom) / 2));
+        let at = PixelRect { left: point.0, top: point.1, right: point.0 + 1, bottom: point.1 + 1 };
+        let monitor = layout::monitor_containing(&at, &self.monitors).unwrap_or(primary);
+        let size = ((380.0 * monitor.scale).round() as i32, (260.0 * monitor.scale).round() as i32);
+        let (x, y) = vials_core::gesture::popup_position(point, size, &monitor.bounds);
+        Some(PixelRect { left: x, top: y, right: x + size.0, bottom: y + size.1 })
+    }
+
     pub fn create_vial_at(&self, point: Option<(i32, i32)>) -> Option<String> {
         let primary = self.monitors.iter().find(|m| m.primary).or(self.monitors.first())?;
         let point = point.unwrap_or(((primary.bounds.left + primary.bounds.right) / 2, (primary.bounds.top + primary.bounds.bottom) / 2));
@@ -295,7 +355,7 @@ impl Engine {
     /// "hide items on the desktop" on or off hides or shows the vials' items at once.
     pub fn edit_settings(&self, edit: impl FnOnce(&mut VialsConfig)) -> bool {
         let before = self.config();
-        let changed = self.apply(|cfg| {
+        let changed = self.apply_with(false, |cfg| {
             edit(cfg);
             *cfg != before
         });
@@ -316,6 +376,33 @@ impl Engine {
 
     /// Adds a rule (tried after the existing ones). Desktop items that already match it and sit in no vial
     /// are sorted at once.
+    /// Looks at the wallpaper again (off the UI thread: it is a picture to decode) and keeps the panel colour it
+    /// gives. Returns whether that colour changed.
+    pub fn refresh_wallpaper_color(&self) -> bool {
+        let color = if self.config().wallpaper_tint { crate::liquid::current().and_then(|w| w.average_color()).map(vials_core::chameleon::panel_color) } else { None };
+        let mut slot = self.wallpaper_color.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = *slot != color;
+        *slot = color;
+        changed
+    }
+
+    /// A vial that shows the folder of notes and links, named Notes.
+    pub fn create_notes_at(&self, point: Option<(i32, i32)>) -> Option<String> {
+        let folder = vials_core::notes::folder();
+        std::fs::create_dir_all(&folder).ok()?;
+        let vial = self.create_portal_at(point, &folder.to_string_lossy())?;
+        self.rename_vial(&vial, "Notes");
+        Some(vial)
+    }
+
+    /// A vial named "Archive" with a rule that sends it whatever has not been changed for `days` days.
+    pub fn create_archive_at(&self, point: Option<(i32, i32)>, days: u32) -> Option<String> {
+        let vial = self.create_vial_at(point)?;
+        self.rename_vial(&vial, "Archive");
+        self.add_rule(&format!("not changed for {days} days"), vials_core::model::ItemMatcher::ModifiedOlderThanDays(days), &vial);
+        Some(vial)
+    }
+
     pub fn add_rule(&self, name: &str, matcher: vials_core::model::ItemMatcher, vial_id: &str) -> bool {
         let added = self.apply(|cfg| cfg.add_rule(name, matcher, vial_id).is_some());
         if added {
@@ -340,10 +427,29 @@ impl Engine {
         self.apply(|cfg| cfg.move_rule(id, delta))
     }
 
-    /// How vials look right now.
-    pub fn look(&self) -> crate::theme::Theme {
+    /// The look of one vial: the common look with this vial's own tint and colour.
+    pub fn look_for(&self, vial_id: &str) -> crate::theme::Theme {
         let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
-        crate::theme::Theme::of(cfg.theme, cfg.glass_tint)
+        let vial = cfg.vial(vial_id);
+        let tint = vial.and_then(|v| v.tint).unwrap_or(cfg.glass_tint);
+        let look = crate::theme::Theme::of(cfg.theme, tint);
+        let wallpaper = cfg.wallpaper_tint.then(|| *self.wallpaper_color.lock().unwrap_or_else(|e| e.into_inner())).flatten();
+        match vial.and_then(|v| v.color_rgb()).or(wallpaper) {
+            Some(rgb) => look.with_color(rgb),
+            None => look,
+        }
+    }
+
+    /// Changes how one vial looks (colour, tint, icon size, title). Returns whether anything changed.
+    pub fn set_look(&self, vial_id: &str, change: impl FnOnce(&mut Vial)) -> bool {
+        self.apply(|cfg| match cfg.vials.iter_mut().find(|v| v.id == vial_id) {
+            Some(v) => {
+                let before = v.clone();
+                change(v);
+                *v != before
+            }
+            None => false,
+        })
     }
 
     pub fn config(&self) -> VialsConfig {
@@ -356,17 +462,109 @@ impl Engine {
     }
 
     pub fn rename_vial(&self, vial_id: &str, name: &str) -> bool {
+        if self.is_locked(vial_id) {
+            return false;
+        }
         self.apply(|cfg| cfg.rename_vial(vial_id, name))
     }
 
+    /// Saves where the vials are under a name (a new "Layout N" for an empty one). Returns the name.
+    pub fn save_layout(&self, name: &str) -> String {
+        let mut saved = String::new();
+        self.apply_with(false, |cfg| {
+            saved = vials_core::layouts::save_named(cfg, name);
+            true
+        });
+        saved
+    }
+
+    /// Puts the vials where a named layout had them.
+    pub fn restore_layout(&self, name: &str) -> bool {
+        let moved = self.apply(|cfg| vials_core::layouts::restore_named(cfg, name));
+        if moved {
+            self.places_changed.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        moved
+    }
+
+    pub fn delete_layout(&self, name: &str) -> bool {
+        self.apply_with(false, |cfg| vials_core::layouts::delete_named(cfg, name))
+    }
+
+    /// The names of the saved layouts.
+    pub fn layout_names(&self) -> Vec<String> {
+        let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        vials_core::layouts::named(&cfg).into_iter().map(|l| l.name.clone()).collect()
+    }
+
+    /// The screens changed from one setup to another: the vials go where they were in that setup.
+    pub fn switch_setup(&self, old: &str, new: &str) -> bool {
+        let moved = self.apply_with(false, |cfg| {
+            let before = cfg.clone();
+            vials_core::layouts::switch_setup(cfg, old, new);
+            *cfg != before
+        });
+        self.places_changed.store(true, std::sync::atomic::Ordering::SeqCst);
+        moved
+    }
+
+    /// Whether the vials were put at other places since this was last asked.
+    pub fn take_places_changed(&self) -> bool {
+        self.places_changed.swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Whether there is something to undo.
+    pub fn can_undo(&self) -> bool {
+        !self.history.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+    }
+
+    /// Takes back the last change the user made to the vials, their items or the rules.
+    pub fn undo(&self) -> bool {
+        let Some(before) = self.history.lock().unwrap_or_else(|e| e.into_inner()).pop() else { return false };
+        self.apply_with(false, |cfg| {
+            let mut restored = cfg.clone();
+            restored.restore_content(before);
+            let changed = restored != *cfg;
+            *cfg = restored;
+            changed
+        })
+    }
+
+    /// Makes `vial` (with its tabs) a tab of `host`.
+    pub fn merge_tab(&self, vial: &str, host: &str) -> bool {
+        self.apply(|cfg| cfg.merge_tab(vial, host))
+    }
+
+    /// Takes a tab out into a vial of its own.
+    pub fn split_tab(&self, vial: &str) -> bool {
+        self.apply(|cfg| cfg.split_tab(vial))
+    }
+
+    /// Whether the vial is locked.
+    pub fn is_locked(&self, vial_id: &str) -> bool {
+        self.config.lock().unwrap_or_else(|e| e.into_inner()).is_locked(vial_id)
+    }
+
+    /// Locks or unlocks a vial.
+    pub fn set_locked(&self, vial_id: &str, locked: bool) -> bool {
+        self.apply(|cfg| cfg.set_locked(vial_id, locked))
+    }
+
     pub fn set_collapsed(&self, vial_id: &str, collapsed: bool) {
-        self.apply(|cfg| match cfg.vials.iter_mut().find(|v| v.id == vial_id) {
+        self.apply_with(false, |cfg| match cfg.vials.iter_mut().find(|v| v.id == vial_id) {
             Some(v) if v.collapsed != collapsed => {
                 v.collapsed = collapsed;
                 true
             }
             _ => false,
         });
+    }
+
+    /// Switches the desktop's own icons off (and back on): what quick-hide does besides hiding the vials.
+    pub fn set_veil(&self, on: bool) {
+        if let Err(e) = self.layer.veil(on) {
+            eprintln!("could not {} the desktop icons: {e}", if on { "hide" } else { "show" });
+        }
     }
 
     /// Puts every hidden item back on the desktop.
@@ -425,6 +623,13 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
+            source: None,
+            tab_host: None,
         });
         cfg.save(&cfg_path).unwrap();
 
@@ -494,6 +699,13 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
+            source: None,
+            tab_host: None,
         });
         cfg.rules.push(SortRule {
             id: "r1".into(),

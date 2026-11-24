@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -12,6 +12,7 @@ use gpui::{
     Render, SharedString, Window,
 };
 use vials_core::model::PixelRect;
+use vials_core::nav;
 
 use crate::engine::Engine;
 use crate::liquid;
@@ -38,10 +39,19 @@ pub struct Live {
     pub vial_id: String,
 }
 
+#[derive(Clone)]
 pub struct Item {
     pub id: String,
     pub name: SharedString,
     pub missing: bool,
+    pub is_dir: bool,
+}
+
+impl Item {
+    fn of(id: &str) -> Item {
+        let meta = std::fs::metadata(id).ok();
+        Item { name: display_name(id).into(), missing: meta.is_none(), is_dir: meta.is_some_and(|m| m.is_dir()), id: id.to_string() }
+    }
 }
 
 /// Where the window sits, so collapsing can resize it in place.
@@ -52,6 +62,30 @@ pub struct Placement {
 
 /// Pointer movement (px) before a press turns into a drag.
 const DRAG_THRESHOLD: f32 = 5.0;
+
+/// What a folder portal shows: the folder it was made for, the one it is in now, and what that held.
+struct PortalState {
+    root: PathBuf,
+    dir: PathBuf,
+    listing: Vec<String>,
+}
+
+/// "New folder portal here...": asks for a folder, then makes a portal at `at` showing it.
+pub fn new_portal(cx: &mut App, live: Live, at: Option<(i32, i32)>, rect: Option<PixelRect>) {
+    cx.spawn(async move |cx| {
+        let folder = cx.background_executor().spawn(async { vials_platform::actions::pick_folder("Choose the folder the portal shows").ok().flatten() }).await;
+        let Some(folder) = folder else { return };
+        let folder = folder.to_string_lossy().into_owned();
+        let made = match rect {
+            Some(rect) => live.engine.create_portal(rect, &folder),
+            None => live.engine.create_portal_at(at, &folder),
+        };
+        if made.is_some() {
+            let _ = cx.update(|cx| bump(&live.revision, cx));
+        }
+    })
+    .detach();
+}
 
 /// The box drawn on empty space to select several items at once.
 struct Marquee {
@@ -74,6 +108,37 @@ pub struct VialView {
     items: Vec<Item>,
     icons: HashMap<String, Arc<Image>>,
     icons_requested: HashSet<String>,
+    /// The item the keyboard is on, and where a Shift range starts.
+    cursor: Option<usize>,
+    anchor: Option<usize>,
+    /// Everything the vial holds (or the portal's folder), and what the search lets through is `items`.
+    all_items: Vec<Item>,
+    /// The text typed into the search box; `None` while the box is closed.
+    search: Option<String>,
+    /// Which deep search of a portal is current, and what it found (`None`: look through `all_items`).
+    search_gen: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    search_results: Option<Vec<String>>,
+    /// The vials that show in this window as tabs (this vial first, with the name each has), and the one that is
+    /// open. A window with one vial has no tab bar.
+    tabs: Vec<(String, String)>,
+    active_tab: Option<String>,
+    /// A folder portal: the folder it was made for, the one it shows now, and what that held when last looked at.
+    portal: Option<PortalState>,
+    /// Icon size in pixels, and whether the title is centred: from the vial's own look.
+    icon_size: u8,
+    title_center: bool,
+    /// How many items an Explorer drag over this window carries (0 when none): the picture Explorer draws is a single
+    /// icon over our windows, so the window says how many are coming.
+    incoming: usize,
+    /// Privacy mode is on: names and pictures are hidden until the pointer is over the vial.
+    privacy_mask: bool,
+    /// A collapsed vial is open for the moment because the pointer is over it.
+    peeking: bool,
+    /// Where the pointer is now (over the window or not), and which "left" a delayed close belongs to.
+    hovered: bool,
+    hover_gen: u64,
+    /// The vial is locked: it cannot be moved, resized, renamed or emptied by dragging.
+    locked: bool,
     selected: BTreeSet<usize>,
     marquee: Option<Marquee>,
     /// Where each item was last drawn (window coordinates): what the box is held against.
@@ -129,9 +194,17 @@ impl VialView {
         cx.observe_window_bounds(window, move |this, window, cx| {
             let Some(hwnd) = win::hwnd(window) else { return };
             this.hwnd = Some(hwnd.0 as isize);
+            if let Some(live) = &this.live {
+                this.apply_capture(live.engine.config().hide_from_capture);
+            }
             this.refresh_liquid(cx);
+            // A locked vial goes back to where it was put.
+            if this.locked && !this.shown_collapsed() {
+                win::place_at_bottom(hwnd, &this.placement.rect);
+                return;
+            }
             if let Some(now) = win::window_rect(hwnd) {
-                if this.collapsed {
+                if this.shown_collapsed() {
                     this.placement.rect.left = now.left;
                     this.placement.rect.top = now.top;
                     this.placement.rect.right = now.right;
@@ -174,6 +247,23 @@ impl VialView {
             items: Vec::new(),
             icons: HashMap::new(),
             icons_requested: HashSet::new(),
+            icon_size: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).map_or(32, |v| v.icon_px()),
+            title_center: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).is_some_and(|v| v.title_center),
+            tabs: Vec::new(),
+            active_tab: None,
+            all_items: Vec::new(),
+            search: None,
+            search_gen: Default::default(),
+            search_results: None,
+            incoming: 0,
+            privacy_mask: live.as_ref().is_some_and(|l| l.engine.config().privacy_mask),
+            portal: None,
+            cursor: None,
+            anchor: None,
+            peeking: false,
+            hovered: false,
+            hover_gen: 0,
+            locked: live.as_ref().is_some_and(|l| l.engine.is_locked(&l.vial_id)),
             selected: BTreeSet::new(),
             marquee: None,
             bounds: Rc::default(),
@@ -194,14 +284,153 @@ impl VialView {
             hwnd: None,
         };
         view.set_items(ids, cx);
+        view.init_portal(cx);
+        view.start_portal_watch(cx);
         view
     }
 
+    /// A vial that shows a folder starts at that folder.
+    fn init_portal(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let vials = live.engine.vials();
+        self.sync_content(&vials, cx);
+    }
+
+    /// The vial whose items the window shows: the open tab, else the vial of the window.
+    fn content_id(&self) -> String {
+        let host = self.live.as_ref().map(|l| l.vial_id.clone()).unwrap_or_default();
+        self.active_tab.clone().filter(|id| self.tabs.iter().any(|t| &t.0 == id)).unwrap_or(host)
+    }
+
+    /// Looks at which vials are tabs of this one and shows the items of the open one.
+    fn sync_content(&mut self, vials: &[vials_core::model::Vial], cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let mut tabs = vec![(live.vial_id.clone(), self.name.to_string())];
+        tabs.extend(vials.iter().filter(|v| v.tab_host.as_deref() == Some(live.vial_id.as_str())).map(|v| (v.id.clone(), v.name.clone())));
+        if let Some(host) = vials.iter().find(|v| v.id == live.vial_id) {
+            tabs[0].1 = host.name.clone();
+        }
+        self.tabs = if tabs.len() > 1 { tabs } else { Vec::new() };
+        let content = self.content_id();
+        let Some(vial) = vials.iter().find(|v| v.id == content) else { return };
+        self.set_portal_source(vial.source.clone(), cx);
+        if self.portal.is_none() {
+            self.set_items(vial.items.clone(), cx);
+        }
+    }
+
+    /// Opens one of the tabs.
+    fn select_tab(&mut self, id: String, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        if self.active_tab.as_deref() == Some(id.as_str()) {
+            return;
+        }
+        self.active_tab = Some(id);
+        self.selected.clear();
+        self.cursor = None;
+        self.search = None;
+        self.portal = None;
+        let vials = live.engine.vials();
+        self.sync_content(&vials, cx);
+        cx.notify();
+    }
+
+    /// Makes the view a portal of `source` (or an ordinary vial with `None`); nothing changes when it already is.
+    fn set_portal_source(&mut self, source: Option<String>, cx: &mut Context<Self>) {
+        match source {
+            Some(folder) => {
+                let root = PathBuf::from(folder);
+                if self.portal.as_ref().map(|p| &p.root) != Some(&root) {
+                    self.portal = Some(PortalState { dir: root.clone(), root, listing: Vec::new() });
+                    self.selected.clear();
+                    self.refresh_portal(cx);
+                }
+            }
+            None => self.portal = None,
+        }
+    }
+
+    /// Reads the folder the portal shows now (off the UI thread: a network folder can be slow).
+    fn refresh_portal(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()) else { return };
+        cx.spawn(async move |this, cx| {
+            let wanted = dir.clone();
+            let listing = cx.background_executor().spawn(async move { vials_core::portal::list(&dir) }).await;
+            let _ = this.update(cx, |view, cx| {
+                let Some(portal) = view.portal.as_mut().filter(|p| p.dir == wanted) else { return };
+                match listing {
+                    Ok(ids) => {
+                        portal.listing = ids.clone();
+                        view.set_items(ids, cx);
+                    }
+                    // A folder that cannot be read shows as empty.
+                    Err(_) => {
+                        portal.listing.clear();
+                        view.set_items(Vec::new(), cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// A portal looks at its folder every couple of seconds, so files that come and go show up.
+    fn start_portal_watch(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+            let Ok(dir) = this.update(cx, |view, _| view.portal.as_ref().map(|p| p.dir.clone())) else { return };
+            let Some(dir) = dir else { continue };
+            let wanted = dir.clone();
+            let listing = cx.background_executor().spawn(async move { vials_core::portal::list(&dir) }).await;
+            let alive = this.update(cx, |view, cx| {
+                let Some(portal) = view.portal.as_mut().filter(|p| p.dir == wanted) else { return };
+                let ids = listing.unwrap_or_default();
+                if portal.listing != ids {
+                    portal.listing = ids.clone();
+                    view.set_items(ids, cx);
+                    cx.notify();
+                }
+            });
+            if alive.is_err() {
+                return;
+            }
+        })
+        .detach();
+    }
+
+    /// Goes into a folder of the portal.
+    fn portal_go(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+        let Some(portal) = self.portal.as_mut() else { return };
+        if !vials_core::portal::is_inside(&portal.root, &dir) {
+            return;
+        }
+        portal.dir = dir;
+        portal.listing.clear();
+        self.selected.clear();
+        self.cursor = None;
+        self.refresh_portal(cx);
+        cx.notify();
+    }
+
+    /// One folder up, but never above the folder the portal was made for.
+    fn portal_up(&mut self, cx: &mut Context<Self>) {
+        let Some(up) = self.portal.as_ref().and_then(|p| vials_core::portal::up(&p.root, &p.dir)) else { return };
+        self.portal_go(up, cx);
+    }
+
+    /// Opens an item the way a double-click does: a folder of a portal is entered, anything else is opened.
+    fn open_item(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.portal.is_some() && std::path::Path::new(id).is_dir() {
+            self.portal_go(PathBuf::from(id), cx);
+        } else {
+            win::open_path(id);
+        }
+    }
+
     fn set_items(&mut self, ids: Vec<String>, cx: &mut Context<Self>) {
-        self.items = ids
-            .iter()
-            .map(|id| Item { name: display_name(id).into(), missing: !Path::new(id).exists(), id: id.clone() })
-            .collect();
+        self.all_items = ids.iter().map(|id| Item::of(id)).collect();
+        self.refilter();
         let count = self.items.len();
         self.selected.retain(|i| *i < count);
         let wanted: Vec<String> = self
@@ -213,9 +442,73 @@ impl VialView {
         self.request_icons(wanted, cx);
     }
 
+    /// What the search lets through: the portal's deep results while there are some, else the items that fit.
+    fn refilter(&mut self) {
+        let query = vials_core::search::Query::parse(self.search.as_deref().unwrap_or(""));
+        self.items = match (&self.search_results, query.is_empty()) {
+            (_, true) => self.all_items.clone(),
+            (Some(found), false) => found.iter().map(|id| Item::of(id)).collect(),
+            (None, false) => self.all_items.iter().filter(|i| query.matches(&i.name, &i.id, i.is_dir)).cloned().collect(),
+        };
+    }
+
+    /// The text of the search changed: show what fits, and in a portal look in the folders below too.
+    fn search_changed(&mut self, cx: &mut Context<Self>) {
+        self.selected.clear();
+        self.cursor = None;
+        let text = self.search.clone().unwrap_or_default();
+        let query = vials_core::search::Query::parse(&text);
+        // Any search that is still running is out of date now.
+        let generation = self.search_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        self.search_results = None;
+        self.refilter();
+        // (The recent files are only the few the list holds: they are filtered, not searched for.)
+        let Some(dir) = self.portal.as_ref().filter(|p| p.root != std::path::Path::new(vials_core::portal::RECENT)).map(|p| p.dir.clone()).filter(|_| !query.is_empty()) else {
+            cx.notify();
+            return;
+        };
+        let counter = self.search_gen.clone();
+        cx.spawn(async move |this, cx| {
+            let found = cx
+                .background_executor()
+                .spawn(async move {
+                    let current = || counter.load(std::sync::atomic::Ordering::SeqCst) != generation;
+                    vials_core::search::search_dir(&dir, &query, 300, 6, &current)
+                })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if view.search_gen.load(std::sync::atomic::Ordering::SeqCst) != generation {
+                    return;
+                }
+                view.search_results = Some(found);
+                view.refilter();
+                let wanted: Vec<String> = view.items.iter().filter(|it| !it.missing && !view.icons.contains_key(&it.id) && !view.icons_requested.contains(&it.id)).map(|it| it.id.clone()).collect();
+                view.request_icons(wanted, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Opens the search box (Ctrl+F).
+    fn open_search(&mut self, cx: &mut Context<Self>) {
+        if self.search.is_none() {
+            self.search = Some(String::new());
+        }
+        self.wants_keyboard = true;
+        cx.notify();
+    }
+
+    /// Closes the search box and shows everything again.
+    fn close_search(&mut self, cx: &mut Context<Self>) {
+        self.search = None;
+        self.search_changed(cx);
+    }
+
     fn reload(&mut self, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
-        let look = live.engine.look();
+        let look = live.engine.look_for(&live.vial_id);
         if look != self.theme {
             self.theme = look;
             self.material_dirty = true;
@@ -223,8 +516,14 @@ impl VialView {
         }
         if let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) {
             self.name = vial.name.clone().into();
-            let ids = vial.items;
-            self.set_items(ids, cx);
+            self.locked = vial.locked;
+            self.icon_size = vial.icon_px();
+            self.title_center = vial.title_center;
+            let config = live.engine.config();
+            self.privacy_mask = config.privacy_mask;
+            self.apply_capture(config.hide_from_capture);
+            let vials = live.engine.vials();
+            self.sync_content(&vials, cx);
         }
         cx.notify();
     }
@@ -327,19 +626,81 @@ impl VialView {
         }
     }
 
-    fn toggle_collapsed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.collapsed = !self.collapsed;
+    /// Names and pictures are hidden right now: privacy mode is on and the pointer is not over the vial.
+    fn masked(&self) -> bool {
+        self.privacy_mask && !self.hovered
+    }
+
+    /// Keeps the window out of (or lets it into) screen captures, as the setting says.
+    fn apply_capture(&self, exclude: bool) {
+        if let Some(hwnd) = self.hwnd {
+            win::exclude_from_capture(windows::Win32::Foundation::HWND(hwnd as *mut std::ffi::c_void), exclude);
+        }
+    }
+
+    /// Whether the window is only its title bar right now.
+    fn shown_collapsed(&self) -> bool {
+        self.collapsed && !self.peeking
+    }
+
+    /// Sizes the window for what it shows now: just the title bar, or the whole vial.
+    fn resize_window(&self, window: &Window) {
         if let Some(hwnd) = win::hwnd(window) {
             let mut r = self.placement.rect;
-            if self.collapsed {
+            if self.shown_collapsed() {
                 r.bottom = r.top + self.placement.collapsed_height;
             }
             win::place_at_bottom(hwnd, &r);
         }
+    }
+
+    fn toggle_collapsed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.collapsed = !self.collapsed;
+        self.peeking = false;
+        self.resize_window(window);
         if let Some(live) = &self.live {
             live.engine.set_collapsed(&live.vial_id, self.collapsed);
         }
         cx.notify();
+    }
+
+    /// The pointer came over or left the window: with "open on hover" a collapsed vial opens, and
+    /// closes a moment after the pointer is gone.
+    fn on_hover_change(&mut self, over: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.hovered = over;
+        self.hover_gen += 1;
+        if !over && self.incoming != 0 {
+            self.incoming = 0;
+            cx.notify();
+        }
+        if self.privacy_mask {
+            cx.notify();
+        }
+        let wanted = self.live.as_ref().is_some_and(|l| l.engine.config().hover_open);
+        if !wanted || !self.collapsed {
+            return;
+        }
+        if over {
+            if !self.peeking {
+                self.peeking = true;
+                self.resize_window(window);
+                cx.notify();
+            }
+            return;
+        }
+        let generation = self.hover_gen;
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(350)).await;
+            let _ = this.update_in(cx, |view, window, cx| {
+                // Only if the pointer has not come back (or the vial was opened for good) meanwhile.
+                if view.hover_gen == generation && !view.hovered && view.peeking {
+                    view.peeking = false;
+                    view.resize_window(window);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// A click in the vial gives it the keyboard (for typing a name, Delete, Ctrl+C); it hands it back
@@ -356,12 +717,28 @@ impl VialView {
     }
 
     fn drop_paths(&mut self, paths: &ExternalPaths, cx: &mut Context<Self>) {
+        self.incoming = 0;
+        cx.notify();
         let Some(live) = &self.live else { return };
         let paths: Vec<String> = paths.paths().iter().map(|p| p.to_string_lossy().into_owned()).collect();
         // Never work inside the drop itself: Explorer's drag loop waits for this call to return, and
         // asking Explorer for its items (or marking files) from in here deadlocks it with several
         // items. Return at once and do the work afterwards, off the UI thread.
-        let (engine, vial_id) = (live.engine.clone(), live.vial_id.clone());
+        // A portal is a folder: what is dropped is copied into the folder it shows (Explorer's own copy, with
+        // its progress and its questions).
+        if let Some(dir) = self.portal.as_ref().map(|p| p.dir.to_string_lossy().into_owned()) {
+            // Nothing is dropped into the list of recent files.
+            if dir == vials_core::portal::RECENT {
+                return;
+            }
+            cx.spawn(async move |this, cx| {
+                let _ = cx.background_executor().spawn(async move { vials_platform::clipboard::transfer(&paths, false, &dir, false) }).await;
+                let _ = this.update(cx, |view, cx| view.refresh_portal(cx));
+            })
+            .detach();
+            return;
+        }
+        let (engine, vial_id) = (live.engine.clone(), self.content_id());
         cx.spawn(async move |this, cx| {
             let changed = cx.background_executor().spawn(async move { engine.drop_items(&vial_id, &paths) }).await;
             if changed {
@@ -382,6 +759,9 @@ impl VialView {
     /// from inside an event handler (GPUI is borrowed there and the drag pumps messages).
     fn start_drag(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
+        if self.locked {
+            return;
+        }
         let Some(item) = self.items.get(index) else { return };
         if item.missing {
             return;
@@ -393,8 +773,19 @@ impl VialView {
             vec![item.id.clone()]
         };
         let source = live.engine.vial_id_of(&item.id);
+        let portal = self.portal.is_some();
         cx.spawn(async move |this, cx| {
             let end = vials_platform::drag_items(&ids);
+            if portal {
+                // Files of a folder stay in it; let go on the empty desktop and they are copied there.
+                if let Ok(vials_platform::DragEnd::OnDesktop(_)) = end {
+                    if let Some(desktop) = desqu_desktop::desktop_folders().first().map(|p| p.to_string_lossy().into_owned()) {
+                        let _ = cx.background_executor().spawn(async move { vials_platform::clipboard::transfer(&ids, false, &desktop, true) }).await;
+                    }
+                }
+                let _ = this.update(cx, |view, cx| view.refresh_portal(cx));
+                return;
+            }
             if let Ok(end) = end {
                 let changed = live.engine.settle_drag(&ids, source.as_deref(), end);
                 if changed {
@@ -409,7 +800,7 @@ impl VialView {
     fn item_menu(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(live) = &self.live else { return };
         let Some(item) = self.items.get(index) else { return };
-        if item.missing || !live.engine.is_assigned(&item.id) {
+        if item.missing || (self.portal.is_none() && !live.engine.is_assigned(&item.id)) {
             return;
         }
         let id = item.id.clone();
@@ -435,7 +826,7 @@ impl VialView {
     }
 
     fn begin_rename(&mut self, cx: &mut Context<Self>) {
-        if self.live.is_none() {
+        if self.live.is_none() || self.locked {
             return;
         }
         self.editing = Some(self.name.to_string());
@@ -456,10 +847,85 @@ impl VialView {
         cx.notify();
     }
 
+    /// Saved layouts: where all the vials sit, to bring back later.
+    fn open_layouts_menu(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let Some(at) = win::cursor_position() else { return };
+        let mut entries = Vec::new();
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("Save the layout now", move |cx| {
+                live.engine.save_layout("");
+                bump(&live.revision, cx);
+            }));
+        }
+        let names = live.engine.layout_names();
+        if !names.is_empty() {
+            entries.push(MenuEntry::separator());
+        }
+        for name in &names {
+            let (live, name) = (live.clone(), name.clone());
+            entries.push(MenuEntry::new(format!("Bring back {name}"), move |cx| {
+                live.engine.restore_layout(&name);
+                bump(&live.revision, cx);
+            }));
+        }
+        if !names.is_empty() {
+            entries.push(MenuEntry::separator());
+        }
+        for name in names {
+            let live = live.clone();
+            entries.push(MenuEntry::new(format!("Delete {name}"), move |cx| {
+                live.engine.delete_layout(&name);
+                bump(&live.revision, cx);
+            }));
+        }
+        menu::open(cx, at, entries);
+    }
+
+    /// The vial's own look: icon size, colour, how see-through, where the title sits.
+    fn open_look_menu(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) else { return };
+        let Some(at) = win::cursor_position() else { return };
+        // One entry that changes the vial and tells every window.
+        let entry = |label: String, checked: bool, change: Box<dyn Fn(&mut vials_core::model::Vial)>| {
+            let live = live.clone();
+            MenuEntry::new(label, move |cx| {
+                live.engine.set_look(&live.vial_id, |v| change(v));
+                bump(&live.revision, cx);
+            })
+            .checked(checked)
+        };
+        let mut entries = Vec::new();
+        for (size, label) in [(24u8, "Small icons"), (32, "Medium icons"), (48, "Large icons")] {
+            entries.push(entry(label.to_string(), vial.icon_px() == size, Box::new(move |v| v.icon_size = Some(size))));
+        }
+        entries.push(MenuEntry::separator());
+        entries.push(entry("Default colour".into(), vial.color.is_none(), Box::new(|v| v.color = None)));
+        for (name, hex) in vials_core::model::PANEL_COLORS {
+            entries.push(entry(name.to_string(), vial.color.as_deref() == Some(hex), Box::new(move |v| v.color = Some(hex.to_string()))));
+        }
+        entries.push(MenuEntry::separator());
+        for (label, tint) in [("Default see-through", None), ("Very clear", Some(5u8)), ("Frosted", Some(45)), ("Solid", Some(90))] {
+            entries.push(entry(label.to_string(), vial.tint == tint, Box::new(move |v| v.tint = tint)));
+        }
+        entries.push(MenuEntry::separator());
+        entries.push(entry("Title in the middle".into(), vial.title_center, Box::new({
+            let on = !vial.title_center;
+            move |v| v.title_center = on
+        })));
+        menu::open(cx, at, entries);
+    }
+
     /// The vial's own menu: rename, sort, folders first, new vial, delete.
     fn open_vial_menu(&mut self, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
-        let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) else { return };
+        let all = live.engine.vials();
+        let Some(host) = all.iter().find(|v| v.id == live.vial_id).cloned() else { return };
+        // What belongs to the items (sorting, a folder) is about the tab that is open; the window (lock, look) about the vial of the window.
+        let content = self.content_id();
+        let vial = all.iter().find(|v| v.id == content).cloned().unwrap_or_else(|| host.clone());
         let Some(at) = win::cursor_position() else { return };
         let weak = cx.weak_entity();
 
@@ -470,29 +936,104 @@ impl VialView {
             })
         };
         let mut entries = vec![rename, MenuEntry::separator()];
-        for (key, label) in [("name", "Sort by name"), ("type", "Sort by type"), ("modified", "Sort by date modified"), ("size", "Sort by size")] {
+        for (key, label) in [("name", "Sort by name"), ("type", "Sort by type"), ("modified", "Sort by date modified"), ("size", "Sort by size")].into_iter().filter(|_| vial.source.is_none()) {
             let on = vial.sort_key.as_deref() == Some(key);
             let descending = on && !vial.sort_desc; // choosing the active sort again reverses it
             let live = live.clone();
+            let sort_id = vial.id.clone();
             let label = if on { format!("{label} ({})", if vial.sort_desc { "descending" } else { "ascending" }) } else { label.to_string() };
             entries.push(
                 MenuEntry::new(label, move |cx| {
-                    let _ = live.engine.sort_vial(&live.vial_id, key, descending);
+                    let _ = live.engine.sort_vial(&sort_id, key, descending);
                     bump(&live.revision, cx);
                 })
                 .checked(on),
             );
         }
         {
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Search...", move |cx| {
+                let _ = w.update(cx, |view, cx| view.open_search(cx));
+            }));
+        }
+        if vial.source.is_none() {
             let live = live.clone();
             let on = !vial.folders_first;
+            let folders_id = vial.id.clone();
             entries.push(
                 MenuEntry::new("Folders first", move |cx| {
-                    live.engine.set_folders_first(&live.vial_id, on);
+                    live.engine.set_folders_first(&folders_id, on);
                     bump(&live.revision, cx);
                 })
                 .checked(vial.folders_first),
             );
+        }
+        {
+            let live = live.clone();
+            let on = !host.locked;
+            entries.push(
+                MenuEntry::new("Lock", move |cx| {
+                    live.engine.set_locked(&live.vial_id, on);
+                    bump(&live.revision, cx);
+                })
+                .checked(host.locked),
+            );
+        }
+        // Tabs: take the tab that is open out into a vial of its own, or put this vial into another as a tab.
+        if !self.tabs.is_empty() && content != live.vial_id {
+            let live = live.clone();
+            let tab = content.clone();
+            entries.push(MenuEntry::new("Split this tab out", move |cx| {
+                live.engine.split_tab(&tab);
+                bump(&live.revision, cx);
+            }));
+        }
+        for other in all.iter().filter(|v| v.tab_host.is_none() && !v.inbox && v.id != live.vial_id) {
+            let live = live.clone();
+            let target = other.id.clone();
+            entries.push(MenuEntry::new(format!("Merge into {} as a tab", other.name), move |cx| {
+                live.engine.merge_tab(&live.vial_id, &target);
+                bump(&live.revision, cx);
+            }));
+        }
+        {
+            let weak = weak.clone();
+            entries.push(MenuEntry::new("Look...", move |cx| {
+                let _ = weak.update(cx, |view, cx| view.open_look_menu(cx));
+            }));
+        }
+        {
+            let weak = weak.clone();
+            entries.push(MenuEntry::new("Layouts...", move |cx| {
+                let _ = weak.update(cx, |view, cx| view.open_layouts_menu(cx));
+            }));
+        }
+        if !self.items.is_empty() {
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Open all", move |cx| {
+                let _ = w.update(cx, |view, _| view.open_all());
+            }));
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Copy paths", move |cx| {
+                let _ = w.update(cx, |view, _| view.copy_paths());
+            }));
+            let w = weak.clone();
+            entries.push(MenuEntry::new("Zip to the desktop", move |cx| {
+                let _ = w.update(cx, |view, cx| view.zip_items(cx));
+            }));
+            if !host.locked {
+                let w = weak.clone();
+                entries.push(MenuEntry::new("Move to folder...", move |cx| {
+                    let _ = w.update(cx, |view, cx| view.move_items(cx));
+                }));
+            }
+            entries.push(MenuEntry::separator());
+        }
+        if live.engine.can_undo() {
+            let weak = weak.clone();
+            entries.push(MenuEntry::new("Undo", move |cx| {
+                let _ = weak.update(cx, |view, cx| view.undo(cx));
+            }));
         }
         entries.push(MenuEntry::separator());
         // While Workspaces runs: which virtual desktop the vial shows on (the current one is checked).
@@ -509,6 +1050,49 @@ impl VialView {
                 );
             }
             entries.push(MenuEntry::separator());
+        }
+        if let Some(source) = vial.source.clone() {
+            if vials_core::notes::is_notes(&source) {
+                let w = weak.clone();
+                entries.push(MenuEntry::new("New note", move |cx| {
+                    let _ = w.update(cx, |view, cx| view.new_note(cx));
+                }));
+                if vials_platform::actions::get_text().is_some_and(|t| vials_core::notes::looks_like_url(&t)) {
+                    let w = weak.clone();
+                    entries.push(MenuEntry::new("New link from the clipboard", move |cx| {
+                        let _ = w.update(cx, |view, cx| view.new_link(cx));
+                    }));
+                }
+            }
+            entries.push(MenuEntry::new("Open the folder in Explorer", move |_| win::open_path(&source)));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New notes vial here", move |cx| {
+                if live.engine.create_notes_at(Some(at)).is_some() {
+                    bump(&live.revision, cx);
+                }
+            }));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New folder portal here...", move |cx| new_portal(cx, live.clone(), Some(at), None)));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New archive vial here (not changed for 30 days)", move |cx| {
+                if live.engine.create_archive_at(Some(at), 30).is_some() {
+                    bump(&live.revision, cx);
+                }
+            }));
+        }
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("New recent files vial here", move |cx| {
+                if live.engine.create_portal_at(Some(at), vials_core::portal::RECENT).is_some() {
+                    bump(&live.revision, cx);
+                }
+            }));
         }
         {
             let live = live.clone();
@@ -565,14 +1149,90 @@ impl VialView {
             }
             return;
         }
+        if k.modifiers.control && k.key == "f" {
+            self.open_search(cx);
+            return;
+        }
+        // While the search box is open the keys that make text go into it.
+        if let Some(text) = self.search.as_mut() {
+            match k.key.as_str() {
+                "escape" => {
+                    self.close_search(cx);
+                    return;
+                }
+                "backspace" => {
+                    text.pop();
+                    self.search_changed(cx);
+                    return;
+                }
+                _ => {
+                    if let Some(typed) = k.key_char.as_ref().filter(|_| !k.modifiers.control && !k.modifiers.alt) {
+                        if text.chars().count() < 80 {
+                            text.push_str(typed);
+                            self.search_changed(cx);
+                        }
+                        return;
+                    }
+                }
+            }
+        }
         if k.modifiers.control && k.key == "v" {
             self.paste(cx);
+            return;
+        }
+        if k.modifiers.control && k.key == "z" {
+            self.undo(cx);
             return;
         }
         if k.modifiers.control && k.key == "a" {
             self.selected = (0..self.items.len()).collect();
             cx.notify();
             return;
+        }
+        let dir = match k.key.as_str() {
+            "left" => Some(nav::Dir::Left),
+            "right" => Some(nav::Dir::Right),
+            "up" => Some(nav::Dir::Up),
+            "down" => Some(nav::Dir::Down),
+            "home" => Some(nav::Dir::Home),
+            "end" => Some(nav::Dir::End),
+            _ => None,
+        };
+        if let Some(dir) = dir {
+            self.move_cursor(dir, k.modifiers.shift, cx);
+            return;
+        }
+        match k.key.as_str() {
+            "escape" => {
+                self.selected.clear();
+                self.cursor = None;
+                cx.notify();
+                return;
+            }
+            "f2" => {
+                self.begin_rename(cx);
+                return;
+            }
+            // Backspace goes up a folder in a portal, like Explorer.
+            "backspace" if self.portal.is_some() => {
+                self.portal_up(cx);
+                return;
+            }
+            // Enter opens what is selected, like Explorer.
+            "enter" => {
+                for id in self.selected_ids() {
+                    self.open_item(&id, cx);
+                }
+                return;
+            }
+            // The menu key, or Shift+F10: the item menu of the item the keyboard is on.
+            "menu" | "f10" if k.key == "menu" || k.modifiers.shift => {
+                if let Some(i) = self.cursor.filter(|i| *i < self.items.len()) {
+                    self.item_menu(i, cx);
+                }
+                return;
+            }
+            _ => {}
         }
         let ids = self.selected_ids();
         if ids.is_empty() {
@@ -585,6 +1245,125 @@ impl VialView {
         } else if k.modifiers.control && (k.key == "c" || k.key == "x") {
             let _ = vials_platform::clipboard::put_files(&ids, k.key == "x");
         }
+    }
+
+    /// The vial's items that exist (a path that is gone cannot be opened, copied or packed).
+    fn existing_items(&self) -> Vec<String> {
+        self.items.iter().filter(|i| !i.missing && !i.id.starts_with("::")).map(|i| i.id.clone()).collect()
+    }
+
+    /// A new note in the notes vial: an empty text file, opened to write in.
+    fn new_note(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()) else { return };
+        let name = vials_core::clip::unique_name(|n| dir.join(n).exists(), "Note", "txt");
+        let path = dir.join(name);
+        if std::fs::write(&path, "").is_ok() {
+            #[cfg(not(test))]
+            win::open_path(&path.to_string_lossy());
+            self.refresh_portal(cx);
+        }
+    }
+
+    /// A new link in the notes vial: a `.url` file for the web address on the clipboard.
+    fn new_link(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = self.portal.as_ref().map(|p| p.dir.clone()) else { return };
+        let Some(url) = vials_platform::actions::get_text().filter(|t| vials_core::notes::looks_like_url(t)) else { return };
+        let name = vials_core::clip::unique_name(|n| dir.join(n).exists(), &vials_core::notes::link_name(&url), "url");
+        if std::fs::write(dir.join(name), vials_core::notes::url_file_text(&url)).is_ok() {
+            self.refresh_portal(cx);
+        }
+    }
+
+    /// "Open all": every item, like double-clicking each (at most 20 at once).
+    fn open_all(&self) {
+        for id in self.existing_items().into_iter().take(20) {
+            win::open_path(&id);
+        }
+    }
+
+    /// "Copy paths": one path per line, as text.
+    fn copy_paths(&self) {
+        if let Err(e) = vials_platform::actions::put_text(&self.existing_items().join("\r\n")) {
+            eprintln!("could not copy the paths: {e}");
+        }
+    }
+
+    /// "Zip": the items packed into `<vial name>.zip` on the desktop.
+    fn zip_items(&mut self, cx: &mut Context<Self>) {
+        let items = self.existing_items();
+        let Some(folder) = desqu_desktop::desktop_folders().into_iter().next() else { return };
+        let stem = vials_core::clip::file_safe(&self.name);
+        cx.spawn(async move |_, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let name = vials_core::clip::unique_name(|n| folder.join(n).exists(), &stem, "zip");
+                    vials_platform::actions::zip(&items, &folder.join(name))
+                })
+                .await;
+            if let Err(e) = result {
+                eprintln!("could not zip the items: {e}");
+            }
+        })
+        .detach();
+    }
+
+    /// "Move to folder...": pick a folder, move the files there with Explorer's own file operation (its
+    /// progress and conflict questions), and take what moved out of the vial.
+    fn move_items(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let items = self.existing_items();
+        let title = format!("Move the items of {} to", self.name);
+        cx.spawn(async move |this, cx| {
+            let moved = cx
+                .background_executor()
+                .spawn({
+                    let items = items.clone();
+                    async move {
+                        let Some(folder) = vials_platform::actions::pick_folder(&title).ok().flatten() else { return false };
+                        let target = folder.to_string_lossy().into_owned();
+                        vials_platform::clipboard::transfer(&items, true, &target, false).is_ok()
+                    }
+                })
+                .await;
+            if moved {
+                // What is no longer on the desktop leaves the vial.
+                for id in items.iter().filter(|id| !std::path::Path::new(id).exists()) {
+                    live.engine.remove_item(id);
+                }
+                let _ = this.update(cx, |view, cx| view.announce(cx));
+            }
+        })
+        .detach();
+    }
+
+    /// Takes back the last change (any vial's).
+    fn undo(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = &self.live else { return };
+        if live.engine.undo() {
+            self.announce(cx);
+        }
+    }
+
+    /// Moves the keyboard to another item; with Shift the selection grows from where it started.
+    fn move_cursor(&mut self, dir: nav::Dir, extend: bool, cx: &mut Context<Self>) {
+        let bounds = self.bounds.borrow();
+        // Where each item was drawn, in order: an item that has not been drawn yet counts as the origin.
+        let places: Vec<(f32, f32)> = (0..self.items.len())
+            .map(|i| bounds.get(&i).map_or((0.0, 0.0), |b| (f32::from(b.origin.x), f32::from(b.origin.y))))
+            .collect();
+        drop(bounds);
+        let from = self.cursor.or_else(|| self.selected.iter().next_back().copied());
+        let Some(to) = nav::step(&places, from, dir) else { return };
+        self.cursor = Some(to);
+        if extend {
+            let anchor = *self.anchor.get_or_insert(from.unwrap_or(to));
+            self.selected = nav::range(anchor, to).collect();
+        } else {
+            self.anchor = Some(to);
+            self.selected = BTreeSet::from([to]);
+        }
+        cx.notify();
     }
 
     /// The ids of the selected items, in the order they are shown.
@@ -649,6 +1428,9 @@ impl Render for VialView {
         }
         if std::mem::take(&mut self.material_dirty) {
             window.set_background_appearance(self.theme.material);
+            if let Some(hwnd) = win::hwnd(window) {
+                vials_platform::apply_mica(hwnd.0 as isize, self.theme.mica);
+            }
         }
         let t = self.theme;
         let chevron = div()
@@ -661,7 +1443,7 @@ impl Render for VialView {
             .text_xs()
             .hover(move |s| s.bg(rgba(t.hover)))
             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.toggle_collapsed(window, cx)))
-            .child(if self.collapsed { "v" } else { "^" });
+            .child(if self.shown_collapsed() { "v" } else { "^" });
 
         let title = match &self.editing {
             Some(text) => div()
@@ -677,6 +1459,7 @@ impl Render for VialView {
                 .into_any_element(),
             None => div().child(self.name.clone()).into_any_element(),
         };
+        let can_up = self.portal.as_ref().is_some_and(|p| vials_core::portal::up(&p.root, &p.dir).is_some());
         let header = div()
             .id("header")
             .h(px(34.))
@@ -685,6 +1468,22 @@ impl Render for VialView {
             .items_center()
             .border_b_1()
             .border_color(rgba(t.line))
+            // Inside a folder of a portal: back to the folder above.
+            .when(can_up, |d| {
+                d.child(
+                    div()
+                        .id("portal-up")
+                        .w(px(30.))
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_xs()
+                        .hover(move |s| s.bg(rgba(t.hover)))
+                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.portal_up(cx)))
+                        .child("<"),
+                )
+            })
             .child(
                 // Press and drag moves the window, a plain click renames it, right click opens the menu.
                 div()
@@ -694,12 +1493,13 @@ impl Render for VialView {
                     .px_3()
                     .flex()
                     .items_center()
+                    .when(self.title_center, |d| d.justify_center())
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _: &MouseDownEvent, window, _| {
-                            if this.editing.is_some() {
+                            if this.editing.is_some() || this.locked {
                                 return;
                             }
                             if let (Some(cursor), Some(hwnd)) = (win::cursor_position(), win::hwnd(window)) {
@@ -737,6 +1537,10 @@ impl Render for VialView {
         let selected = self.selected.clone();
         let bounds = self.bounds.clone();
         let live = self.live.is_some();
+        let is_portal = self.portal.is_some();
+        let icon_px = f32::from(self.icon_size);
+        // The icon plus room for a two-line name on each side.
+        let item_w = icon_px + 52.0;
         let grid = div()
             // Where the items were drawn (window coordinates, one per child): what the box is held against.
             .on_children_prepainted(move |all, _, _| {
@@ -768,16 +1572,17 @@ impl Render for VialView {
             .children(self.items.iter().enumerate().map(|(i, item)| {
                 let is_selected = selected.contains(&i);
                 let id = item.id.clone();
-                let icon = match self.icons.get(&item.id) {
-                    Some(image) => img(image.clone()).size(px(32.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
-                    None => div().size(px(32.)).rounded(px(6.)).bg(rgba(t.placeholder)).into_any_element(),
+                let masked = self.masked();
+                let icon = match self.icons.get(&item.id).filter(|_| !masked) {
+                    Some(image) => img(image.clone()).size(px(icon_px)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                    None => div().size(px(icon_px)).rounded(px(6.)).bg(rgba(t.placeholder)).into_any_element(),
                 };
                 let remove_id = item.id.clone();
                 div()
                     .id(("item", i))
                     .group("item")
                     .relative()
-                    .w(px(84.))
+                    .w(px(item_w))
                     .py_2()
                     .px_1()
                     .flex()
@@ -819,7 +1624,7 @@ impl Render for VialView {
                     )
                     .on_click(cx.listener(move |this, e: &ClickEvent, _, cx| {
                         if e.click_count() >= 2 {
-                            win::open_path(&id);
+                            this.open_item(&id, cx);
                         } else if !e.modifiers().control && this.selected.len() > 1 {
                             // A plain click on one of several selected items narrows it to that one.
                             this.selected = BTreeSet::from([i]);
@@ -827,8 +1632,8 @@ impl Render for VialView {
                         }
                     }))
                     .child(icon)
-                    .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(item.name.clone()))
-                    .when(live, |d| {
+                    .child(div().text_xs().max_w_full().h(px(34.)).overflow_hidden().text_center().child(if masked { SharedString::from("\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}") } else { item.name.clone() }))
+                    .when(live && !is_portal, |d| {
                         d.child(
                             div()
                                 .id(("remove", i))
@@ -854,6 +1659,7 @@ impl Render for VialView {
         div()
             .id("vial")
             .track_focus(&self.focus)
+            .on_hover(cx.listener(|this, over: &bool, window, cx| this.on_hover_change(*over, window, cx)))
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| this.on_key(e, cx)))
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, window, cx| this.on_mouse_move(e, window, cx)))
             .on_mouse_up(
@@ -867,6 +1673,13 @@ impl Render for VialView {
             )
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| this.drop_paths(paths, cx)))
             .drag_over::<ExternalPaths>(|s, _, _, _| s.border_color(rgba(0xaad2ffd9)).bg(rgba(0x78afff30)))
+            .on_drag_move(cx.listener(|this, e: &gpui::DragMoveEvent<ExternalPaths>, _, cx| {
+                let count = e.drag(cx).paths().len();
+                if this.incoming != count {
+                    this.incoming = count;
+                    cx.notify();
+                }
+            }))
             .size_full()
             .rounded(px(t.radius))
             .border_1()
@@ -878,7 +1691,60 @@ impl Render for VialView {
             .relative()
             .when_some(self.liquid.clone().filter(|_| t.liquid), |d, image| d.child(img(image).absolute().top_0().left_0().size_full()))
             .child(header)
-            .when(!self.collapsed, |d| d.child(grid))
+            .when(!self.tabs.is_empty(), |d| {
+                let open = self.content_id();
+                d.child(div().flex_none().h(px(26.)).flex().items_center().border_b_1().border_color(rgba(t.line)).text_xs().children(self.tabs.iter().enumerate().map(|(i, (id, name))| {
+                    let id = id.clone();
+                    div()
+                        .id(("tab", i))
+                        .px_3()
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .max_w(px(160.))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .when(id == open, |d| d.bg(rgba(t.selected)).border_b_2().border_color(rgba(t.selected_border)))
+                        .when(id != open, move |d| d.hover(move |s| s.bg(rgba(t.hover))))
+                        .child(name.clone())
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.select_tab(id.clone(), cx)))
+                })))
+            })
+            .when_some(self.search.clone(), |d, text| {
+                let shown = self.items.len();
+                d.child(
+                    div()
+                        .id("search")
+                        .h(px(26.))
+                        .flex_none()
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .border_b_1()
+                        .border_color(rgba(t.line))
+                        .text_xs()
+                        .child(div().text_color(rgba(0xffffff90)).child("Search"))
+                        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().child(if text.is_empty() { "type to find: words, .pdf, kind:images".to_string() } else { format!("{text}|") }))
+                        .child(div().text_color(rgba(0xffffff90)).child(format!("{shown} found")))
+                        .child(div().id("search-close").px_1().cursor_pointer().hover(move |s| s.bg(rgba(t.hover))).child("x").on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.close_search(cx)))),
+                )
+            })
+            .when(!self.shown_collapsed(), |d| d.child(grid))
+            .when(self.incoming > 0, |d| {
+                let n = self.incoming;
+                d.child(
+                    div()
+                        .absolute()
+                        .bottom(px(10.))
+                        .left_0()
+                        .right_0()
+                        .flex()
+                        .justify_center()
+                        .child(div().px_3().py_1().rounded(px(6.)).bg(rgba(0x000000b0)).text_sm().child(if n == 1 { "Drop 1 item here".to_string() } else { format!("Drop {n} items here") })),
+                )
+            })
             .when_some(self.marquee.as_ref(), |d, m| {
                 let (left, top) = (f32::from(m.start.x.min(m.now.x)), f32::from(m.start.y.min(m.now.y)));
                 let (width, height) = (f32::from((m.start.x - m.now.x).abs()), f32::from((m.start.y - m.now.y).abs()));
@@ -921,6 +1787,140 @@ mod tests {
         cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
         let selected = view.read_with(cx, |v, _| v.selected.iter().copied().collect::<Vec<_>>());
         assert_eq!(selected, vec![0, 1, 2, 3]);
+    }
+
+    fn press(view: &Entity<VialView>, cx: &mut gpui::VisualTestContext, keys: &str) {
+        let key = gpui::KeyDownEvent { keystroke: gpui::Keystroke::parse(keys).unwrap(), is_held: false };
+        view.update(cx, |v, cx| v.on_key(&key, cx));
+    }
+
+    #[gpui::test]
+    fn a_portal_shows_its_folder_goes_into_subfolders_and_never_above_its_root(cx: &mut TestAppContext) {
+        let root = std::env::temp_dir().join(format!("desqu-portal-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        std::fs::write(root.join("sub").join("inner.txt"), "i").unwrap();
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        let names = |view: &Entity<VialView>, cx: &mut gpui::VisualTestContext| view.read_with(cx, |v, _| v.items.iter().map(|i| i.name.to_string()).collect::<Vec<_>>());
+        view.update(cx, |v, cx| v.set_portal_source(Some(root.to_string_lossy().into_owned()), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"], "folders first");
+
+        view.update(cx, |v, cx| v.open_item(&root.join("sub").to_string_lossy(), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["inner.txt"], "inside the folder");
+
+        view.update(cx, |v, cx| v.portal_up(cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"], "back at the top");
+        view.update(cx, |v, cx| v.portal_up(cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"], "no way above the folder of the portal");
+
+        // Something outside the folder is not entered either.
+        view.update(cx, |v, cx| v.portal_go(std::env::temp_dir(), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub", "a.txt"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn type_text(view: &Entity<VialView>, cx: &mut gpui::VisualTestContext, text: &str) {
+        for c in text.chars() {
+            let keystroke = gpui::Keystroke { modifiers: Modifiers::none(), key: c.to_string(), key_char: Some(c.to_string()) };
+            let key = gpui::KeyDownEvent { keystroke, is_held: false };
+            view.update(cx, |v, cx| v.on_key(&key, cx));
+        }
+    }
+
+    #[gpui::test]
+    fn the_search_filters_a_vial_and_a_portal_looks_in_the_folders_below_too(cx: &mut TestAppContext) {
+        let root = std::env::temp_dir().join(format!("desqu-search-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        for f in ["report.pdf", "notes.txt", "sub/report-old.pdf"] {
+            std::fs::write(root.join(f), "x").unwrap();
+        }
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        let names = |view: &Entity<VialView>, cx: &mut gpui::VisualTestContext| {
+            let mut v = view.read_with(cx, |v, _| v.items.iter().map(|i| i.name.to_string()).collect::<Vec<_>>());
+            v.sort();
+            v
+        };
+        view.update(cx, |v, cx| v.set_portal_source(Some(root.to_string_lossy().into_owned()), cx));
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["notes.txt", "report.pdf", "sub"]);
+
+        press(&view, cx, "ctrl-f");
+        type_text(&view, cx, "report");
+        assert_eq!(names(&view, cx), vec!["report.pdf"], "the folder's own items filter at once");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["report-old.pdf", "report.pdf"], "and the search finds the one below");
+
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        press(&view, cx, "backspace");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["notes.txt", "report.pdf", "sub"], "an empty search shows everything");
+
+        type_text(&view, cx, "kind:folders");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["sub"]);
+        press(&view, cx, "escape");
+        cx.run_until_parked();
+        assert_eq!(names(&view, cx), vec!["notes.txt", "report.pdf", "sub"], "Esc closes the search");
+        assert!(view.read_with(cx, |v, _| v.search.is_none()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[gpui::test]
+    fn privacy_mode_hides_names_and_pictures_until_the_pointer_is_over_the_vial(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        assert!(!view.read_with(cx, |v, _| v.masked()), "off by default");
+        view.update(cx, |v, _| v.privacy_mask = true);
+        assert!(view.read_with(cx, |v, _| v.masked()), "on and the pointer is elsewhere");
+        view.update(cx, |v, _| v.hovered = true);
+        assert!(!view.read_with(cx, |v, _| v.masked()), "the pointer is over it");
+    }
+
+    #[gpui::test]
+    fn new_notes_are_empty_text_files_in_the_notes_portal_with_free_names(cx: &mut TestAppContext) {
+        let dir = std::env::temp_dir().join(format!("desqu-notes-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        view.update(cx, |v, cx| v.set_portal_source(Some(dir.to_string_lossy().into_owned()), cx));
+        cx.run_until_parked();
+        view.update(cx, |v, cx| v.new_note(cx));
+        view.update(cx, |v, cx| v.new_note(cx));
+        cx.run_until_parked();
+        let mut names = view.read_with(cx, |v, _| v.items.iter().map(|i| i.name.to_string()).collect::<Vec<_>>());
+        names.sort();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(names, vec!["Note (2).txt", "Note.txt"]);
+    }
+
+    #[gpui::test]
+    fn the_arrow_keys_walk_the_items_and_shift_extends_the_selection(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|window, cx| VialView::new(window, init(), cx));
+        cx.run_until_parked();
+        let selected = |view: &Entity<VialView>, cx: &mut gpui::VisualTestContext| view.read_with(cx, |v, _| v.selected.iter().copied().collect::<Vec<_>>());
+        press(&view, cx, "right");
+        assert_eq!(selected(&view, cx), vec![0], "the first press lands on the first item");
+        press(&view, cx, "right");
+        press(&view, cx, "right");
+        assert_eq!(selected(&view, cx), vec![2]);
+        press(&view, cx, "shift-left");
+        assert_eq!(selected(&view, cx), vec![1, 2]);
+        press(&view, cx, "home");
+        assert_eq!(selected(&view, cx), vec![0]);
+        press(&view, cx, "end");
+        assert_eq!(selected(&view, cx), vec![3]);
+        press(&view, cx, "escape");
+        assert!(selected(&view, cx).is_empty());
     }
 
     #[gpui::test]

@@ -2,6 +2,8 @@
 
 pub mod facts;
 #[cfg(windows)]
+pub mod actions;
+#[cfg(windows)]
 pub mod clipboard;
 #[cfg(windows)]
 mod drag_image;
@@ -11,7 +13,7 @@ mod windows;
 pub use desqu_desktop::CutPasteWatcher;
 #[cfg(windows)]
 pub use self::windows::{send_to_bottom, watch_cut_paste, 
-    cursor_position, drag_items, mark_as_tool_window, round_corners, wallpaper, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
+    apply_mica, apps_use_light_theme, cursor_position, drag_items, mark_as_tool_window, round_corners, wallpaper, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
 };
 
 #[cfg(not(windows))]
@@ -67,6 +69,14 @@ pub fn show_item_menu(_path: &str) -> Result<(), String> {
 #[cfg(not(windows))]
 pub fn wallpaper() -> Result<(std::path::PathBuf, u32, bool), String> {
     Err("Vials is only available on Windows".into())
+}
+
+#[cfg(not(windows))]
+pub fn apply_mica(_hwnd: isize, _on: bool) {}
+
+#[cfg(not(windows))]
+pub fn apps_use_light_theme() -> Option<bool> {
+    None
 }
 
 #[cfg(not(windows))]

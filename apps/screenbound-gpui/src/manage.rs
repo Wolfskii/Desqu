@@ -33,6 +33,8 @@ pub struct ManageView {
     name: Entity<TextField>,
     site: Entity<TextField>,
     scope: Scope,
+    /// The zone a new rule keeps fullscreen windows in (the first when it is not set or gone).
+    zone: Option<String>,
     chrome: ChromeMode,
     effect: Effect,
     fill: m::Fill,
@@ -122,7 +124,8 @@ impl Render for ManageView {
                     .into_any_element()
             }
             Tab::Rules => {
-                let zone = cfg.zones.first().map(|z| z.id.clone());
+                let zone = self.zone.clone().filter(|id| cfg.zones.iter().any(|z| &z.id == id)).or_else(|| cfg.zones.first().map(|z| z.id.clone()));
+                let zone_buttons: Vec<(String, String)> = cfg.zones.iter().map(|z| (z.id.clone(), z.name.clone())).collect();
                 let list = cfg.rules.iter().enumerate().map(|(i, r)| {
                     let (a, b) = (r.id.clone(), r.id.clone());
                     let enabled = r.enabled;
@@ -180,6 +183,15 @@ impl Render for ManageView {
                                 cx.notify();
                             }))),
                     )
+                    .when(effect == Effect::Fullscreen && zone_buttons.len() > 1, |d| {
+                        d.child(div().text_sm().child("in the zone")).child(div().flex().flex_wrap().gap_1().children(zone_buttons.iter().enumerate().map(|(i, (id, name))| {
+                            let id = id.clone();
+                            button(name.clone(), zone.as_deref() == Some(id.as_str())).id(("rule-zone", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.zone = Some(id.clone());
+                                cx.notify();
+                            }))
+                        })))
+                    })
                     .child(if effect == Effect::Fullscreen {
                         row()
                             .child(button("Keep the title bar", chrome == ChromeMode::Keep).id("keep").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -361,7 +373,7 @@ fn create(rt: Arc<dyn Backend>, cx: &mut App) -> Entity<ManageView> {
             }
         })
         .detach();
-        ManageView { rt, tab: Tab::Groups, name, site, scope: Scope::All, chrome: ChromeMode::Keep, effect: Effect::Fullscreen, fill: m::Fill::Monitor, topmost: false, site_mode: FullscreenMode::Zone }
+        ManageView { rt, tab: Tab::Groups, name, site, scope: Scope::All, zone: None, chrome: ChromeMode::Keep, effect: Effect::Fullscreen, fill: m::Fill::Monitor, topmost: false, site_mode: FullscreenMode::Zone }
     })
 }
 

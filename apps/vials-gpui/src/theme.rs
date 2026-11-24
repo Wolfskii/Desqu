@@ -22,9 +22,19 @@ pub struct Theme {
     pub tint: f32,
     /// Liquid glass draws its own backdrop (see `liquid.rs`) instead of the window material.
     pub liquid: bool,
+    /// Windows 11's Mica is switched on for the window (the panel is then mostly see-through).
+    pub mica: bool,
 }
 
 impl Theme {
+    /// The look with the panel in `rgb` (`0xRRGGBB`), keeping its see-through amount. Liquid has no panel to colour.
+    pub fn with_color(mut self, rgb: u32) -> Self {
+        if !self.liquid {
+            self.panel = (rgb << 8) | (self.panel & 0xff);
+        }
+        self
+    }
+
     /// `tint` is the "glass tint" setting, 0 (clearest) to 100 (nearly solid).
     pub fn of(theme: VialTheme, tint: u8) -> Self {
         let tint = u32::from(tint.min(100));
@@ -44,8 +54,14 @@ impl Theme {
             radius: 12.0,
             tint: tint as f32 / 100.0,
             liquid: false,
+            mica: false,
         };
         match theme {
+            VialTheme::System => {
+                // Dark unless Windows says its apps are light.
+                let light = vials_platform::apps_use_light_theme().unwrap_or(false);
+                Theme::of(if light { VialTheme::FluentLight } else { VialTheme::Fluent }, tint as u8)
+            }
             VialTheme::Glass => glass,
             VialTheme::Liquid => Theme { liquid: true, material: WindowBackgroundAppearance::Transparent, panel: 0x00000000, border: 0x00000000, ..glass },
             VialTheme::Classic => Theme {
@@ -55,6 +71,7 @@ impl Theme {
                 radius: 8.0,
                 ..glass
             },
+            VialTheme::Mica => Theme { material: WindowBackgroundAppearance::Transparent, mica: true, panel: 0x20202058, border: 0xffffff1c, hover: 0xffffff14, hover_border: 0xffffff2a, radius: 8.0, ..glass },
             VialTheme::Fluent => Theme {
                 panel: 0x1b252cf2,
                 border: 0xffffff1c,
@@ -82,6 +99,16 @@ impl Theme {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_panel_colour_keeps_the_see_through_amount_and_liquid_has_none() {
+        let glass = Theme::of(VialTheme::Glass, 40);
+        let blue = glass.with_color(0x1f3b73);
+        assert_eq!(blue.panel >> 8, 0x1f3b73);
+        assert_eq!(blue.panel & 0xff, glass.panel & 0xff);
+        let liquid = Theme::of(VialTheme::Liquid, 40);
+        assert_eq!(liquid.with_color(0x1f3b73).panel, liquid.panel);
+    }
+
     use super::*;
 
     #[test]
@@ -93,7 +120,7 @@ mod tests {
 
     #[test]
     fn only_classic_has_no_blur_and_only_liquid_draws_its_own_backdrop() {
-        for t in [VialTheme::Glass, VialTheme::Fluent, VialTheme::FluentLight] {
+        for t in [VialTheme::Glass, VialTheme::Fluent, VialTheme::FluentLight, VialTheme::System] {
             assert_eq!(Theme::of(t, 20).material, WindowBackgroundAppearance::Blurred);
         }
         for t in [VialTheme::Classic, VialTheme::Liquid] {
@@ -104,6 +131,8 @@ mod tests {
 
     #[test]
     fn the_light_theme_has_dark_text() {
+        let mica = Theme::of(VialTheme::Mica, 20);
+        assert!(mica.mica && mica.material == WindowBackgroundAppearance::Transparent && !Theme::of(VialTheme::Glass, 20).mica);
         assert_ne!(Theme::of(VialTheme::FluentLight, 20).text, Theme::of(VialTheme::Glass, 20).text);
     }
 }

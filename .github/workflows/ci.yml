@@ -41,6 +41,12 @@ jobs:
         shell: pwsh
         run: ./scripts/check-standalone-deps.ps1
 
+      # The old Tauri apps bundle the browser host as a sidecar and refuse to build without its file. `task ci`
+      # no longer runs their own checks (which made it), so make it here.
+      - name: Build the browser host sidecar
+        shell: pwsh
+        run: ./scripts/prepare-browser-host.ps1
+
       # Each app must build on its own, not only as part of the whole workspace.
       - name: Build every app separately
         shell: pwsh
@@ -54,3 +60,31 @@ jobs:
           }
 
       # No Authenticode certificate is available (see docs/releasing.md): CI never signs anything.
+
+  # The GPUI apps must still build for Windows on ARM (the code has nothing that is x64 only; this keeps it so).
+  arm64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/vials-gpui
+            apps/workspaces-gpui
+            apps/screenbound-gpui
+            apps/desqu-gpui
+
+      - name: Check the GPUI apps for ARM64
+        shell: pwsh
+        run: |
+          foreach ($app in 'vials-gpui', 'workspaces-gpui', 'screenbound-gpui', 'desqu-gpui') {
+            Write-Host "::group::cargo check $app (arm64)"
+            cargo check --release --target aarch64-pc-windows-msvc --manifest-path apps/$app/Cargo.toml
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Host '::endgroup::'
+          }

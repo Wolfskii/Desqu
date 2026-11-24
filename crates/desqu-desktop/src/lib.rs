@@ -71,6 +71,11 @@ pub fn selection_count() -> DesktopResult<usize> {
     platform::selection_count()
 }
 
+/// The ids of the desktop items selected right now (empty after a box over empty space). Read-only.
+pub fn selected_items() -> DesktopResult<Vec<String>> {
+    platform::selected_items()
+}
+
 /// Where the desktop shows `item_id` right now, or `None` if it is not there. Read-only and takes
 /// no lock, so it also works while another process owns the layer (for tests and diagnostics).
 pub fn item_position(item_id: &str) -> DesktopResult<Option<Point>> {
@@ -119,5 +124,17 @@ mod thumbnail_tests {
         let _ = std::fs::remove_dir_all(&dir);
         let png = result.expect("the shell returns a picture or the icon");
         assert_eq!(&png[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod selection_tests {
+    /// Reads the real desktop (nothing is changed): run by hand with `--ignored`.
+    #[test]
+    #[ignore = "reads the real desktop"]
+    fn the_selection_of_the_desktop_can_be_read() {
+        let selected = super::selected_items().expect("the desktop view answers");
+        let count = super::selection_count().expect("the count answers");
+        assert_eq!(selected.len(), count, "{selected:?}");
     }
 }

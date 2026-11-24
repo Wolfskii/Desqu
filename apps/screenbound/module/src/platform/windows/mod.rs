@@ -89,6 +89,12 @@ impl PlatformWindowManager for WindowsPlatform {
         window::foreground()
     }
 
+    fn exclusive_fullscreen_game(&self) -> bool {
+        use ::windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
+        // SAFETY: a plain query with no arguments but its result.
+        unsafe { SHQueryUserNotificationState().is_ok_and(|state| state == QUNS_RUNNING_D3D_FULL_SCREEN) }
+    }
+
     fn set_region(&self, id: WindowId, region: Option<Rect>) -> PlatformResult<()> {
         window::set_region(id, region)
     }

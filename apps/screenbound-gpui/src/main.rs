@@ -79,7 +79,41 @@ fn main() {
         }
         cx.spawn(async move |cx| {
             let _keep = &tray;
+            // The zone hotkey follows the setting: registered, changed or given back as it changes.
+            let mut hotkey: Option<(String, desqu_native_shell::hotkey::Hotkey)> = None;
+            let (snap_tx, snap_rx) = std::sync::mpsc::channel::<()>();
+            // Docking or undocking: the zones take the shape they had the last time the screens were like this.
+            let mut screens = String::new();
+            let mut tick = 0u32;
             loop {
+                if tick.is_multiple_of(10) {
+                    let wanted = rt.snapshot().config.as_ref().map(|c| c.zone_hotkey.clone()).unwrap_or_default();
+                    if hotkey.as_ref().map_or("", |(text, _)| text.as_str()) != wanted {
+                        hotkey = None;
+                        if !wanted.is_empty() {
+                            let for_press = snap_tx.clone();
+                            match desqu_native_shell::hotkey::Hotkey::register(&wanted, Box::new(move || {
+                                let _ = for_press.send(());
+                            })) {
+                                Ok(h) => hotkey = Some((wanted, h)),
+                                Err(e) => eprintln!("{e}"),
+                            }
+                        }
+                    }
+                }
+                if tick.is_multiple_of(20) {
+                    let now = screenbound_gpui::model::setup_key(&rt.snapshot().monitors);
+                    if screens.is_empty() {
+                        screens = now;
+                    } else if !now.is_empty() && now != screens {
+                        let old = std::mem::replace(&mut screens, now.clone());
+                        rt.change(move |c| screenbound_gpui::model::switch_zone_setup(c, &old, &now));
+                    }
+                }
+                tick = tick.wrapping_add(1);
+                while snap_rx.try_recv().is_ok() {
+                    rt.snap_foreground();
+                }
                 while let Ok(event) = event_rx.try_recv() {
                     let rt = Arc::clone(&rt);
                     match event {

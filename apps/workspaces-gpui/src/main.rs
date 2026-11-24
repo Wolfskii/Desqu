@@ -6,6 +6,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod engine;
+mod overlay;
 mod view;
 
 use std::path::PathBuf;
@@ -73,6 +74,13 @@ fn main() {
     // Task View hides the desktop icons while it shows; the clipboard decides whether the desktop's
     // right-click menu offers "Paste on this workspace".
     engine.watch_shell();
+    engine.apply_jump_hotkeys();
+    // The desktop's name, shown for a moment when you switch.
+    let (note_tx, note_rx) = std::sync::mpsc::channel::<String>();
+    let note_tx = std::sync::Mutex::new(note_tx);
+    engine.set_on_switch(move |name| {
+        let _ = note_tx.lock().unwrap_or_else(|e| e.into_inner()).send(name);
+    });
     let engine_for_exit = engine.clone();
     Application::new().run(move |cx: &mut App| {
         let (event_tx, event_rx) = std::sync::mpsc::channel::<tray::Event>();
@@ -86,6 +94,9 @@ fn main() {
         cx.spawn(async move |cx| {
             let _keep = &tray;
             loop {
+                while let Ok(name) = note_rx.try_recv() {
+                    let _ = cx.update(|cx| overlay::show(cx, name));
+                }
                 while let Ok(event) = event_rx.try_recv() {
                     let engine = Arc::clone(&engine);
                     match event {
@@ -113,6 +124,12 @@ fn main() {
                         tray::Event::Action(name) if name.starts_with("set-setting:autoAssignNew:") => {
                             engine.set_auto_assign(name.ends_with(":true"));
                         }
+                        tray::Event::Action(name) if name.starts_with("set-setting:jumpHotkeys:") => {
+                            engine.set_jump_hotkeys(name.ends_with(":true"));
+                        }
+                        tray::Event::Action(name) if name.starts_with("set-setting:showName:") => {
+                            engine.set_show_name(name.ends_with(":true"));
+                        }
                         // From Desqu's Workspaces page: `assign-item:<item>:<desktop id or all>`,
                         // `release-desktop:<desktop id>` and `first-run:<desktop id or none>`.
                         tray::Event::Action(name) if name.starts_with("assign-item:") => {
@@ -120,6 +137,20 @@ fn main() {
                                 let desktop = (target != "all").then_some(target);
                                 if let Err(e) = engine.assign_item(item, desktop) {
                                     eprintln!("could not move {item} to {target}: {e}");
+                                }
+                            }
+                        }
+                        tray::Event::Action(name) if name.starts_with("open-on-visit:") => {
+                            if let Some((desktop, on)) = name.trim_start_matches("open-on-visit:").rsplit_once(':') {
+                                if let Err(e) = engine.set_open_on_visit(desktop, on == "true") {
+                                    eprintln!("could not change {desktop}: {e}");
+                                }
+                            }
+                        }
+                        tray::Event::Action(name) if name.starts_with("wallpaper:") => {
+                            if let Some((desktop, what)) = name.trim_start_matches("wallpaper:").rsplit_once(':') {
+                                if let Err(e) = engine.set_desktop_wallpaper(desktop, what == "keep") {
+                                    eprintln!("wallpaper of {desktop}: {e}");
                                 }
                             }
                         }

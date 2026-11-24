@@ -19,6 +19,37 @@ pub fn marquee(down: (i32, i32), up: (i32, i32)) -> Option<PixelRect> {
     (rect.width() >= MIN_WIDTH && rect.height() >= MIN_HEIGHT).then_some(rect)
 }
 
+/// Whether `at` is inside any of the rectangles (the click that ends a peek: outside every vial).
+pub fn point_in_any(rects: &[PixelRect], at: (i32, i32)) -> bool {
+    rects.iter().any(|r| at.0 >= r.left && at.0 < r.right && at.1 >= r.top && at.1 < r.bottom)
+}
+
+/// Spots a double-click on the empty desktop from the presses the mouse hook reports.
+#[derive(Debug, Default)]
+pub struct DoubleClick {
+    last: Option<(u64, (i32, i32))>,
+}
+
+impl DoubleClick {
+    /// Two presses this close in time (ms) ...
+    pub const WITHIN_MS: u64 = 450;
+    /// ... and this close in place (px) make a double-click.
+    pub const SLOP: i32 = 6;
+
+    /// Feeds one press (`at_ms` on any steady clock). Returns whether it completes a double-click; a third
+    /// press then starts a new pair.
+    pub fn press(&mut self, at_ms: u64, at: (i32, i32)) -> bool {
+        if let Some((before, place)) = self.last {
+            if at_ms.saturating_sub(before) <= Self::WITHIN_MS && (at.0 - place.0).abs() <= Self::SLOP && (at.1 - place.1).abs() <= Self::SLOP {
+                self.last = None;
+                return true;
+            }
+        }
+        self.last = Some((at_ms, at));
+        false
+    }
+}
+
 /// The smallest `Vial N` not used yet.
 pub fn next_name<'a>(existing: impl IntoIterator<Item = &'a str>) -> String {
     let taken: HashSet<&str> = existing.into_iter().collect();
@@ -41,6 +72,31 @@ pub fn popup_position(cursor: (i32, i32), size: (i32, i32), screen: &PixelRect) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_point_is_in_a_vial_when_it_is_inside_any_rectangle() {
+        let rects = [PixelRect { left: 0, top: 0, right: 100, bottom: 50 }, PixelRect { left: 200, top: 200, right: 300, bottom: 300 }];
+        assert!(point_in_any(&rects, (10, 10)) && point_in_any(&rects, (250, 299)));
+        assert!(!point_in_any(&rects, (100, 10)), "the right edge is outside");
+        assert!(!point_in_any(&rects, (150, 150)) && !point_in_any(&[], (0, 0)));
+    }
+
+    #[test]
+    fn two_quick_presses_in_one_place_are_a_double_click_and_a_third_starts_over() {
+        let mut d = DoubleClick::default();
+        assert!(!d.press(1000, (100, 100)));
+        assert!(d.press(1300, (103, 98)));
+        assert!(!d.press(1400, (103, 98)), "the third press begins a new pair");
+        assert!(d.press(1500, (103, 98)));
+    }
+
+    #[test]
+    fn slow_or_distant_presses_are_not_a_double_click() {
+        let mut d = DoubleClick::default();
+        assert!(!d.press(1000, (100, 100)));
+        assert!(!d.press(1600, (100, 100)), "too slow");
+        assert!(!d.press(1700, (200, 100)), "too far");
+    }
+
     use super::*;
 
     #[test]

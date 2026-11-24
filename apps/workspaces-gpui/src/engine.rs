@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use desqu_desktop::{DesktopError, DesktopLayer, Subscription};
 use workspaces_core::model::{desktop_label, vial_item, vial_of, WorkspacesConfig};
-use workspaces_core::{paste, visibility};
-use workspaces_platform::{ClipboardWatcher, CutPasteWatcher, Desktops, SwitchWatcher, TaskViewWatcher};
+use workspaces_core::{jump, paste, startup, visibility};
+use workspaces_platform::{ClipboardWatcher, CutPasteWatcher, Desktops, HotkeyWatcher, SwitchWatcher, TaskViewWatcher};
 
 /// The desktop view shows a new item several seconds after the file appears.
 const LAG_RECHECK: Duration = Duration::from_secs(5);
@@ -30,6 +30,8 @@ const VEIL_LIMIT: Duration = Duration::from_secs(15);
 const VEIL_SWITCH_WAIT: Duration = Duration::from_millis(400);
 
 type DesktopsFn = Box<dyn Fn() -> Desktops + Send + Sync>;
+/// Told the name of the desktop you switched to.
+type SwitchCallback = Arc<dyn Fn(String) + Send + Sync>;
 
 enum Job {
     Reconcile,
@@ -66,6 +68,14 @@ pub struct Engine {
     _paste: Mutex<Option<CutPasteWatcher>>,
     /// Win+Tab and the clipboard: see [`Engine::watch_shell`].
     _shell: Mutex<Vec<Box<dyn std::any::Any + Send>>>,
+    /// Win+Ctrl+1..9, while the setting is on.
+    hotkeys: Mutex<Option<HotkeyWatcher>>,
+    /// Told the name of the desktop you switched to (the note on the screen).
+    on_switch: Mutex<Option<SwitchCallback>>,
+    /// The desktop the last look found you on.
+    last_desktop: Mutex<Option<String>>,
+    /// The desktops whose items were opened already in this session.
+    opened: Mutex<HashSet<String>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -129,6 +139,10 @@ impl Engine {
             _subscriptions: Mutex::new(Vec::new()),
             _paste: Mutex::new(None),
             _shell: Mutex::new(Vec::new()),
+            hotkeys: Mutex::new(None),
+            on_switch: Mutex::new(None),
+            last_desktop: Mutex::new(None),
+            opened: Mutex::new(HashSet::new()),
         });
 
         let mut subs = Vec::new();
@@ -180,8 +194,77 @@ impl Engine {
         *lock(&self._shell) = watchers;
     }
 
+    /// Calls `f` with the desktop's name each time you switch to another desktop.
+    pub fn set_on_switch(&self, f: impl Fn(String) + Send + Sync + 'static) {
+        *lock(&self.on_switch) = Some(Arc::new(f));
+    }
+
+    /// Starts or stops Win+Ctrl+1..9 to match the setting.
+    pub fn apply_jump_hotkeys(self: &Arc<Self>) {
+        let wanted = self.config().jump_hotkeys;
+        let mut slot = lock(&self.hotkeys);
+        if !wanted {
+            *slot = None;
+            return;
+        }
+        if slot.is_some() {
+            return;
+        }
+        let engine = Arc::downgrade(self);
+        match HotkeyWatcher::start(Box::new(move |digit| {
+            if let Some(engine) = engine.upgrade() {
+                // Pressing the keys takes a moment: not on the thread that reads the hotkeys.
+                std::thread::spawn(move || engine.jump_to(digit as usize - 1));
+            }
+        })) {
+            Ok(w) => *slot = Some(w),
+            Err(e) => eprintln!("{e}"),
+        }
+    }
+
+    /// Goes to virtual desktop `index` (0-based) with Windows' own keys for it.
+    pub fn jump_to(&self, index: usize) {
+        let desktops = (self.desktops)();
+        let Some(current) = desktops.current.as_deref().and_then(|c| desktops.list.iter().position(|d| d.id == c)) else { return };
+        if let Some((direction, count)) = jump::plan(current, index, desktops.list.len()) {
+            workspaces_platform::press_desktop_keys(direction == jump::Direction::Right, count);
+        }
+    }
+
+    pub fn set_jump_hotkeys(self: &Arc<Self>, on: bool) -> bool {
+        let changed = self.change(|c| {
+            let changed = c.jump_hotkeys != on;
+            c.jump_hotkeys = on;
+            changed
+        });
+        self.apply_jump_hotkeys();
+        changed
+    }
+
+    /// Turns "open its items the first time you come here" on or off for a desktop.
+    pub fn set_open_on_visit(&self, desktop_id: &str, on: bool) -> Result<bool, String> {
+        let (id, name) = self.desktop_named(desktop_id)?;
+        Ok(self.change(|c| c.set_open_on_visit((&id, &name), on)))
+    }
+
+    /// "Use the wallpaper I have now for this desktop" (`keep`), or take the desktop's wallpaper away.
+    pub fn set_desktop_wallpaper(&self, desktop_id: &str, keep: bool) -> Result<bool, String> {
+        let (id, name) = self.desktop_named(desktop_id)?;
+        let path = if keep { Some(workspaces_platform::current_wallpaper().ok_or("the wallpaper is a plain colour, not a picture")?) } else { None };
+        Ok(self.change(|c| c.set_wallpaper((&id, &name), path.as_deref())))
+    }
+
+    pub fn set_show_name(&self, on: bool) -> bool {
+        self.change(|c| {
+            let changed = c.show_name != on;
+            c.show_name = on;
+            changed
+        })
+    }
+
     /// Ends the worker and puts every hidden item back.
     pub fn stop(&self) {
+        *lock(&self.hotkeys) = None;
         lock(&self._shell).clear();
         let _ = workspaces_platform::set_paste_entry(None);
         if let Some(jobs) = lock(&self.jobs).take() {
@@ -454,6 +537,39 @@ impl Engine {
         let desktops = (self.desktops)();
         let live: Vec<String> = desktops.list.iter().map(|d| d.id.clone()).collect();
         let current = desktops.current.clone();
+
+        // Switched to another desktop: say which one (the first look is not a switch).
+        if let Some(cur) = current.as_deref() {
+            let before = lock(&self.last_desktop).replace(cur.to_string());
+            // The first time you come to a desktop that asks for it, its apps and folders are opened.
+            if before.as_deref().is_some_and(|b| b != cur) {
+                let config = self.config();
+                // A desktop with a wallpaper of its own puts it on.
+                if let Some(path) = config.workspace(cur).and_then(|w| w.wallpaper.clone()).filter(|p| Path::new(p).is_file()) {
+                    std::thread::spawn(move || {
+                        if let Err(e) = workspaces_platform::set_wallpaper(&path) {
+                            eprintln!("could not set the wallpaper: {e}");
+                        }
+                    });
+                }
+                if startup::first_visit(&mut lock(&self.opened), config.workspace(cur)) {
+                    let items = config.workspace(cur).map(startup::items_to_open).unwrap_or_default();
+                    std::thread::spawn(move || {
+                        for item in items {
+                            let _ = std::process::Command::new("explorer.exe").arg(&item).spawn();
+                            std::thread::sleep(Duration::from_millis(400));
+                        }
+                    });
+                }
+            }
+            if before.as_deref().is_some_and(|b| b != cur) && self.config().show_name {
+                let index = desktops.list.iter().position(|d| d.id == cur).unwrap_or(0);
+                let name = desktop_label(index, desktops.list.get(index).map_or("", |d| d.name.as_str()));
+                if let Some(f) = lock(&self.on_switch).clone() {
+                    f(name);
+                }
+            }
+        }
 
         // A file that appeared since the last look belongs to the desktop you are on.
         let fresh: Vec<String> = match lock(&self.known).as_ref() {

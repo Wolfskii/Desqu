@@ -121,6 +121,8 @@ impl Render for SettingsView {
             (VialTheme::Classic, "Classic"),
             (VialTheme::Fluent, "Fluent dark"),
             (VialTheme::FluentLight, "Fluent light"),
+            (VialTheme::System, "Follow Windows"),
+            (VialTheme::Mica, "Mica (try it)"),
         ];
         let theme_row = row("Look of vials", "Glass and Liquid blur what is behind").child(div().flex().flex_wrap().gap_1().w(px(260.)).children(
             themes.into_iter().map(|(theme, label)| {
@@ -222,6 +224,15 @@ impl Render for SettingsView {
                 ),
             )
             .child(toggle("Desktop right-click entry", "\"Create vial here\"", cfg.context_menu, |c, v| c.context_menu = v))
+            .child(toggle("Open collapsed vials on hover", "A collapsed vial opens while the pointer is over it", cfg.hover_open, |c, v| c.hover_open = v))
+            .child(toggle("Offer a vial for selected icons", "A box dragged over icons offers \"New vial with these\"", cfg.offer_for_selection, |c, v| c.offer_for_selection = v))
+            .child(row("Peek hotkey", "Brings every vial above the open windows until you click elsewhere or press Esc").child(div().flex().flex_wrap().gap_1().children([("Off", ""), ("Win+Shift+Space", "win+shift+space"), ("Ctrl+Alt+V", "ctrl+alt+v")].into_iter().map(|(label, value)| {
+                button(label, cfg.peek_hotkey == value).id(label).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.change(cx, |c| c.peek_hotkey = value.to_string())))
+            }))))
+            .child(toggle("Colour from the wallpaper", "Vials take a dark shade of the wallpaper", cfg.wallpaper_tint, |c, v| c.wallpaper_tint = v))
+            .child(toggle("Privacy mode", "Names and pictures stay hidden until the pointer is over a vial", cfg.privacy_mask, |c, v| c.privacy_mask = v))
+            .child(toggle("Hide vials from screen sharing", "They do not show in shares, recordings or screenshots", cfg.hide_from_capture, |c, v| c.hide_from_capture = v))
+            .child(toggle("Quick-hide", "Double-click the empty desktop to hide or show everything", cfg.quick_hide, |c, v| c.quick_hide = v))
             .child(
                 div().flex().gap_2().pt_3().child(
                     button("Edit rules", false).id("edit-rules").on_click(cx.listener(|this, _: &ClickEvent, _, cx| {

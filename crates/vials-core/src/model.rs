@@ -81,6 +81,54 @@ pub struct Vial {
     /// Folders stay on top whatever the sort (also re-applied when items change).
     #[serde(default)]
     pub folders_first: bool,
+    /// The vial stays where it is and keeps its items: no moving, resizing, renaming or dragging out.
+    #[serde(default)]
+    pub locked: bool,
+    /// This vial's own glass tint (0 clear to 100 solid); `None` follows the setting for all vials.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tint: Option<u8>,
+    /// This vial's own panel colour as `#rrggbb`; `None` is the look's own colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Icon size in pixels (24, 32 or 48); `None` is 32.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_size: Option<u8>,
+    /// The title sits in the middle of the title bar instead of at its left.
+    #[serde(default)]
+    pub title_center: bool,
+    /// A folder portal: the vial shows this folder (any local, network or cloud folder) instead of items of
+    /// the desktop. Nothing is hidden on the desktop and `items` stays empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// A tab of another vial: it has no window of its own, the vial named here shows it as one of its tabs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_host: Option<String>,
+}
+
+/// The icon sizes a vial can use, in pixels.
+pub const ICON_SIZES: [u8; 3] = [24, 32, 48];
+
+/// The panel colours offered in the vial menu: (name, `#rrggbb`).
+pub const PANEL_COLORS: [(&str, &str); 6] = [
+    ("Graphite", "#2b2f36"),
+    ("Blue", "#1f3b73"),
+    ("Green", "#1f5a3d"),
+    ("Orange", "#7a4a1a"),
+    ("Pink", "#7a2a52"),
+    ("Purple", "#4a2f7a"),
+];
+
+impl Vial {
+    /// The icon size to draw: the chosen one, else 32.
+    pub fn icon_px(&self) -> u8 {
+        self.icon_size.filter(|s| ICON_SIZES.contains(s)).unwrap_or(32)
+    }
+
+    /// The panel colour as `0xRRGGBB`, if one is set and valid.
+    pub fn color_rgb(&self) -> Option<u32> {
+        let hex = self.color.as_deref()?.strip_prefix('#')?;
+        (hex.len() == 6).then(|| u32::from_str_radix(hex, 16).ok()).flatten()
+    }
 }
 
 /// A predicate over a desktop item.
@@ -96,6 +144,16 @@ pub enum ItemMatcher {
     NameContains(String),
     NameStartsWith(String),
     NameEndsWith(String),
+    /// Last changed within this many days.
+    ModifiedWithinDays(u32),
+    /// Not changed for at least this many days.
+    ModifiedOlderThanDays(u32),
+    /// Created within this many days.
+    CreatedWithinDays(u32),
+    /// A file bigger than this many megabytes (folders have no size).
+    SizeOverMb(u64),
+    /// A file smaller than this many megabytes.
+    SizeUnderMb(u64),
     Any(Vec<ItemMatcher>),
     All(Vec<ItemMatcher>),
 }
@@ -130,6 +188,11 @@ pub enum VialTheme {
     Fluent,
     /// Fluent with its light surface and colours.
     FluentLight,
+    /// Fluent, dark or light by the Windows app setting (and changing with it).
+    System,
+    /// Windows 11's Mica: the window takes a soft tint of the wallpaper from the system. Experimental: it only
+    /// shows on Windows 11, elsewhere the panel is a plain dark one.
+    Mica,
     /// Liquid glass: the wallpaper is redrawn behind the vial with a refraction shader (bent edges,
     /// highlights), which Windows' own blur cannot do. Popups use the plain Glass look.
     Liquid,
@@ -182,6 +245,28 @@ pub struct VialsConfig {
     /// "Create vial here" in the desktop's right-click menu.
     #[serde(default = "yes")]
     pub context_menu: bool,
+    /// A collapsed vial opens while the pointer is over it and closes again when the pointer leaves.
+    #[serde(default)]
+    pub hover_open: bool,
+    /// A box dragged over icons offers "New vial with these" (off: only a box over empty desktop offers a vial).
+    #[serde(default)]
+    pub offer_for_selection: bool,
+    /// The panels take their colour from the wallpaper (a vial with a colour of its own keeps it).
+    #[serde(default)]
+    pub wallpaper_tint: bool,
+    /// Privacy mode: the names and pictures of items stay hidden until the pointer is over the vial.
+    #[serde(default)]
+    pub privacy_mask: bool,
+    /// The vials do not show in screen shares, recordings and screenshots (Windows 10 2004 or later).
+    #[serde(default)]
+    pub hide_from_capture: bool,
+    /// A global hotkey (`win+shift+space`) that brings every vial above the open windows until you click
+    /// elsewhere or press Esc; empty is off.
+    #[serde(default)]
+    pub peek_hotkey: String,
+    /// A double-click on the empty desktop hides every vial and the desktop icons; another shows them.
+    #[serde(default = "yes")]
+    pub quick_hide: bool,
     #[serde(default)]
     pub theme: VialTheme,
     #[serde(default)]
@@ -192,6 +277,9 @@ pub struct VialsConfig {
     /// Items the user took out of a vial on purpose: rules never put them back.
     #[serde(default)]
     pub declined: Vec<String>,
+    /// Saved layouts (where the vials sit): named ones, and one kept for each screen setup.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layouts: Vec<crate::layouts::Layout>,
 }
 
 impl Default for VialsConfig {
@@ -205,10 +293,18 @@ impl Default for VialsConfig {
             draw_desktop: false,
             create_on_drag: true,
             context_menu: true,
+            quick_hide: true,
+            peek_hotkey: String::new(),
+            wallpaper_tint: false,
+            privacy_mask: false,
+            hide_from_capture: false,
+            offer_for_selection: false,
+            hover_open: false,
             theme: VialTheme::default(),
             glass_blur: GlassBlur::default(),
             glass_tint: default_glass_tint(),
             declined: Vec::new(),
+            layouts: Vec::new(),
         }
     }
 }
@@ -242,6 +338,13 @@ impl VialsConfig {
             "hideOnDesktop" => self.hide_on_desktop = flag()?,
             "createOnDrag" => self.create_on_drag = flag()?,
             "contextMenu" => self.context_menu = flag()?,
+            "quickHide" => self.quick_hide = flag()?,
+            "hoverOpen" => self.hover_open = flag()?,
+            "wallpaperTint" => self.wallpaper_tint = flag()?,
+            "privacyMask" => self.privacy_mask = flag()?,
+            "hideFromCapture" => self.hide_from_capture = flag()?,
+            "peekHotkey" => self.peek_hotkey = value.trim().to_string(),
+            "offerForSelection" => self.offer_for_selection = flag()?,
             other => return Err(format!("unknown setting {other}")),
         }
         Ok(())
@@ -249,6 +352,47 @@ impl VialsConfig {
 
     pub fn vial(&self, id: &str) -> Option<&Vial> {
         self.vials.iter().find(|v| v.id == id)
+    }
+
+    /// Goes back to the vials, items and rules of `before`, but keeps what has changed since in how the
+    /// vials sit on screen (place, size, collapsed) and in the settings: undo is about content.
+    pub fn restore_content(&mut self, mut before: VialsConfig) {
+        for vial in &mut before.vials {
+            if let Some(now) = self.vials.iter().find(|v| v.id == vial.id) {
+                vial.rect = now.rect;
+                vial.monitor = now.monitor.clone();
+                vial.collapsed = now.collapsed;
+            }
+        }
+        self.vials = before.vials;
+        self.rules = before.rules;
+        self.declined = before.declined;
+    }
+
+    /// A vial that shows a folder, put at `rect` and named after it. Returns its id.
+    pub fn add_portal(&mut self, rect: NormalizedRect, monitor: Option<String>, folder: &str) -> String {
+        let id = self.add_vial(rect, monitor);
+        if let Some(v) = self.vials.iter_mut().find(|v| v.id == id) {
+            v.source = Some(folder.to_string());
+            v.name = crate::portal::title_of(std::path::Path::new(folder));
+        }
+        id
+    }
+
+    /// Whether the vial is locked (an unknown vial is not).
+    pub fn is_locked(&self, id: &str) -> bool {
+        self.vial(id).is_some_and(|v| v.locked)
+    }
+
+    /// Locks or unlocks a vial. Returns whether anything changed.
+    pub fn set_locked(&mut self, id: &str, locked: bool) -> bool {
+        match self.vials.iter_mut().find(|v| v.id == id) {
+            Some(v) if v.locked != locked => {
+                v.locked = locked;
+                true
+            }
+            _ => false,
+        }
     }
 
     /// The vial that holds `item_id`, if any.
@@ -281,6 +425,13 @@ impl VialsConfig {
                 sort_key: None,
                 sort_desc: false,
                 folders_first: false,
+                locked: false,
+                tint: None,
+                color: None,
+                icon_size: None,
+                title_center: false,
+                source: None,
+                tab_host: None,
             },
         );
         true
@@ -301,15 +452,65 @@ impl VialsConfig {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
+            source: None,
+            tab_host: None,
         });
         id
     }
 
-    /// Deletes a vial; its items go back on the desktop. The built-in Desktop vial cannot be deleted.
+    /// Deletes a vial; its items go back on the desktop. The built-in Desktop vial cannot be deleted. The tabs of
+    /// a deleted vial become vials of their own again.
     pub fn delete_vial(&mut self, id: &str) -> bool {
         let before = self.vials.len();
         self.vials.retain(|v| v.id != id || v.inbox);
-        self.vials.len() != before
+        let deleted = self.vials.len() != before;
+        if deleted {
+            for v in self.vials.iter_mut().filter(|v| v.tab_host.as_deref() == Some(id)) {
+                v.tab_host = None;
+            }
+        }
+        deleted
+    }
+
+    /// The vial `host` and the vials that are its tabs, the host first and then the tabs in the order they were made.
+    pub fn tabs_of(&self, host: &str) -> Vec<&Vial> {
+        self.vials.iter().filter(|v| v.id == host).chain(self.vials.iter().filter(|v| v.tab_host.as_deref() == Some(host))).collect()
+    }
+
+    /// Makes `vial` a tab of `host`. A vial that is itself a tab of another goes there instead of nesting, a host
+    /// that is itself a tab is replaced by its own host, and the tabs of `vial` come along. Returns whether anything
+    /// changed (nothing for the same vial, an unknown one or the built-in Desktop vial).
+    pub fn merge_tab(&mut self, vial: &str, host: &str) -> bool {
+        let root = self.vial(host).map(|h| h.tab_host.clone().unwrap_or_else(|| h.id.clone()));
+        let (Some(root), Some(moving)) = (root, self.vial(vial)) else { return false };
+        if root == vial || moving.inbox || self.vial(&root).is_some_and(|h| h.inbox) {
+            return false;
+        }
+        let members: Vec<String> = self.vials.iter().filter(|v| v.tab_host.as_deref() == Some(vial)).map(|v| v.id.clone()).collect();
+        for v in self.vials.iter_mut().filter(|v| v.id == vial || members.contains(&v.id)) {
+            v.tab_host = Some(root.clone());
+        }
+        true
+    }
+
+    /// Takes a tab out of its vial: it is a vial with a window of its own again, a little below and to the right of
+    /// where the vial it was in sits. Returns whether it was a tab.
+    pub fn split_tab(&mut self, vial: &str) -> bool {
+        let Some(host) = self.vial(vial).and_then(|v| v.tab_host.clone()) else { return false };
+        let place = self.vial(&host).map(|h| (h.rect, h.monitor.clone()));
+        if let Some(v) = self.vials.iter_mut().find(|v| v.id == vial) {
+            v.tab_host = None;
+            if let Some((rect, monitor)) = place {
+                v.rect = NormalizedRect { x: (rect.x + 0.03).min(0.8), y: (rect.y + 0.05).min(0.8), ..rect };
+                v.monitor = monitor;
+            }
+        }
+        true
     }
 
     /// Renames a vial (trimmed, 1..=80 characters). Returns whether the name changed.
@@ -495,14 +696,125 @@ impl VialsConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn vials_merge_into_tabs_without_nesting_and_split_out_again() {
+        let mut cfg = VialsConfig::default();
+        for id in ["a", "b", "c"] {
+            cfg.vials.push(vial(id, &[]));
+        }
+        assert!(cfg.merge_tab("b", "a"));
+        assert_eq!(cfg.tabs_of("a").iter().map(|v| v.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
+        // c goes into b, which is a tab: it lands in a, the vial that shows them.
+        assert!(cfg.merge_tab("c", "b"));
+        assert_eq!(cfg.vial("c").unwrap().tab_host.as_deref(), Some("a"));
+        assert_eq!(cfg.tabs_of("a").len(), 3);
+        assert!(!cfg.merge_tab("a", "a") && !cfg.merge_tab("a", "nope") && !cfg.merge_tab("nope", "a"));
+        // Merging a vial that has tabs takes them along.
+        cfg.vials.push(vial("d", &[]));
+        assert!(cfg.merge_tab("a", "d"));
+        assert_eq!(cfg.tabs_of("d").len(), 4, "a, its tabs b and c, and d");
+        assert!(cfg.vial("d").unwrap().tab_host.is_none());
+        // Splitting puts the vial back next to its host; one that is no tab is refused.
+        assert!(cfg.split_tab("b") && cfg.vial("b").unwrap().tab_host.is_none());
+        assert!(!cfg.split_tab("b"));
+        assert_eq!(cfg.tabs_of("d").len(), 3);
+        // Deleting the vial that shows tabs frees them.
+        assert!(cfg.delete_vial("d"));
+        assert!(cfg.vials.iter().all(|v| v.tab_host.is_none()));
+    }
+
+    #[test]
+    fn a_portal_is_a_vial_with_a_source_and_old_vials_have_none() {
+        let mut cfg = VialsConfig::default();
+        let id = cfg.add_portal(NormalizedRect { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, None, r"\\server\share\Projects");
+        let v = cfg.vial(&id).unwrap();
+        assert_eq!(v.source.as_deref(), Some(r"\\server\share\Projects"));
+        assert_eq!(v.name, "Projects");
+        assert!(v.items.is_empty());
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: VialsConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.vial(&id).unwrap().source, v.source);
+        let old: Vial = serde_json::from_str(r#"{"id":"v","name":"V","rect":{"x":0.0,"y":0.0,"width":0.2,"height":0.2},"items":[]}"#).unwrap();
+        assert!(old.source.is_none());
+    }
+
+    #[test]
+    fn restoring_content_keeps_where_the_vials_are_and_the_settings() {
+        let mut before = VialsConfig::default();
+        before.vials.push(vial("a", &["x", "y"]));
+        before.vials.push(vial("gone", &["z"]));
+        before.theme = VialTheme::Classic;
+        let mut now = before.clone();
+        now.vials.remove(1);
+        now.vials[0].items = vec!["x".into()];
+        now.vials[0].rect = NormalizedRect { x: 0.5, y: 0.5, width: 0.2, height: 0.2 };
+        now.vials[0].collapsed = true;
+        now.theme = VialTheme::Glass;
+        now.restore_content(before);
+        assert_eq!(now.vials.len(), 2, "the deleted vial is back");
+        assert_eq!(now.vials[0].items, vec!["x".to_string(), "y".to_string()], "with its items");
+        assert_eq!(now.vials[0].rect.x, 0.5, "but where the window is now");
+        assert!(now.vials[0].collapsed);
+        assert_eq!(now.theme, VialTheme::Glass, "settings are not undone");
+    }
+
+    #[test]
+    fn a_vial_look_has_defaults_and_ignores_values_it_does_not_know() {
+        let mut v = vial("a", &[]);
+        assert_eq!((v.icon_px(), v.color_rgb(), v.tint, v.title_center), (32, None, None, false));
+        v.icon_size = Some(48);
+        v.color = Some("#1f3b73".into());
+        assert_eq!((v.icon_px(), v.color_rgb()), (48, Some(0x1f3b73)));
+        v.icon_size = Some(40);
+        v.color = Some("blue".into());
+        assert_eq!((v.icon_px(), v.color_rgb()), (32, None), "unknown size and colour fall back");
+        let json = r#"{"id":"v","name":"V","rect":{"x":0.0,"y":0.0,"width":0.2,"height":0.2},"items":[]}"#;
+        let old: Vial = serde_json::from_str(json).unwrap();
+        assert!(old.tint.is_none() && old.color.is_none() && old.icon_size.is_none() && !old.title_center);
+        for (_, hex) in PANEL_COLORS {
+            let mut p = vial("p", &[]);
+            p.color = Some(hex.into());
+            assert!(p.color_rgb().is_some(), "{hex}");
+        }
+    }
+
+    #[test]
+    fn a_vial_can_be_locked_and_an_old_config_without_the_field_loads_unlocked() {
+        let mut cfg = VialsConfig::default();
+        cfg.vials.push(vial("vial-1", &[]));
+        assert!(!cfg.is_locked("vial-1"));
+        assert!(cfg.set_locked("vial-1", true));
+        assert!(cfg.is_locked("vial-1"));
+        assert!(!cfg.set_locked("vial-1", true), "no change the second time");
+        assert!(!cfg.set_locked("nope", true));
+        let json = r#"{"id":"v","name":"V","rect":{"x":0.0,"y":0.0,"width":0.2,"height":0.2},"items":[]}"#;
+        let old: Vial = serde_json::from_str(json).unwrap();
+        assert!(!old.locked);
+    }
+
     use super::*;
 
     #[test]
     fn settings_are_set_by_name_and_bad_values_are_refused() {
         let mut c = VialsConfig::default();
+        c.set_setting("theme", "system").unwrap();
+        assert_eq!(c.theme, VialTheme::System);
+        c.set_setting("theme", "mica").unwrap();
+        assert_eq!(c.theme, VialTheme::Mica);
         c.set_setting("theme", "fluentLight").unwrap();
         c.set_setting("glassTint", "35").unwrap();
         c.set_setting("autoSort", "false").unwrap();
+        c.set_setting("quickHide", "false").unwrap();
+        c.set_setting("hoverOpen", "true").unwrap();
+        c.set_setting("privacyMask", "true").unwrap();
+        c.set_setting("wallpaperTint", "true").unwrap();
+        assert!(c.wallpaper_tint);
+        c.set_setting("hideFromCapture", "true").unwrap();
+        assert!(c.privacy_mask && c.hide_from_capture);
+        c.set_setting("peekHotkey", " win+shift+space ").unwrap();
+        assert_eq!(c.peek_hotkey, "win+shift+space");
+        assert!(c.hover_open);
+        assert!(!c.quick_hide);
         assert_eq!((c.theme, c.glass_tint, c.auto_sort), (VialTheme::FluentLight, 35, false));
         assert!(c.set_setting("glassTint", "101").is_err());
         assert!(c.set_setting("theme", "neon").is_err());
@@ -522,6 +834,13 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
+            source: None,
+            tab_host: None,
         }
     }
 

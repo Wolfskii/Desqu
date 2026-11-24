@@ -35,8 +35,49 @@ pub fn glob_match(pattern: &str, text: &str) -> bool {
     pi == p.len()
 }
 
+/// What a rule may ask about the file behind an item: seconds since the Unix epoch, and bytes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Meta {
+    pub modified: Option<u64>,
+    pub created: Option<u64>,
+    pub size: Option<u64>,
+}
+
+/// The facts of the file at `id`; nothing for a system item or a path that is gone. A folder has no size.
+pub fn file_meta(id: &str) -> Meta {
+    let Ok(m) = std::fs::metadata(id) else { return Meta::default() };
+    let secs = |t: std::io::Result<std::time::SystemTime>| t.ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
+    Meta { modified: secs(m.modified()), created: secs(m.created()), size: m.is_file().then_some(m.len()) }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+const DAY: u64 = 86_400;
+const MB: u64 = 1_048_576;
+
 impl ItemMatcher {
     pub fn matches(&self, item: &DesktopItem) -> bool {
+        self.matches_with(item, now_secs(), &file_meta)
+    }
+
+    /// Like [`ItemMatcher::matches`] with the clock and the file facts given (so a test can say what they are).
+    pub fn matches_with(&self, item: &DesktopItem, now: u64, meta: &dyn Fn(&str) -> Meta) -> bool {
+        let age_days = |t: Option<u64>| t.map(|t| now.saturating_sub(t) / DAY);
+        match self {
+            ItemMatcher::ModifiedWithinDays(days) => age_days(meta(&item.id).modified).is_some_and(|a| a < u64::from(*days).max(1)),
+            ItemMatcher::ModifiedOlderThanDays(days) => age_days(meta(&item.id).modified).is_some_and(|a| a >= u64::from(*days)),
+            ItemMatcher::CreatedWithinDays(days) => age_days(meta(&item.id).created).is_some_and(|a| a < u64::from(*days).max(1)),
+            ItemMatcher::SizeOverMb(mb) => meta(&item.id).size.is_some_and(|s| s > mb * MB),
+            ItemMatcher::SizeUnderMb(mb) => meta(&item.id).size.is_some_and(|s| s < mb * MB),
+            ItemMatcher::Any(ms) => ms.iter().any(|m| m.matches_with(item, now, meta)),
+            ItemMatcher::All(ms) => !ms.is_empty() && ms.iter().all(|m| m.matches_with(item, now, meta)),
+            _ => self.matches_name(item),
+        }
+    }
+
+    fn matches_name(&self, item: &DesktopItem) -> bool {
         match self {
             ItemMatcher::Extension(ext) => {
                 let wanted = ext.trim().trim_start_matches('.');
@@ -56,8 +97,8 @@ impl ItemMatcher {
             ItemMatcher::NameEndsWith(text) => {
                 !text.is_empty() && item.name.to_lowercase().ends_with(&text.trim().to_lowercase())
             }
-            ItemMatcher::Any(ms) => ms.iter().any(|m| m.matches(item)),
-            ItemMatcher::All(ms) => !ms.is_empty() && ms.iter().all(|m| m.matches(item)),
+            // The ones that need the file's facts are handled by `matches_with`.
+            _ => false,
         }
     }
 }
@@ -71,16 +112,26 @@ pub enum ConditionKind {
     Pattern,
     Extension,
     Kind,
+    ChangedWithin,
+    NotChangedFor,
+    CreatedWithin,
+    BiggerThan,
+    SmallerThan,
 }
 
 impl ConditionKind {
-    pub const ALL: [ConditionKind; 6] = [
+    pub const ALL: [ConditionKind; 11] = [
         ConditionKind::Contains,
         ConditionKind::StartsWith,
         ConditionKind::EndsWith,
         ConditionKind::Pattern,
         ConditionKind::Extension,
         ConditionKind::Kind,
+        ConditionKind::ChangedWithin,
+        ConditionKind::NotChangedFor,
+        ConditionKind::CreatedWithin,
+        ConditionKind::BiggerThan,
+        ConditionKind::SmallerThan,
     ];
 
     pub fn label(self) -> &'static str {
@@ -91,6 +142,11 @@ impl ConditionKind {
             ConditionKind::Pattern => "name matches pattern",
             ConditionKind::Extension => "has the extension",
             ConditionKind::Kind => "is a",
+            ConditionKind::ChangedWithin => "changed in the last (days)",
+            ConditionKind::NotChangedFor => "not changed for (days)",
+            ConditionKind::CreatedWithin => "created in the last (days)",
+            ConditionKind::BiggerThan => "bigger than (MB)",
+            ConditionKind::SmallerThan => "smaller than (MB)",
         }
     }
 
@@ -102,6 +158,8 @@ impl ConditionKind {
             ConditionKind::Pattern => "*.txt or Report*",
             ConditionKind::Extension => "pdf, docx",
             ConditionKind::Kind => "",
+            ConditionKind::ChangedWithin | ConditionKind::NotChangedFor | ConditionKind::CreatedWithin => "7",
+            ConditionKind::BiggerThan | ConditionKind::SmallerThan => "100",
         }
     }
 }
@@ -127,6 +185,11 @@ pub fn build_matcher(kind: ConditionKind, text: &str, item_kind: ItemKind) -> Op
         ConditionKind::EndsWith => nonempty(ItemMatcher::NameEndsWith),
         ConditionKind::Pattern => nonempty(ItemMatcher::NameGlob),
         ConditionKind::Kind => Some(ItemMatcher::Kind(item_kind)),
+        ConditionKind::ChangedWithin => text.parse().ok().map(ItemMatcher::ModifiedWithinDays),
+        ConditionKind::NotChangedFor => text.parse().ok().map(ItemMatcher::ModifiedOlderThanDays),
+        ConditionKind::CreatedWithin => text.parse().ok().map(ItemMatcher::CreatedWithinDays),
+        ConditionKind::BiggerThan => text.parse().ok().map(ItemMatcher::SizeOverMb),
+        ConditionKind::SmallerThan => text.parse().ok().map(ItemMatcher::SizeUnderMb),
         ConditionKind::Extension => {
             let mut list: Vec<String> =
                 text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').map(|x| x.trim_start_matches('.').to_lowercase()).filter(|x| !x.is_empty()).collect();
@@ -158,6 +221,11 @@ pub fn describe(matcher: &ItemMatcher) -> String {
         ItemMatcher::NameContains(t) => format!("name contains {t}"),
         ItemMatcher::NameStartsWith(t) => format!("name starts with {t}"),
         ItemMatcher::NameEndsWith(t) => format!("name ends with {t}"),
+        ItemMatcher::ModifiedWithinDays(d) => format!("changed in the last {d} days"),
+        ItemMatcher::ModifiedOlderThanDays(d) => format!("not changed for {d} days"),
+        ItemMatcher::CreatedWithinDays(d) => format!("created in the last {d} days"),
+        ItemMatcher::SizeOverMb(mb) => format!("is bigger than {mb} MB"),
+        ItemMatcher::SizeUnderMb(mb) => format!("is smaller than {mb} MB"),
         ItemMatcher::Any(list) => list.iter().map(describe).collect::<Vec<_>>().join(" or "),
         ItemMatcher::All(list) => list.iter().map(describe).collect::<Vec<_>>().join(" and "),
     }
@@ -167,7 +235,7 @@ pub fn describe(matcher: &ItemMatcher) -> String {
 pub fn first_match<'a>(cfg: &'a VialsConfig, item: &DesktopItem) -> Option<&'a SortRule> {
     cfg.rules
         .iter()
-        .find(|r| r.enabled && cfg.vial(&r.target_vial).is_some_and(|v| !v.inbox) && r.matcher.matches(item))
+        .find(|r| r.enabled && cfg.vial(&r.target_vial).is_some_and(|v| !v.inbox && v.source.is_none()) && r.matcher.matches(item))
 }
 
 /// `(item id, vial id)` for every desktop item that is in no vial yet and matches a rule.
@@ -187,6 +255,36 @@ pub fn assign_new_items(cfg: &VialsConfig, items: &[DesktopItem]) -> Vec<(String
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn age_and_size_conditions_use_the_files_facts_and_the_clock() {
+        const NOW: u64 = 100 * 86_400;
+        let meta = |id: &str| match id {
+            "new" => Meta { modified: Some(NOW - 3_600), created: Some(NOW - 86_400 * 2), size: Some(5 * 1_048_576) },
+            "old" => Meta { modified: Some(NOW - 86_400 * 40), created: Some(NOW - 86_400 * 90), size: Some(300 * 1_048_576) },
+            "folder" => Meta { modified: Some(NOW), created: Some(NOW), size: None },
+            _ => Meta::default(),
+        };
+        let at = |m: ItemMatcher, id: &str| m.matches_with(&item(id, id, ItemKind::File), NOW, &meta);
+        assert!(at(ItemMatcher::ModifiedWithinDays(7), "new") && !at(ItemMatcher::ModifiedWithinDays(7), "old"));
+        assert!(at(ItemMatcher::ModifiedOlderThanDays(30), "old") && !at(ItemMatcher::ModifiedOlderThanDays(30), "new"));
+        assert!(at(ItemMatcher::CreatedWithinDays(3), "new") && !at(ItemMatcher::CreatedWithinDays(3), "old"));
+        assert!(at(ItemMatcher::SizeOverMb(100), "old") && !at(ItemMatcher::SizeOverMb(100), "new"));
+        assert!(at(ItemMatcher::SizeUnderMb(10), "new") && !at(ItemMatcher::SizeUnderMb(10), "old"));
+        assert!(!at(ItemMatcher::SizeOverMb(0), "folder"), "a folder has no size");
+        assert!(!at(ItemMatcher::ModifiedWithinDays(7), "gone"), "nothing is known about a missing file");
+        let both = ItemMatcher::All(vec![ItemMatcher::Extension("zip".into()), ItemMatcher::ModifiedOlderThanDays(30)]);
+        assert!(!both.matches_with(&item("old", "old", ItemKind::File), NOW, &meta), "the extension does not match");
+    }
+
+    #[test]
+    fn the_new_conditions_are_built_from_numbers_and_described_in_words() {
+        assert_eq!(build_matcher(ConditionKind::NotChangedFor, " 30 ", ItemKind::File), Some(ItemMatcher::ModifiedOlderThanDays(30)));
+        assert_eq!(build_matcher(ConditionKind::BiggerThan, "x", ItemKind::File), None);
+        assert_eq!(build_matcher(ConditionKind::SmallerThan, "", ItemKind::File), None);
+        assert_eq!(describe(&ItemMatcher::SizeOverMb(100)), "is bigger than 100 MB");
+        assert_eq!(describe(&ItemMatcher::ModifiedWithinDays(7)), "changed in the last 7 days");
+    }
+
     use super::*;
 
     #[test]
@@ -236,6 +334,13 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
+            tint: None,
+            color: None,
+            icon_size: None,
+            title_center: false,
+            source: None,
+            tab_host: None,
         }
     }
 
