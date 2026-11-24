@@ -6,6 +6,7 @@
 mod app_settings;
 mod modules;
 mod supervisor;
+mod workspaces_page;
 mod view;
 
 use std::path::PathBuf;

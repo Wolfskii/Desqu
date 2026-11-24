@@ -109,6 +109,25 @@ fn main() {
                         tray::Event::Action(name) if name.starts_with("set-setting:autoAssignNew:") => {
                             engine.set_auto_assign(name.ends_with(":true"));
                         }
+                        // From Desqu's Workspaces page: `assign-item:<item>:<desktop id or all>`,
+                        // `release-desktop:<desktop id>` and `first-run:<desktop id or none>`.
+                        tray::Event::Action(name) if name.starts_with("assign-item:") => {
+                            if let Some((item, target)) = name.trim_start_matches("assign-item:").rsplit_once(':') {
+                                let desktop = (target != "all").then_some(target);
+                                if let Err(e) = engine.assign_item(item, desktop) {
+                                    eprintln!("could not move {item} to {target}: {e}");
+                                }
+                            }
+                        }
+                        tray::Event::Action(name) if name.starts_with("release-desktop:") => {
+                            engine.release_desktop(name.trim_start_matches("release-desktop:"));
+                        }
+                        tray::Event::Action(name) if name.starts_with("first-run:") => {
+                            let target = name.trim_start_matches("first-run:");
+                            if let Err(e) = engine.answer_first_run((target != "none").then_some(target)) {
+                                eprintln!("first run: {e}");
+                            }
+                        }
                         // From Vials' right-click menu: `assign-vial:<vial id>:<virtual desktop id, or all>`.
                         tray::Event::Action(name) if name.starts_with("assign-vial:") => {
                             let rest = name.trim_start_matches("assign-vial:");

@@ -150,6 +150,8 @@ struct DesquView {
     page: Page,
     /// Apps being started or stopped: their switches wait.
     busy: HashSet<Kind>,
+    /// The Workspaces item whose desktop is being chosen.
+    picked: Option<String>,
     note: String,
     update_note: String,
     update_url: Option<String>,
@@ -487,6 +489,154 @@ impl DesquView {
         .detach();
     }
 
+    fn workspaces_running(&self) -> bool {
+        matches!(self.shell.supervisor.status(Kind::Workspaces), Status::Running | Status::RunningElsewhere)
+    }
+
+    /// Looks at the page again now and once more shortly, after the app has had time to save.
+    fn refresh_soon(&mut self, cx: &mut Context<Self>) {
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+            let _ = this.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
+    }
+
+    fn move_item(&mut self, item: String, desktop: Option<String>, cx: &mut Context<Self>) {
+        self.picked = None;
+        if let Err(e) = crate::workspaces_page::assign(self.workspaces_running(), &item, desktop.as_deref()) {
+            self.note = e;
+        }
+        self.refresh_soon(cx);
+    }
+
+    /// One item of a desktop: click it to choose another desktop for it.
+    fn item_chip(&self, item: &crate::workspaces_page::Item, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let id = item.id.clone();
+        div()
+            .id(SharedString::from(format!("ws-item-{}", item.id)))
+            .px(px(8.))
+            .py(px(2.))
+            .rounded(px(4.))
+            .bg(rgb(SURFACE_2))
+            .text_size(px(12.))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgb(BORDER_STRONG)))
+            .child(item.label.clone())
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                this.picked = Some(id.clone());
+                cx.notify();
+            }))
+    }
+
+    /// The virtual desktops and their items: tie an item to a desktop, or show it on every desktop.
+    fn workspaces_section(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let page = crate::workspaces_page::load();
+        let running = self.workspaces_running();
+        let mut out = div().flex().flex_col().gap(px(10.));
+        if !page.has_desktops {
+            return out.child(card().child(dim("Windows lists virtual desktops only once you have more than one: press Win+Tab and choose New desktop.")));
+        }
+        if page.first_run {
+            out = out.child(
+                card()
+                    .child(card_title("Which virtual desktop do the items on your desktop belong to?"))
+                    .child(dim(if running { "Nothing is moved or deleted: items stay in your Desktop folders." } else { "Turn Workspaces on to answer this." }))
+                    .when(running, |d| {
+                        d.child(div().flex().flex_wrap().gap(px(6.)).children(page.cards.iter().filter(|c| !c.removed).map(|c| {
+                            let id = c.id.clone();
+                            button(SharedString::from(format!("first-{id}")), c.name.clone(), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                if let Err(e) = crate::workspaces_page::first_run(Some(&id)) {
+                                    this.note = e;
+                                }
+                                this.refresh_soon(cx);
+                            }))
+                        })))
+                        .child(div().child(button("first-none", "Leave them on every desktop", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                            if let Err(e) = crate::workspaces_page::first_run(None) {
+                                this.note = e;
+                            }
+                            this.refresh_soon(cx);
+                        }))))
+                    }),
+            );
+        }
+        if let Some(item) = self.picked.clone() {
+            let label = page
+                .shared
+                .iter()
+                .chain(page.cards.iter().flat_map(|c| c.items.iter()))
+                .find(|i| i.id == item)
+                .map(|i| i.label.clone())
+                .unwrap_or_else(|| item.clone());
+            out = out.child(
+                card()
+                    .border_color(rgb(ACCENT))
+                    .child(div().child(format!("Show \"{label}\" on:")))
+                    .child(div().flex().flex_wrap().gap(px(6.)).children(page.cards.iter().filter(|c| !c.removed).map(|c| {
+                        let (item, id) = (item.clone(), c.id.clone());
+                        button(SharedString::from(format!("to-{id}")), c.name.clone(), true)
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.move_item(item.clone(), Some(id.clone()), cx)))
+                    })))
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(6.))
+                            .child({
+                                let item = item.clone();
+                                button("to-all", "Every desktop", true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.move_item(item.clone(), None, cx)))
+                            })
+                            .child(button("to-cancel", "Cancel", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.picked = None;
+                                cx.notify();
+                            }))),
+                    ),
+            );
+        }
+        for c in &page.cards {
+            let count = c.items.len();
+            let id = c.id.clone();
+            out = out.child(
+                card()
+                    .when(c.current, |d| d.border_color(rgb(ACCENT)))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child(c.name.clone()))
+                            .when(c.current, |d| d.child(div().px(px(6.)).rounded(px(4.)).bg(rgba(ACCENT_SOFT)).text_size(px(12.)).child("You are here")))
+                            .when(c.removed, |d| d.child(div().px(px(6.)).rounded(px(4.)).bg(rgba(0xe8b04a40)).text_size(px(12.)).child("Desktop removed")))
+                            .child(div().flex_1())
+                            .child(dim(format!("{count} {}", if count == 1 { "item" } else { "items" })))
+                            .when(count > 0, |d| {
+                                d.child(
+                                    button(SharedString::from(format!("release-{id}")), if c.removed { "Release its items" } else { "Show on every desktop" }, true)
+                                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                            if let Err(e) = crate::workspaces_page::release(this.workspaces_running(), &id) {
+                                                this.note = e;
+                                            }
+                                            this.refresh_soon(cx);
+                                        })),
+                                )
+                            }),
+                    )
+                    .when(c.removed, |d| d.child(dim("This desktop no longer exists, so its items are shown everywhere again.")))
+                    .when(!c.removed && count == 0, |d| d.child(dim("Nothing is tied to this desktop yet. Click an item below to tie it here.")))
+                    .when(count > 0, |d| d.child(div().flex().flex_wrap().gap(px(6.)).children(c.items.iter().take(40).map(|i| self.item_chip(i, cx))))),
+            );
+        }
+        if !page.shared.is_empty() {
+            out = out.child(
+                card()
+                    .child(dim(format!("On every desktop ({}). Click one to tie it to a desktop:", page.shared.len())))
+                    .child(div().flex().flex_wrap().gap(px(6.)).children(page.shared.iter().take(60).map(|i| self.item_chip(i, cx)))),
+            );
+        }
+        out
+    }
+
     /// A row with a label, a hint and a switch for an option that is on or off.
     fn option_switch(&self, kind: Kind, key: &'static str, label: &'static str, hint: &'static str, on: bool, cx: &mut Context<Self>) -> gpui::Div {
         div()
@@ -548,14 +698,22 @@ impl DesquView {
             }
             Kind::Workspaces => {
                 let on = crate::app_settings::workspaces_auto_assign();
-                Some(card().child(card_title("Settings")).child(self.option_switch(
-                    kind,
-                    "autoAssignNew",
-                    "New files join the desktop you are on",
-                    "A file that appears on the desktop belongs to the current virtual desktop",
-                    on,
-                    cx,
-                )))
+                Some(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(12.))
+                        .child(card().child(card_title("Settings")).child(self.option_switch(
+                            kind,
+                            "autoAssignNew",
+                            "New files join the desktop you are on",
+                            "A file that appears on the desktop belongs to the current virtual desktop",
+                            on,
+                            cx,
+                        )))
+                        .child(card_title("Desktops"))
+                        .child(self.workspaces_section(cx)),
+                )
             }
             Kind::Screenbound => None,
         }
@@ -691,7 +849,7 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
                     }
                 })
                 .detach();
-                DesquView { shell, page: Page::Home, busy: HashSet::new(), note: String::new(), update_note: String::new(), update_url: None }
+                DesquView { shell, page: Page::Home, busy: HashSet::new(), picked: None, note: String::new(), update_note: String::new(), update_url: None }
             })
         },
     );
