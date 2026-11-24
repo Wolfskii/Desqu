@@ -642,6 +642,11 @@ impl VialView {
 
 impl Render for VialView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Once per window: lets the shell draw Explorer's picture of dragged items over it.
+        #[cfg(not(test))]
+        if let Some(hwnd) = win::hwnd(window) {
+            vials_platform::show_drag_image_over(hwnd.0 as isize);
+        }
         if self.wants_keyboard {
             self.wants_keyboard = false;
             self.take_keyboard(window);

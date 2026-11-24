@@ -399,6 +399,132 @@ impl Drop for PausedTargets {
     }
 }
 
+/// The drag picture of `paths` as a bitmap with its size: up to four icons fanned out and a count.
+unsafe fn drag_picture(paths: &[String]) -> Option<(HBITMAP, usize, usize)> {
+    let icons: Vec<Vec<u32>> = paths.iter().take(4).filter_map(|p| icon_pixels(p)).collect();
+    if icons.is_empty() {
+        return None;
+    }
+    let picture = super::drag_image::compose(&icons, paths.len());
+    let hbmp = CreateBitmap(picture.width as i32, picture.height as i32, 1, 32, Some(picture.pixels.as_ptr().cast()));
+    (!hbmp.is_invalid()).then_some((hbmp, picture.width, picture.height))
+}
+
+/// The 48 x 48 icon of a file as top-down 0xAARRGGBB pixels.
+unsafe fn icon_pixels(path: &str) -> Option<Vec<u32>> {
+    let size = super::drag_image::ICON;
+    let item: IShellItem = SHCreateItemFromParsingName(&HSTRING::from(path), None).ok()?;
+    let hbmp = item.cast::<IShellItemImageFactory>().ok()?.GetImage(SIZE { cx: size as i32, cy: size as i32 }, SIIGBF_ICONONLY).ok()?;
+    let mut info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: size as i32,
+            // Negative: rows come top-down.
+            biHeight: -(size as i32),
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut pixels = vec![0u32; size * size];
+    let dc = GetDC(None);
+    let rows = GetDIBits(dc, hbmp, 0, size as u32, Some(pixels.as_mut_ptr().cast()), &mut info, DIB_RGB_COLORS);
+    ReleaseDC(None, dc);
+    let _ = DeleteObject(hbmp.into());
+    (rows == size as i32).then_some(pixels)
+}
+
+use ::windows::Win32::Foundation::POINTL;
+use ::windows::Win32::Graphics::Gdi::{CreateBitmap, GetDC, GetDIBits, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP};
+use ::windows::Win32::System::Ole::IDropTarget_Impl;
+use ::windows::Win32::UI::Shell::IDropTargetHelper;
+
+/// Wraps the drop target GPUI registered for a window so the shell's drop helper sees every drag
+/// over it too. Without that, a drag that comes from Explorer shows one bare icon over our windows
+/// instead of Explorer's picture of all the dragged items.
+#[implement(IDropTarget)]
+struct HelpedTarget {
+    inner: IDropTarget,
+    helper: Option<IDropTargetHelper>,
+    hwnd: HWND,
+}
+
+impl IDropTarget_Impl for HelpedTarget_Impl {
+    fn DragEnter(&self, data: ::windows::core::Ref<'_, IDataObject>, keys: MODIFIERKEYS_FLAGS, pt: &POINTL, effect: *mut DROPEFFECT) -> ::windows::core::Result<()> {
+        // SAFETY: COM calls on the window's thread with the pointers OLE gave this call.
+        unsafe {
+            let result = self.inner.DragEnter(data.as_ref(), keys, *pt, effect);
+            if let (Some(helper), Some(data)) = (&self.helper, data.as_ref()) {
+                let _ = helper.DragEnter(self.hwnd, data, &POINT { x: pt.x, y: pt.y }, *effect);
+            }
+            result
+        }
+    }
+
+    fn DragOver(&self, keys: MODIFIERKEYS_FLAGS, pt: &POINTL, effect: *mut DROPEFFECT) -> ::windows::core::Result<()> {
+        // SAFETY: as above.
+        unsafe {
+            let result = self.inner.DragOver(keys, *pt, effect);
+            if let Some(helper) = &self.helper {
+                let _ = helper.DragOver(&POINT { x: pt.x, y: pt.y }, *effect);
+            }
+            result
+        }
+    }
+
+    fn DragLeave(&self) -> ::windows::core::Result<()> {
+        // SAFETY: as above.
+        unsafe {
+            if let Some(helper) = &self.helper {
+                let _ = helper.DragLeave();
+            }
+            self.inner.DragLeave()
+        }
+    }
+
+    fn Drop(&self, data: ::windows::core::Ref<'_, IDataObject>, keys: MODIFIERKEYS_FLAGS, pt: &POINTL, effect: *mut DROPEFFECT) -> ::windows::core::Result<()> {
+        // SAFETY: as above.
+        unsafe {
+            if let (Some(helper), Some(data)) = (&self.helper, data.as_ref()) {
+                let _ = helper.Drop(data, &POINT { x: pt.x, y: pt.y }, *effect);
+            }
+            let result = self.inner.Drop(data.as_ref(), keys, *pt, effect);
+            result
+        }
+    }
+}
+
+thread_local! {
+    /// Windows that already have the wrapper.
+    static HELPED: RefCell<std::collections::HashSet<isize>> = RefCell::new(std::collections::HashSet::new());
+}
+
+/// Lets the shell draw the dragged items' picture over this window (see [`HelpedTarget`]). Call once
+/// the window exists, from the thread that owns it.
+pub fn show_drag_image_over(hwnd: isize) {
+    if !HELPED.with(|h| h.borrow_mut().insert(hwnd)) {
+        return;
+    }
+    let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+    // SAFETY: COM calls on the window's thread; the property is the target OLE registered.
+    unsafe {
+        let raw = GetPropW(hwnd, ::windows::core::w!("OleDropTargetInterface"));
+        if raw.is_invalid() {
+            return;
+        }
+        let Some(inner) = IDropTarget::from_raw_borrowed(&raw.0).cloned() else { return };
+        let helper = CoCreateInstance::<_, IDropTargetHelper>(&DRAG_DROP_HELPER, None, CLSCTX_INPROC_SERVER).ok();
+        if helper.is_none() {
+            return;
+        }
+        let wrapper: IDropTarget = HelpedTarget { inner, helper, hwnd }.into();
+        let _ = RevokeDragDrop(hwnd);
+        let _ = RegisterDragDrop(hwnd, &wrapper);
+    }
+}
+
 /// How a drag ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragEnd {
@@ -419,26 +545,28 @@ pub fn drag_items(paths: &[String]) -> Result<DragEnd, String> {
     // the drag, and the bitmap handle is released afterwards.
     unsafe {
         let _ = OleInitialize(None);
-        let item: IShellItem =
-            SHCreateItemFromParsingName(&HSTRING::from(first.as_str()), None).map_err(|e| e.to_string())?;
+        let _ = first;
         // One data object for all of them, so the target sees every file at once.
         let array = super::clipboard::items_array(paths)?;
         let data: IDataObject = array.BindToHandler(None, &BHID_DataObject).map_err(|e| e.to_string())?;
 
-        // The ghost icon under the cursor, like Explorer shows. Optional: a drag without it still works.
+        // The picture under the cursor, like Explorer shows: the icons fanned out, with a count.
+        // Optional: a drag without it still works.
         let helper = CoCreateInstance::<_, IDragSourceHelper>(&DRAG_DROP_HELPER, None, CLSCTX_INPROC_SERVER).ok();
         let mut bitmap = None;
-        if let (Some(helper), Ok(factory)) = (&helper, item.cast::<IShellItemImageFactory>()) {
-            if let Ok(hbmp) = factory.GetImage(SIZE { cx: 48, cy: 48 }, SIIGBF_ICONONLY) {
+        if let Some(helper) = &helper {
+            if let Some(hbmp) = drag_picture(paths) {
                 let image = SHDRAGIMAGE {
-                    sizeDragImage: SIZE { cx: 48, cy: 48 },
+                    sizeDragImage: SIZE { cx: hbmp.1 as i32, cy: hbmp.2 as i32 },
                     ptOffset: POINT { x: 24, y: 24 },
-                    hbmpDragImage: hbmp,
+                    hbmpDragImage: hbmp.0,
                     // No colour key: the bitmap carries its own alpha.
                     crColorKey: ::windows::Win32::Foundation::COLORREF(0xFFFF_FFFF),
                 };
                 if helper.InitializeFromBitmap(&image, &data).is_ok() {
-                    bitmap = Some(hbmp);
+                    bitmap = Some(hbmp.0);
+                } else {
+                    let _ = DeleteObject(hbmp.0.into());
                 }
             }
         }

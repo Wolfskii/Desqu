@@ -4,12 +4,14 @@ pub mod facts;
 #[cfg(windows)]
 pub mod clipboard;
 #[cfg(windows)]
+mod drag_image;
+#[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub use desqu_desktop::CutPasteWatcher;
 #[cfg(windows)]
 pub use self::windows::{send_to_bottom, watch_cut_paste, 
-    cursor_position, drag_items, mark_as_tool_window, round_corners, wallpaper, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
+    cursor_position, drag_items, show_drag_image_over, mark_as_tool_window, round_corners, wallpaper, set_context_menu, show_item_menu, DragEnd, IconsWatcher, MouseEvent, MouseWatcher,
 };
 
 #[cfg(not(windows))]
