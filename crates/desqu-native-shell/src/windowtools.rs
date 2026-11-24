@@ -98,6 +98,82 @@ mod imp {
         }
     }
 
+    /// One monitor whose brightness can be set from here (an external one that speaks DDC/CI).
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Brightness {
+        /// Which monitor in the order Windows lists them now.
+        pub index: usize,
+        pub name: String,
+        pub min: u32,
+        pub current: u32,
+        pub max: u32,
+    }
+
+    /// The monitors that answer to brightness, with where they are now. Slow (each is asked over its cable).
+    pub fn monitors_brightness() -> Vec<Brightness> {
+        use windows::Win32::Devices::Display::{DestroyPhysicalMonitors, GetMonitorBrightness, GetNumberOfPhysicalMonitorsFromHMONITOR, GetPhysicalMonitorsFromHMONITOR, PHYSICAL_MONITOR};
+        let mut out = Vec::new();
+        for (index, handle) in handles().into_iter().enumerate() {
+            // SAFETY: the physical monitor array is made here and released below.
+            unsafe {
+                let mut count = 0u32;
+                if GetNumberOfPhysicalMonitorsFromHMONITOR(handle, &mut count).is_err() || count == 0 {
+                    continue;
+                }
+                let mut list = vec![PHYSICAL_MONITOR::default(); count as usize];
+                if GetPhysicalMonitorsFromHMONITOR(handle, &mut list).is_err() {
+                    continue;
+                }
+                if let Some(first) = list.first() {
+                    let (mut min, mut cur, mut max) = (0u32, 0u32, 0u32);
+                    if GetMonitorBrightness(first.hPhysicalMonitor, &mut min, &mut cur, &mut max) != 0 {
+                        let description = first.szPhysicalMonitorDescription;
+                        let name = String::from_utf16_lossy(&description).trim_end_matches('\0').to_string();
+                        out.push(Brightness { index, name, min, current: cur, max });
+                    }
+                }
+                let _ = DestroyPhysicalMonitors(&list);
+            }
+        }
+        out
+    }
+
+    /// Sets the brightness of the monitor at `index` (as listed by [`monitors_brightness`]) to `percent`.
+    pub fn set_brightness(index: usize, percent: u32) -> Result<(), String> {
+        use windows::Win32::Devices::Display::{DestroyPhysicalMonitors, GetMonitorBrightness, GetNumberOfPhysicalMonitorsFromHMONITOR, GetPhysicalMonitorsFromHMONITOR, SetMonitorBrightness, PHYSICAL_MONITOR};
+        let handle = *handles().get(index).ok_or("that monitor is gone")?;
+        // SAFETY: as above.
+        unsafe {
+            let mut count = 0u32;
+            GetNumberOfPhysicalMonitorsFromHMONITOR(handle, &mut count).map_err(|e| e.to_string())?;
+            let mut list = vec![PHYSICAL_MONITOR::default(); count as usize];
+            GetPhysicalMonitorsFromHMONITOR(handle, &mut list).map_err(|e| e.to_string())?;
+            let first = list.first().ok_or("no physical monitor")?.hPhysicalMonitor;
+            let (mut min, mut cur, mut max) = (0u32, 0u32, 0u32);
+            let result = if GetMonitorBrightness(first, &mut min, &mut cur, &mut max) == 0 { Err("this monitor does not take brightness".to_string()) } else { Ok(super::raw_from_percent(percent, min, max)) };
+            let result = result.and_then(|raw| if SetMonitorBrightness(first, raw) == 0 { Err("the monitor refused".to_string()) } else { Ok(()) });
+            let _ = DestroyPhysicalMonitors(&list);
+            result
+        }
+    }
+
+    fn handles() -> Vec<windows::Win32::Graphics::Gdi::HMONITOR> {
+        use windows::core::BOOL;
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
+        unsafe extern "system" fn each(m: HMONITOR, _: HDC, _: *mut RECT, data: LPARAM) -> BOOL {
+            // SAFETY: `data` is the `&mut Vec` passed below and outlives the enumeration.
+            unsafe { (*(data.0 as *mut Vec<HMONITOR>)).push(m) };
+            BOOL(1)
+        }
+        let mut list: Vec<HMONITOR> = Vec::new();
+        // SAFETY: the callback only pushes into the list that outlives the call.
+        unsafe {
+            let _ = EnumDisplayMonitors(None, None, Some(each), LPARAM(&mut list as *mut _ as isize));
+        }
+        list
+    }
+
     const PERSONALIZE: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
 
     /// Whether Windows' apps use the light theme.
@@ -129,3 +205,42 @@ mod imp {
 
 #[cfg(windows)]
 pub use imp::*;
+
+/// The raw value for a brightness in percent, given the range the monitor reports.
+pub fn raw_from_percent(percent: u32, min: u32, max: u32) -> u32 {
+    let (min, max) = (min.min(max), max);
+    min + (max - min) * percent.min(100) / 100
+}
+
+/// The percent for a raw value (0 when the range is empty).
+pub fn percent_from_raw(raw: u32, min: u32, max: u32) -> u32 {
+    if max <= min {
+        return 0;
+    }
+    (raw.clamp(min, max) - min) * 100 / (max - min)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn brightness_is_converted_between_percent_and_the_range_of_the_monitor() {
+        assert_eq!(raw_from_percent(0, 0, 100), 0);
+        assert_eq!(raw_from_percent(50, 0, 100), 50);
+        assert_eq!(raw_from_percent(50, 10, 90), 50);
+        assert_eq!(raw_from_percent(250, 0, 100), 100, "never above the top");
+        assert_eq!(percent_from_raw(50, 10, 90), 50);
+        assert_eq!(percent_from_raw(5, 10, 90), 0);
+        assert_eq!(percent_from_raw(3, 3, 3), 0, "an empty range");
+    }
+
+    /// Asks the real monitors (changes nothing): run by hand with `--ignored`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "asks the real monitors"]
+    fn the_real_monitors_are_asked_for_their_brightness() {
+        let monitors = monitors_brightness();
+        println!("{monitors:?}");
+    }
+}

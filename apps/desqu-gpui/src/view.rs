@@ -175,6 +175,8 @@ struct DesquView {
     picked: Option<String>,
     /// The step of the first-run tour that shows (`None` once it is over).
     tour: Option<usize>,
+    /// The monitors that take brightness, once they have been looked for.
+    brightness: Option<Vec<desqu_native_shell::windowtools::Brightness>>,
     /// Screenbound's own views, made the first time its page is opened.
     screenbound: Option<ScreenboundViews>,
     note: String,
@@ -1071,6 +1073,42 @@ impl DesquView {
         }))
     }
 
+    /// Looks for the monitors that take brightness (it asks each one over its cable, so it takes a moment).
+    fn find_monitors(&mut self, cx: &mut Context<Self>) {
+        self.note = "Asking the monitors...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let found = cx.background_executor().spawn(async { desqu_native_shell::windowtools::monitors_brightness() }).await;
+            let _ = this.update(cx, |view, cx| {
+                view.note = if found.is_empty() { "No monitor answered: only external monitors with DDC/CI switched on can be set from here".into() } else { String::new() };
+                view.brightness = Some(found);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Sets one monitor to a brightness in percent.
+    fn set_brightness(&mut self, index: usize, percent: u32, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { desqu_native_shell::windowtools::set_brightness(index, percent) }).await;
+            let _ = this.update(cx, |view, cx| {
+                match result {
+                    Ok(()) => {
+                        if let Some(monitors) = view.brightness.as_mut() {
+                            if let Some(m) = monitors.iter_mut().find(|m| m.index == index) {
+                                m.current = desqu_native_shell::windowtools::raw_from_percent(percent, m.min, m.max);
+                            }
+                        }
+                    }
+                    Err(e) => view.note = e,
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// A switch that sets one on-or-off choice of the settings.
     fn tool_switch(&self, id: &'static str, on: bool, cx: &mut Context<Self>, set: fn(&mut Settings, bool)) -> gpui::Stateful<gpui::Div> {
         switch(id, on_off(on), true).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
@@ -1152,6 +1190,7 @@ impl DesquView {
                             }))),
                     ),
             )
+            .child(self.brightness_card(cx))
             .child(card().child(card_title("Always on top")).child(dim("A hotkey keeps the window in front above all others, with a thin blue border; press it again to let it go.")).child(pin))
             .child(
                 card()
@@ -1170,6 +1209,28 @@ impl DesquView {
                     .child(dim("Dark from"))
                     .child(self.time_buttons("dark", &[17 * 60, 18 * 60, 19 * 60, 20 * 60, 21 * 60, 22 * 60], s.dark_from(), cx, |s, m| s.tool_dark_from = Some(m))),
             )
+    }
+
+    /// The brightness of the monitors that take it.
+    fn brightness_card(&self, cx: &mut Context<Self>) -> gpui::Div {
+        use desqu_native_shell::windowtools::percent_from_raw;
+        let mut card = card()
+            .child(card_title("Monitor brightness"))
+            .child(dim("Sets the brightness of external monitors over the cable (DDC/CI). A laptop screen is not set from here."))
+            .child(div().flex().child(button("find-monitors", "Look for monitors", true).on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.find_monitors(cx)))));
+        for m in self.brightness.iter().flatten() {
+            let (index, now) = (m.index, percent_from_raw(m.current, m.min, m.max));
+            let mut buttons = Vec::new();
+            for p in [0u32, 25, 50, 75, 100] {
+                buttons.push(
+                    button(SharedString::from(format!("bright-{index}-{p}")), format!("{p}%"), true)
+                        .when(now.abs_diff(p) <= 12, |d| d.border_color(rgb(ACCENT)).bg(rgba(ACCENT_SOFT)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_brightness(index, p, cx))),
+                );
+            }
+            card = card.child(div().flex().flex_wrap().items_center().gap(px(6.)).child(div().w(px(200.)).child(m.name.clone())).children(buttons));
+        }
+        card
     }
 
     fn settings_page(&self, cx: &mut Context<Self>) -> gpui::Div {
@@ -1337,7 +1398,7 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
                 })
                 .detach();
                 let tour = (!shell.settings.lock().unwrap_or_else(|e| e.into_inner()).tour_done).then_some(0);
-                DesquView { page: Page::Home, busy: HashSet::new(), picked: None, tour, shell, screenbound: None, note: String::new(), update_note: String::new(), update_url: None }
+                DesquView { page: Page::Home, busy: HashSet::new(), picked: None, tour, brightness: None, shell, screenbound: None, note: String::new(), update_note: String::new(), update_url: None }
             })
         },
     );

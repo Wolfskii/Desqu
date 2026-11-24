@@ -87,7 +87,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 | P4-03 | [x] | Folder rules: Downloads and other folders sort themselves | M | vials-core rules |
 | P4-04 | [x] | Auto dark mode on a schedule or at sunset | S | |
 | P4-05 | [x] | Keep awake | S | Tray |
-| P4-06 | [ ] | Monitor brightness (DDC/CI) | M | |
+| P4-06 | [x] | Monitor brightness (DDC/CI) | M | |
 | P4-07 | [ ] | Focus dimmer | M | |
 | P4-08 | [ ] | Desktop notes | M | Vial windows |
 
@@ -105,6 +105,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P4-06 monitor brightness (Tools page): "Look for monitors" asks the external monitors that speak DDC/CI (one answered here: Generic PnP Monitor, 75 %) and each gets 0/25/50/75/100 % buttons. Laptop screens are not set from here. Tests for the percent/raw conversion; the monitors were asked once without changing anything. Hand test: the buttons change the real brightness (some monitors are slow or ignore it).
 - P4-03 tidy Downloads (Tools page): "Tidy now" moves files that have not changed for 15 minutes into Images, Documents, Videos, Audio, Archives and Programs folders inside Downloads (unfinished downloads, folders, shortcuts and unknown types stay; nothing is overwritten); "Undo the last tidy"; a switch to do it by itself once an hour (off). Tests for what goes where, name clashes, undo and the journal. Done for the Downloads folder only, with fixed kinds, not as the full Vials rules for any folder. Hand test: Tidy now on your real Downloads (it moves real files; undo is there).
 - P4-01 window layouts (Tools page): the places of the ordinary windows are written down every 20 s for the screen setup you have (monitor names, sizes, arrangement); when the setup changes and settles (3 s), the windows of the new setup go back to where they were (matched by program, kind and title; maximized and minimized windows follow their monitor by themselves). "Remember them now" / "Put them back now" buttons and two palette commands. Tests: the matching (by title first, once each, ones in place left alone) and the store; the real windows and screens were read once (11 windows, 3 monitors). Hand test: really docking and undocking.
 - P4-04 light and dark by the clock: a switch and times (light from 5-9, dark from 17-22) on the Tools page; Windows and its apps switch at those times and a change by hand stays until the next switch. A fixed clock, not sunrise and sunset (that would need a place). Tests for the schedule and the time reading. Hand test: the switch itself changes your theme.
