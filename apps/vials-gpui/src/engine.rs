@@ -18,6 +18,8 @@ pub struct Engine {
     path: PathBuf,
     monitors: Vec<MonitorRef>,
     watch: Mutex<Option<desqu_desktop::Subscription>>,
+    /// The vials were put at other places (a layout came back): the windows have to follow.
+    places_changed: std::sync::atomic::AtomicBool,
     /// What the vials looked like before the last few changes the user made: for undo.
     history: Mutex<vials_core::history::History<VialsConfig>>,
 }
@@ -31,7 +33,7 @@ impl Engine {
             desqu_desktop::DesktopError::OwnedElsewhere => "the desktop is held by an older Desqu, Vials or Workspaces that does not share it: quit that one first".to_string(),
             other => other.to_string(),
         })?;
-        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None), history: Mutex::new(vials_core::history::History::new(30)) });
+        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None), places_changed: Default::default(), history: Mutex::new(vials_core::history::History::new(30)) });
         engine.hide_vial_items();
         Ok(engine)
     }
@@ -434,6 +436,51 @@ impl Engine {
             return false;
         }
         self.apply(|cfg| cfg.rename_vial(vial_id, name))
+    }
+
+    /// Saves where the vials are under a name (a new "Layout N" for an empty one). Returns the name.
+    pub fn save_layout(&self, name: &str) -> String {
+        let mut saved = String::new();
+        self.apply_with(false, |cfg| {
+            saved = vials_core::layouts::save_named(cfg, name);
+            true
+        });
+        saved
+    }
+
+    /// Puts the vials where a named layout had them.
+    pub fn restore_layout(&self, name: &str) -> bool {
+        let moved = self.apply(|cfg| vials_core::layouts::restore_named(cfg, name));
+        if moved {
+            self.places_changed.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        moved
+    }
+
+    pub fn delete_layout(&self, name: &str) -> bool {
+        self.apply_with(false, |cfg| vials_core::layouts::delete_named(cfg, name))
+    }
+
+    /// The names of the saved layouts.
+    pub fn layout_names(&self) -> Vec<String> {
+        let cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        vials_core::layouts::named(&cfg).into_iter().map(|l| l.name.clone()).collect()
+    }
+
+    /// The screens changed from one setup to another: the vials go where they were in that setup.
+    pub fn switch_setup(&self, old: &str, new: &str) -> bool {
+        let moved = self.apply_with(false, |cfg| {
+            let before = cfg.clone();
+            vials_core::layouts::switch_setup(cfg, old, new);
+            *cfg != before
+        });
+        self.places_changed.store(true, std::sync::atomic::Ordering::SeqCst);
+        moved
+    }
+
+    /// Whether the vials were put at other places since this was last asked.
+    pub fn take_places_changed(&self) -> bool {
+        self.places_changed.swap(false, std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Whether there is something to undo.

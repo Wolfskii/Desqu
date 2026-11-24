@@ -139,6 +139,22 @@ impl Shell {
 }
 
 /// Puts vial windows on the virtual desktops Workspaces tied them to (or back on the current one).
+/// Puts every vial window where the saved places say (after a layout came back or the screens changed).
+fn place_all(cx: &mut App, windows: &Windows, engine: &Engine) {
+    let monitors = win::monitors();
+    for vial in engine.vials() {
+        let Some(handle) = windows.borrow().get(&vial.id).copied() else { continue };
+        let Some(monitor) = layout::pick_monitor(vial.monitor.as_deref(), &monitors) else { continue };
+        let mut rect = layout::resolve(&vial.rect, &monitor.bounds);
+        rect.bottom = rect.top + layout::window_height(rect.height(), vial.collapsed, monitor.scale).max(1);
+        let _ = handle.update(cx, |_, window, _| {
+            if let Some(hwnd) = win::hwnd(window) {
+                win::place_at_bottom(hwnd, &rect);
+            }
+        });
+    }
+}
+
 /// Brings every vial above the open windows (a peek), or puts them back below.
 fn raise_all(cx: &mut App, windows: &Windows, above: bool) {
     let handles: Vec<AnyWindowHandle> = windows.borrow().values().copied().collect();
@@ -264,7 +280,13 @@ fn main() {
         // Vials added or deleted anywhere (menu, drop...) change the set of windows.
         {
             let (shell, windows, engine) = (shell.clone(), windows.clone(), engine.clone());
-            cx.observe(&revision, move |_, cx| shell.sync(cx, &windows, &engine.vials())).detach();
+            cx.observe(&revision, move |_, cx| {
+                shell.sync(cx, &windows, &engine.vials());
+                if engine.take_places_changed() {
+                    place_all(cx, &windows, &engine);
+                }
+            })
+            .detach();
         }
         // The desktop's files changed: rules sort new ones into vials, sorted vials keep their order.
         let (tx, rx) = std::sync::mpsc::channel::<()>();
@@ -358,7 +380,21 @@ fn main() {
             // The peek hotkey follows the setting; pressing it brings the vials above the windows.
             let mut peek_key: Option<(String, desqu_native_shell::hotkey::Hotkey)> = None;
             let (peek_tx, peek_rx) = std::sync::mpsc::channel::<()>();
+            // Docking or undocking: the vials go where they were the last time the screens were like this.
+            let mut screens = vials_core::layouts::setup_key(&win::monitors());
             loop {
+                if tick.is_multiple_of(20) {
+                    let now = vials_core::layouts::setup_key(&win::monitors());
+                    if now != screens {
+                        let old = std::mem::replace(&mut screens, now.clone());
+                        // The screens need a moment to settle before windows are put on them.
+                        cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+                        if engine.switch_setup(&old, &now) {
+                            let (engine, windows) = (engine.clone(), windows.clone());
+                            let _ = cx.update(|cx| place_all(cx, &windows, &engine));
+                        }
+                    }
+                }
                 if tick.is_multiple_of(10) {
                     let wanted = engine.config().peek_hotkey;
                     if peek_key.as_ref().map_or("", |(text, _)| text.as_str()) != wanted {

@@ -5,6 +5,7 @@ pub mod clip;
 pub mod gesture;
 pub mod layout;
 pub mod history;
+pub mod layouts;
 pub mod model;
 pub mod nav;
 pub mod portal;

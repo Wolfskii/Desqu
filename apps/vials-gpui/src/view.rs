@@ -789,6 +789,42 @@ impl VialView {
         cx.notify();
     }
 
+    /// Saved layouts: where all the vials sit, to bring back later.
+    fn open_layouts_menu(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let Some(at) = win::cursor_position() else { return };
+        let mut entries = Vec::new();
+        {
+            let live = live.clone();
+            entries.push(MenuEntry::new("Save the layout now", move |cx| {
+                live.engine.save_layout("");
+                bump(&live.revision, cx);
+            }));
+        }
+        let names = live.engine.layout_names();
+        if !names.is_empty() {
+            entries.push(MenuEntry::separator());
+        }
+        for name in &names {
+            let (live, name) = (live.clone(), name.clone());
+            entries.push(MenuEntry::new(format!("Bring back {name}"), move |cx| {
+                live.engine.restore_layout(&name);
+                bump(&live.revision, cx);
+            }));
+        }
+        if !names.is_empty() {
+            entries.push(MenuEntry::separator());
+        }
+        for name in names {
+            let live = live.clone();
+            entries.push(MenuEntry::new(format!("Delete {name}"), move |cx| {
+                live.engine.delete_layout(&name);
+                bump(&live.revision, cx);
+            }));
+        }
+        menu::open(cx, at, entries);
+    }
+
     /// The vial's own look: icon size, colour, how see-through, where the title sits.
     fn open_look_menu(&mut self, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
@@ -883,6 +919,12 @@ impl VialView {
             let weak = weak.clone();
             entries.push(MenuEntry::new("Look...", move |cx| {
                 let _ = weak.update(cx, |view, cx| view.open_look_menu(cx));
+            }));
+        }
+        {
+            let weak = weak.clone();
+            entries.push(MenuEntry::new("Layouts...", move |cx| {
+                let _ = weak.update(cx, |view, cx| view.open_layouts_menu(cx));
             }));
         }
         if !self.items.is_empty() {

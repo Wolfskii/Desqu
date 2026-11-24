@@ -268,6 +268,9 @@ pub struct VialsConfig {
     /// Items the user took out of a vial on purpose: rules never put them back.
     #[serde(default)]
     pub declined: Vec<String>,
+    /// Saved layouts (where the vials sit): named ones, and one kept for each screen setup.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layouts: Vec<crate::layouts::Layout>,
 }
 
 impl Default for VialsConfig {
@@ -291,6 +294,7 @@ impl Default for VialsConfig {
             glass_blur: GlassBlur::default(),
             glass_tint: default_glass_tint(),
             declined: Vec::new(),
+            layouts: Vec::new(),
         }
     }
 }
