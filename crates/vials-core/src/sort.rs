@@ -143,6 +143,7 @@ mod tests {
             sort_key: key.map(str::to_string),
             sort_desc: false,
             folders_first: false,
+            locked: false,
         };
         let mut cfg = VialsConfig::default();
         cfg.vials = vec![vial("a", Some("name"), &["c.txt", "a.txt", "b.txt"]), vial("b", None, &["z.txt", "y.txt"])];

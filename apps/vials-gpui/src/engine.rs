@@ -54,6 +54,9 @@ impl Engine {
 
     /// The user moved or resized a vial window: remember it as fractions of its monitor.
     pub fn persist_rect(&self, vial_id: &str, pixels: PixelRect) {
+        if self.is_locked(vial_id) {
+            return;
+        }
         let Some(monitor) = layout::monitor_containing(&pixels, &self.monitors) else { return };
         let mut cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
         let Some(vial) = cfg.vials.iter_mut().find(|v| v.id == vial_id) else { return };
@@ -125,6 +128,9 @@ impl Engine {
 
     /// Takes an item out of its vial: it is back on the desktop.
     pub fn remove_item(&self, id: &str) -> bool {
+        if self.vial_id_of(id).is_some_and(|v| self.is_locked(&v)) {
+            return false;
+        }
         self.apply(|cfg| cfg.assign(id, None))
     }
 
@@ -356,7 +362,20 @@ impl Engine {
     }
 
     pub fn rename_vial(&self, vial_id: &str, name: &str) -> bool {
+        if self.is_locked(vial_id) {
+            return false;
+        }
         self.apply(|cfg| cfg.rename_vial(vial_id, name))
+    }
+
+    /// Whether the vial is locked.
+    pub fn is_locked(&self, vial_id: &str) -> bool {
+        self.config.lock().unwrap_or_else(|e| e.into_inner()).is_locked(vial_id)
+    }
+
+    /// Locks or unlocks a vial.
+    pub fn set_locked(&self, vial_id: &str, locked: bool) -> bool {
+        self.apply(|cfg| cfg.set_locked(vial_id, locked))
     }
 
     pub fn set_collapsed(&self, vial_id: &str, collapsed: bool) {
@@ -432,6 +451,7 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
         });
         cfg.save(&cfg_path).unwrap();
 
@@ -501,6 +521,7 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
         });
         cfg.rules.push(SortRule {
             id: "r1".into(),

@@ -236,6 +236,7 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
         }
     }
 

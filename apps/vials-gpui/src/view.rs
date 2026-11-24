@@ -74,6 +74,8 @@ pub struct VialView {
     items: Vec<Item>,
     icons: HashMap<String, Arc<Image>>,
     icons_requested: HashSet<String>,
+    /// The vial is locked: it cannot be moved, resized, renamed or emptied by dragging.
+    locked: bool,
     selected: BTreeSet<usize>,
     marquee: Option<Marquee>,
     /// Where each item was last drawn (window coordinates): what the box is held against.
@@ -130,6 +132,11 @@ impl VialView {
             let Some(hwnd) = win::hwnd(window) else { return };
             this.hwnd = Some(hwnd.0 as isize);
             this.refresh_liquid(cx);
+            // A locked vial goes back to where it was put.
+            if this.locked && !this.collapsed {
+                win::place_at_bottom(hwnd, &this.placement.rect);
+                return;
+            }
             if let Some(now) = win::window_rect(hwnd) {
                 if this.collapsed {
                     this.placement.rect.left = now.left;
@@ -174,6 +181,7 @@ impl VialView {
             items: Vec::new(),
             icons: HashMap::new(),
             icons_requested: HashSet::new(),
+            locked: live.as_ref().is_some_and(|l| l.engine.is_locked(&l.vial_id)),
             selected: BTreeSet::new(),
             marquee: None,
             bounds: Rc::default(),
@@ -223,6 +231,7 @@ impl VialView {
         }
         if let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) {
             self.name = vial.name.clone().into();
+            self.locked = vial.locked;
             let ids = vial.items;
             self.set_items(ids, cx);
         }
@@ -382,6 +391,9 @@ impl VialView {
     /// from inside an event handler (GPUI is borrowed there and the drag pumps messages).
     fn start_drag(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
+        if self.locked {
+            return;
+        }
         let Some(item) = self.items.get(index) else { return };
         if item.missing {
             return;
@@ -435,7 +447,7 @@ impl VialView {
     }
 
     fn begin_rename(&mut self, cx: &mut Context<Self>) {
-        if self.live.is_none() {
+        if self.live.is_none() || self.locked {
             return;
         }
         self.editing = Some(self.name.to_string());
@@ -492,6 +504,17 @@ impl VialView {
                     bump(&live.revision, cx);
                 })
                 .checked(vial.folders_first),
+            );
+        }
+        {
+            let live = live.clone();
+            let on = !vial.locked;
+            entries.push(
+                MenuEntry::new("Lock", move |cx| {
+                    live.engine.set_locked(&live.vial_id, on);
+                    bump(&live.revision, cx);
+                })
+                .checked(vial.locked),
             );
         }
         entries.push(MenuEntry::separator());
@@ -699,7 +722,7 @@ impl Render for VialView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _: &MouseDownEvent, window, _| {
-                            if this.editing.is_some() {
+                            if this.editing.is_some() || this.locked {
                                 return;
                             }
                             if let (Some(cursor), Some(hwnd)) = (win::cursor_position(), win::hwnd(window)) {

@@ -81,6 +81,9 @@ pub struct Vial {
     /// Folders stay on top whatever the sort (also re-applied when items change).
     #[serde(default)]
     pub folders_first: bool,
+    /// The vial stays where it is and keeps its items: no moving, resizing, renaming or dragging out.
+    #[serde(default)]
+    pub locked: bool,
 }
 
 /// A predicate over a desktop item.
@@ -256,6 +259,22 @@ impl VialsConfig {
         self.vials.iter().find(|v| v.id == id)
     }
 
+    /// Whether the vial is locked (an unknown vial is not).
+    pub fn is_locked(&self, id: &str) -> bool {
+        self.vial(id).is_some_and(|v| v.locked)
+    }
+
+    /// Locks or unlocks a vial. Returns whether anything changed.
+    pub fn set_locked(&mut self, id: &str, locked: bool) -> bool {
+        match self.vials.iter_mut().find(|v| v.id == id) {
+            Some(v) if v.locked != locked => {
+                v.locked = locked;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// The vial that holds `item_id`, if any.
     pub fn vial_of(&self, item_id: &str) -> Option<&Vial> {
         self.vials.iter().find(|v| v.items.iter().any(|i| i == item_id))
@@ -286,6 +305,7 @@ impl VialsConfig {
                 sort_key: None,
                 sort_desc: false,
                 folders_first: false,
+                locked: false,
             },
         );
         true
@@ -306,6 +326,7 @@ impl VialsConfig {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
         });
         id
     }
@@ -500,6 +521,20 @@ impl VialsConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_vial_can_be_locked_and_an_old_config_without_the_field_loads_unlocked() {
+        let mut cfg = VialsConfig::default();
+        cfg.vials.push(vial("vial-1", &[]));
+        assert!(!cfg.is_locked("vial-1"));
+        assert!(cfg.set_locked("vial-1", true));
+        assert!(cfg.is_locked("vial-1"));
+        assert!(!cfg.set_locked("vial-1", true), "no change the second time");
+        assert!(!cfg.set_locked("nope", true));
+        let json = r#"{"id":"v","name":"V","rect":{"x":0.0,"y":0.0,"width":0.2,"height":0.2},"items":[]}"#;
+        let old: Vial = serde_json::from_str(json).unwrap();
+        assert!(!old.locked);
+    }
+
     use super::*;
 
     #[test]
@@ -529,6 +564,7 @@ mod tests {
             sort_key: None,
             sort_desc: false,
             folders_first: false,
+            locked: false,
         }
     }
 
