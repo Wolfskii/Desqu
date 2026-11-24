@@ -5956,6 +5956,8 @@ dependencies = [
  "vials-platform",
  "windows 0.62.2",
  "winresource",
+ "workspaces-core",
+ "workspaces-platform",
 ]
 
 [[package]]
@@ -6856,6 +6858,26 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "workspaces-core"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "workspaces-platform"
+version = "0.3.0"
+dependencies = [
+ "desqu-desktop",
+ "serde",
+ "tracing",
+ "windows 0.62.2",
+ "workspaces-core",
+]
 
 [[package]]
 name = "writeable"

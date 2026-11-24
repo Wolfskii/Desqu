@@ -19,6 +19,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 vials-core = { path = "../../crates/vials-core" }
 desqu-desktop = { path = "../../crates/desqu-desktop" }
 vials-platform = { path = "../../crates/vials-platform" }
+workspaces-core = { path = "../../crates/workspaces-core" }
+workspaces-platform = { path = "../../crates/workspaces-platform" }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"
@@ -26,6 +28,7 @@ features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_System_Com",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",

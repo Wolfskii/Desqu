@@ -16,7 +16,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use desqu_desktop::{DesktopError, DesktopLayer, Subscription};
-use workspaces_core::model::{desktop_label, WorkspacesConfig};
+use workspaces_core::model::{desktop_label, vial_item, vial_of, WorkspacesConfig};
 use workspaces_core::{paste, visibility};
 use workspaces_platform::{CutPasteWatcher, Desktops, SwitchWatcher};
 
@@ -62,6 +62,26 @@ pub struct Engine {
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Where the Vials app keeps its config (`--vials-config <file>` overrides, for tests). Only read.
+fn vials_config_path() -> PathBuf {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--vials-config" {
+            if let Some(p) = args.next() {
+                return PathBuf::from(p);
+            }
+        }
+    }
+    let appdata = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
+    appdata.join("io.github.wolfskii.vials").join("config.json")
+}
+
+/// The vials in a Vials config: (id, name), without the built-in "Desktop" one.
+fn vials_in(path: &Path) -> Option<Vec<(String, String)>> {
+    let cfg = vials_core::model::VialsConfig::load(path).ok()?;
+    Some(cfg.vials.into_iter().filter(|v| !v.inbox).map(|v| (v.id, v.name)).collect())
 }
 
 impl Engine {
@@ -218,13 +238,27 @@ impl Engine {
         Ok(self.change(|c| c.assign(item_id, target.as_ref().map(|(id, name)| (id.as_str(), name.as_str())))))
     }
 
-    /// The desktop items no virtual desktop owns (they show everywhere), by name.
+    /// The desktop items no virtual desktop owns (they show everywhere), by name, then the vials that
+    /// are not tied to a desktop (a vial shows on one desktop only when it is tied to it).
     pub fn shared_items(&self) -> Vec<String> {
         let cfg = self.config();
         let mut ids: Vec<String> = self.layer.items().map(|items| items.into_iter().map(|i| i.id).collect()).unwrap_or_default();
         ids.retain(|id| cfg.owner_of(id).is_none());
         ids.sort_by_key(|id| id.rsplit(['\\', '/']).next().unwrap_or(id).to_lowercase());
+        let vials = vials_in(&vials_config_path()).unwrap_or_default();
+        ids.extend(vials.into_iter().map(|(id, _)| vial_item(&id)).filter(|item| cfg.owner_of(item).is_none()));
         ids
+    }
+
+    /// What an item is called in the window: a file by its name, a vial by its own name.
+    pub fn label(&self, item: &str) -> String {
+        match vial_of(item) {
+            Some(id) => {
+                let name = vials_in(&vials_config_path()).and_then(|v| v.into_iter().find(|(i, _)| i == id).map(|(_, n)| n));
+                format!("Vial: {}", name.unwrap_or_else(|| id.to_string()))
+            }
+            None => crate::view::item_label(item),
+        }
     }
 
     fn desktop_named(&self, id: &str) -> Result<(String, String), String> {
@@ -237,6 +271,9 @@ impl Engine {
     pub fn entries(&self) -> (Vec<DesktopEntry>, bool) {
         let desktops = (self.desktops)();
         let cfg = self.config();
+        // A vial that was deleted is no longer tied to anything. (Left alone when Vials' config cannot be read.)
+        let vials = vials_in(&vials_config_path());
+        let alive = |item: &String| vial_of(item).is_none_or(|v| vials.as_ref().is_none_or(|all| all.iter().any(|(id, _)| id == v)));
         let mut out: Vec<DesktopEntry> = desktops
             .list
             .iter()
@@ -245,7 +282,7 @@ impl Engine {
                 id: d.id.clone(),
                 name: desktop_label(i, &d.name),
                 current: desktops.current.as_deref() == Some(d.id.as_str()),
-                items: cfg.workspace(&d.id).map(|w| w.items.clone()).unwrap_or_default(),
+                items: cfg.workspace(&d.id).map(|w| w.items.iter().filter(|i| alive(i)).cloned().collect()).unwrap_or_default(),
                 removed: false,
             })
             .collect();
@@ -254,7 +291,7 @@ impl Engine {
                 id: ws.desktop_id.clone(),
                 name: if ws.name.is_empty() { "Removed desktop".into() } else { ws.name.clone() },
                 current: false,
-                items: ws.items.clone(),
+                items: ws.items.iter().filter(|i| alive(i)).cloned().collect(),
                 removed: true,
             });
         }

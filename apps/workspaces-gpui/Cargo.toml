@@ -15,6 +15,7 @@ winresource = "0.1"
 gpui = "0.2.2"
 desqu-desktop = { path = "../../crates/desqu-desktop" }
 desqu-native-shell = { path = "../../crates/desqu-native-shell" }
+vials-core = { path = "../../crates/vials-core" }
 workspaces-core = { path = "../../crates/workspaces-core" }
 workspaces-platform = { path = "../../crates/workspaces-platform" }
 

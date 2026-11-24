@@ -74,7 +74,7 @@ impl WorkspacesView {
     }
 }
 
-fn card(entry: &DesktopEntry, cx: &mut Context<WorkspacesView>) -> gpui::Div {
+fn card(entry: &DesktopEntry, engine: &Engine, cx: &mut Context<WorkspacesView>) -> gpui::Div {
     let id = entry.id.clone();
     let count = entry.items.len();
     div()
@@ -116,7 +116,7 @@ fn card(entry: &DesktopEntry, cx: &mut Context<WorkspacesView>) -> gpui::Div {
         })
         .when(count > 0, |d| {
             d.child(div().flex().flex_wrap().gap_1().children(entry.items.iter().take(24).map(|i| {
-                chip(i, cx)
+                chip(i, engine.label(i), cx)
             })))
         })
 }
@@ -176,7 +176,7 @@ impl Render for WorkspacesView {
                 .border_1()
                 .border_color(rgba(0xaad2ffb4))
                 .bg(rgba(0x78afff18))
-                .child(div().text_sm().child(format!("Show \"{}\" on:", item_label(&item))))
+                .child(div().text_sm().child(format!("Show \"{}\" on:", self.engine.label(&item))))
                 .child(div().flex().flex_wrap().gap_1().children(buttons))
                 .child(div().flex().gap_1().child(button("Every desktop", false).id("to-all").on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                     this.note = this.engine.assign_item(&everywhere, None).err().unwrap_or_default();
@@ -194,7 +194,7 @@ impl Render for WorkspacesView {
                 .flex_col()
                 .gap_1()
                 .child(div().text_xs().text_color(rgba(0xffffff80)).child(format!("On every desktop ({}). Click one to tie it to a desktop:", shared.len())))
-                .child(div().flex().flex_wrap().gap_1().children(shared.iter().take(30).map(|i| chip(i, cx))))
+                .child(div().flex().flex_wrap().gap_1().children(shared.iter().take(30).map(|i| chip(i, self.engine.label(i), cx))))
         });
         let on = cfg.auto_assign_new;
         let autostart_on = desqu_native_shell::autostart::is_enabled(&crate::ID);
@@ -227,7 +227,7 @@ impl Render for WorkspacesView {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .children(entries.iter().map(|e| card(e, cx))),
+                    .children(entries.iter().map(|e| card(e, &self.engine, cx))),
             )
             .when_some(chooser, |d, c| d.child(c))
             .when_some(shared_section, |d, s| d.child(s))
@@ -319,7 +319,7 @@ pub fn open(cx: &mut App, engine: Arc<Engine>) {
 }
 
 /// One item of a desktop: click it to choose another desktop for it.
-fn chip(item: &str, cx: &mut Context<WorkspacesView>) -> impl IntoElement {
+fn chip(item: &str, label: String, cx: &mut Context<WorkspacesView>) -> impl IntoElement {
     let id = item.to_string();
     div()
         .id(SharedString::from(format!("item-{item}")))
@@ -329,7 +329,7 @@ fn chip(item: &str, cx: &mut Context<WorkspacesView>) -> impl IntoElement {
         .rounded(px(4.))
         .bg(rgba(0xffffff14))
         .hover(|s| s.bg(rgba(0xffffff30)))
-        .child(item_label(item))
+        .child(label)
         .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
             this.picked = Some(id.clone());
             cx.notify();

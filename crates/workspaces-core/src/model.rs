@@ -107,6 +107,17 @@ pub fn guid_from_registry_bytes(b: &[u8]) -> Option<String> {
     ))
 }
 
+/// Vials are tied to virtual desktops like desktop items are, under an id that cannot be a file
+/// path: `vial:<vial id>`.
+pub fn vial_item(vial_id: &str) -> String {
+    format!("vial:{vial_id}")
+}
+
+/// The vial an item id stands for, if it is one of those.
+pub fn vial_of(item_id: &str) -> Option<&str> {
+    item_id.strip_prefix("vial:")
+}
+
 /// What a virtual desktop is called: its own name, or "Desktop N" (1-based `index` in Windows' order) when
 /// the user never named it.
 pub fn desktop_label(index: usize, name: &str) -> String {
@@ -207,6 +218,18 @@ impl WorkspacesConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vial_is_tied_to_a_desktop_like_an_item() {
+        let mut c = WorkspacesConfig::default();
+        let key = vial_item("vial-2");
+        assert_eq!(vial_of(&key), Some("vial-2"));
+        assert_eq!(vial_of("C:/Users/me/Desktop/a.txt"), None);
+        assert!(c.assign(&key, Some(("{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}", "Work"))));
+        assert_eq!(c.owner_of(&key), Some("{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}"));
+        assert!(c.assign(&key, None));
+        assert_eq!(c.owner_of(&key), None);
+    }
 
     #[test]
     fn unnamed_desktops_are_numbered_and_removed_workspaces_free_their_items() {

@@ -9,6 +9,7 @@
 mod engine;
 mod field;
 mod liquid;
+mod desktops;
 mod menu;
 mod rules_window;
 mod settings;
@@ -131,6 +132,35 @@ impl Shell {
                 windows.borrow_mut().insert(vial.id.clone(), handle);
             }
         }
+    }
+}
+
+/// Puts vial windows on the virtual desktops Workspaces tied them to (or back on the current one).
+fn apply_moves(cx: &mut App, windows: &Windows, moves: Vec<(String, desktops::Move)>) {
+    if moves.is_empty() {
+        return;
+    }
+    let manager = match desktops::Manager::new() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("{e}");
+            return;
+        }
+    };
+    for (id, mv) in moves {
+        let Some(handle) = windows.borrow().get(&id).copied() else { continue };
+        let target = match mv {
+            desktops::Move::To(desktop) => Some(desktop),
+            desktops::Move::ToCurrent => workspaces_platform::current_desktop(),
+        };
+        let Some(target) = target else { continue };
+        let _ = handle.update(cx, |_, window, _| {
+            if let Some(hwnd) = win::hwnd(window) {
+                if let Err(e) = manager.move_to(hwnd, &target) {
+                    eprintln!("could not move vial {id} to desktop {target}: {e}");
+                }
+            }
+        });
     }
 }
 
@@ -276,7 +306,18 @@ fn main() {
         cx.spawn(async move |cx| {
             // Owned by this task: dropped (tray icon removed, hook released) when the app ends.
             let _keep = (&tray, &mouse);
+            // Workspaces can tie a vial to a virtual desktop: look at its config about once a second.
+            let mut follower = desktops::Follower::new(desktops::workspaces_config_path());
+            let mut tick = 0u32;
             loop {
+                if tick.is_multiple_of(10) {
+                    let ids: Vec<String> = windows.borrow().keys().cloned().collect();
+                    if let Some(moves) = follower.poll(&ids) {
+                        let windows = windows.clone();
+                        let _ = cx.update(|cx| apply_moves(cx, &windows, moves));
+                    }
+                }
+                tick = tick.wrapping_add(1);
                 while let Ok(event) = event_rx.try_recv() {
                     match event {
                         tray::Event::Menu(2) => {
