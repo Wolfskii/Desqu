@@ -38,6 +38,10 @@ pub(crate) fn folder_at(_screen: crate::model::Point) -> DesktopResult<Option<St
     Ok(None)
 }
 
+pub(crate) fn item_at(_screen: crate::model::Point) -> DesktopResult<Option<String>> {
+    Ok(None)
+}
+
 pub(crate) fn desktop_folders() -> Vec<std::path::PathBuf> {
     Vec::new()
 }

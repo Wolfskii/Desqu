@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use gpui::{
-    div, point, prelude::*, px, rgba, size, white, App, Bounds, Context, FocusHandle, IntoElement, KeyDownEvent,
+    div, point, prelude::*, px, rgb, rgba, size, white, App, FontWeight, Bounds, Context, FocusHandle, IntoElement, KeyDownEvent,
     Render, SharedString, Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions,
 };
 use vials_core::gesture;
@@ -13,20 +13,32 @@ use crate::win;
 
 type Action = Rc<dyn Fn(&mut App)>;
 
+/// A small picture in front of an entry's label.
+#[derive(Clone, Copy)]
+pub enum Icon {
+    /// A plus in an accent circle: "make something new".
+    Add,
+}
+
 /// One line of a menu. An entry without a label is a separator.
 pub struct MenuEntry {
     pub label: SharedString,
     pub checked: bool,
     pub enabled: bool,
+    pub icon: Option<Icon>,
     pub action: Option<Action>,
 }
 
 impl MenuEntry {
     pub fn new(label: impl Into<SharedString>, action: impl Fn(&mut App) + 'static) -> Self {
-        Self { label: label.into(), checked: false, enabled: true, action: Some(Rc::new(action)) }
+        Self { label: label.into(), checked: false, enabled: true, icon: None, action: Some(Rc::new(action)) }
     }
     pub fn separator() -> Self {
-        Self { label: SharedString::default(), checked: false, enabled: false, action: None }
+        Self { label: SharedString::default(), checked: false, enabled: false, icon: None, action: None }
+    }
+    pub fn icon(mut self, icon: Icon) -> Self {
+        self.icon = Some(icon);
+        self
     }
     pub fn checked(mut self, on: bool) -> Self {
         self.checked = on;
@@ -38,9 +50,43 @@ const WIDTH: f32 = 220.0;
 const ROW: f32 = 28.0;
 const SEPARATOR: f32 = 9.0;
 const PAD: f32 = 6.0;
+/// A menu of one entry (such as "Create vial here") is a single centred button, a little bigger.
+const SINGLE_WIDTH: f32 = 200.0;
+const SINGLE_ROW: f32 = 36.0;
+const ACCENT: u32 = 0x4fa3ff;
+
+fn single(entries: &[MenuEntry]) -> bool {
+    entries.len() == 1
+}
+
+fn width_of(entries: &[MenuEntry]) -> f32 {
+    if single(entries) {
+        SINGLE_WIDTH
+    } else {
+        WIDTH
+    }
+}
 
 fn height_of(entries: &[MenuEntry]) -> f32 {
+    if single(entries) {
+        return PAD * 2.0 + SINGLE_ROW;
+    }
     PAD * 2.0 + entries.iter().map(|e| if e.label.is_empty() { SEPARATOR } else { ROW }).sum::<f32>()
+}
+
+fn icon_element(icon: Icon) -> gpui::AnyElement {
+    match icon {
+        // Two bars rather than a "+" glyph, so the plus sits exactly in the middle of its circle.
+        Icon::Add => div()
+            .size(px(18.))
+            .flex_none()
+            .rounded_full()
+            .bg(rgb(ACCENT))
+            .relative()
+            .child(div().absolute().left(px(4.)).top(px(8.)).w(px(10.)).h(px(2.)).rounded(px(1.)).bg(white()))
+            .child(div().absolute().left(px(8.)).top(px(4.)).w(px(2.)).h(px(10.)).rounded(px(1.)).bg(white()))
+            .into_any_element(),
+    }
 }
 
 struct MenuView {
@@ -50,6 +96,7 @@ struct MenuView {
 
 impl Render for MenuView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let single = single(&self.entries);
         let rows = self.entries.iter().enumerate().map(|(i, e)| {
             if e.label.is_empty() {
                 return div().h(px(SEPARATOR)).flex().items_center().child(div().h(px(1.)).w_full().bg(rgba(0xffffff30))).into_any_element();
@@ -58,16 +105,16 @@ impl Render for MenuView {
             let enabled = e.enabled;
             div()
                 .id(("entry", i))
-                .h(px(ROW))
-                .px_2()
+                .h(px(if single { SINGLE_ROW } else { ROW }))
                 .flex()
                 .items_center()
-                .gap_2()
                 .rounded(px(6.))
                 .text_sm()
-                .when(enabled, |d| d.hover(|s| s.bg(rgba(0xffffff2a))))
+                .when(single, |d| d.px_3().gap(px(10.)).justify_center().font_weight(FontWeight::MEDIUM))
+                .when(!single, |d| d.px_2().gap_2().child(div().w(px(14.)).text_xs().child(if e.checked { "v" } else { "" })))
+                .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(rgba(0xffffff2a))))
                 .when(!enabled, |d| d.opacity(0.45))
-                .child(div().w(px(14.)).text_xs().child(if e.checked { "v" } else { "" }))
+                .when_some(e.icon, |d, icon| d.child(icon_element(icon)))
                 .child(e.label.clone())
                 .on_click(cx.listener(move |_, _, window, cx| {
                     if !enabled {
@@ -112,10 +159,10 @@ pub fn open(cx: &mut App, cursor: (i32, i32), entries: Vec<MenuEntry>) {
         return;
     };
     let scale = monitor.scale as f32;
-    let (w, h) = ((WIDTH * scale).round() as i32, (height_of(&entries) * scale).round() as i32);
+    let (w, h) = ((width_of(&entries) * scale).round() as i32, (height_of(&entries) * scale).round() as i32);
     let (x, y) = gesture::popup_position(cursor, (w, h), &monitor.bounds);
     let rect = vials_core::model::PixelRect { left: x, top: y, right: x + w, bottom: y + h };
-    let logical = size(px(WIDTH), px(height_of(&entries)));
+    let logical = size(px(width_of(&entries)), px(height_of(&entries)));
 
     let opened = cx.open_window(
         WindowOptions {

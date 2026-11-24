@@ -1281,11 +1281,19 @@ dependencies = [
 name = "desqu-desktop"
 version = "0.1.0"
 dependencies = [
+ "desqu-ipc",
  "png 0.17.16",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+ "windows 0.62.2",
+]
+
+[[package]]
+name = "desqu-ipc"
+version = "0.1.0"
+dependencies = [
  "windows 0.62.2",
 ]
 

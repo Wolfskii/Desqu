@@ -80,6 +80,8 @@ pub enum MouseEvent {
     ContextDown((i32, i32)),
     /// Any mouse button went down anywhere (used to close the popup when you click elsewhere).
     ButtonDown((i32, i32)),
+    /// The left button went down on the desktop: a box being drawn, or an icon being dragged.
+    DesktopDown((i32, i32)),
 }
 
 pub type MouseHandler = Box<dyn Fn(MouseEvent) + Send>;
@@ -128,6 +130,9 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
                     if let Some(state) = h.borrow_mut().as_mut() {
                         state.down = on_desktop.then_some((pt.x, pt.y));
                         (state.on_event)(MouseEvent::ButtonDown((pt.x, pt.y)));
+                        if on_desktop {
+                            (state.on_event)(MouseEvent::DesktopDown((pt.x, pt.y)));
+                        }
                     }
                 });
             }

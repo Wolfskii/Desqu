@@ -83,6 +83,11 @@ pub fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
     platform::folder_at(screen)
 }
 
+/// The id of the desktop item under `screen` (screen pixels), or `None` over empty desktop. Read-only.
+pub fn item_at(screen: Point) -> DesktopResult<Option<String>> {
+    platform::item_at(screen)
+}
+
 /// The folders the desktop shows (the user's Desktop, then the Public Desktop), as paths. Read-only.
 pub fn desktop_folders() -> Vec<std::path::PathBuf> {
     platform::desktop_folders()

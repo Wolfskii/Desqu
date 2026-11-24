@@ -259,11 +259,13 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let mouse = {
         let sink = jobs.clone();
         MouseWatcher::start(Box::new(move |event| {
-            let _ = sink.send(match event {
+            let job = match event {
                 MouseEvent::Marquee(down, up) => Job::Marquee(down, up),
                 MouseEvent::ContextDown(at) => Job::ContextDown(at),
                 MouseEvent::ButtonDown(at) => Job::ButtonDown(at),
-            });
+                MouseEvent::DesktopDown(_) => return,
+            };
+            let _ = sink.send(job);
         }))
         .map_err(|e| tracing::warn!("could not watch the desktop for dragged boxes: {e}"))
         .ok()

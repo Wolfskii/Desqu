@@ -20,7 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use gpui::{
     point, px, size, AnyWindowHandle, App, AppContext, Application, Bounds, Entity, WindowBounds,
@@ -42,6 +42,9 @@ pub const ID: Identity = Identity { name: "Vials", key: "VialsGpui" };
 /// could not reach one.
 pub const MANIFEST_URL: &str = "https://wolfskii.github.io/Desqu/updates/vials-gpui/latest.json";
 /// The tray menu: the order is what `Event::Menu(index)` refers to.
+/// The last left press on the desktop, and once known whether it was on an icon.
+type Press = Option<((i32, i32), Option<bool>)>;
+
 const TRAY_MENU: [&str; 3] = ["New vial", "Settings", "Quit Vials"];
 
 fn config_path() -> PathBuf {
@@ -238,7 +241,25 @@ fn main() {
             let _ = event_tx.send(tray::Event::Action(action.clone().unwrap_or_default()));
         }
         let (mouse_tx, mouse_rx) = std::sync::mpsc::channel::<MouseEvent>();
+        // Whether the last left press on the desktop landed on an icon: then the drag that follows
+        // moves icons (perhaps into a vial, where they vanish) and is never a box drawn for a vial.
+        // Looked up at once, while the icon is still where it was pressed.
+        let press: Arc<Mutex<Press>> = Arc::default();
+        let press_hook = press.clone();
         let mouse = MouseWatcher::start(Box::new(move |e| {
+            if let MouseEvent::DesktopDown(at) = e {
+                *press_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some((at, None));
+                let press = press_hook.clone();
+                std::thread::spawn(move || {
+                    let hit = desqu_desktop::item_at(desqu_desktop::Point { x: at.0, y: at.1 });
+                    let on_item = !matches!(hit, Ok(None));
+                    let mut slot = press.lock().unwrap_or_else(|e| e.into_inner());
+                    if matches!(*slot, Some((p, None)) if p == at) {
+                        *slot = Some((at, Some(on_item)));
+                    }
+                });
+                return;
+            }
             let _ = mouse_tx.send(e);
         }))
         .map_err(|e| eprintln!("cannot watch the desktop for dragged boxes: {e}"))
@@ -294,7 +315,7 @@ fn main() {
                 while let Ok(event) = mouse_rx.try_recv() {
                     match event {
                         MouseEvent::ContextDown(at) => context_point.set(Some(at)),
-                        MouseEvent::ButtonDown(_) => {}
+                        MouseEvent::ButtonDown(_) | MouseEvent::DesktopDown(_) => {}
                         MouseEvent::Marquee(down, up) => {
                             // A box dragged on empty desktop offers a vial there; a box that caught icons
                             // is a selection, which Explorer needs a moment to settle.
@@ -302,9 +323,20 @@ fn main() {
                             if !engine.config().create_on_drag {
                                 continue;
                             }
-                            let (engine, revision) = (engine.clone(), revision.clone());
+                            let (engine, revision, press) = (engine.clone(), revision.clone(), press.clone());
                             cx.spawn(async move |cx| {
                                 cx.background_executor().timer(std::time::Duration::from_millis(350)).await;
+                                // A drag that started on an icon (into a vial, say) is no box.
+                                for _ in 0..20 {
+                                    let seen = *press.lock().unwrap_or_else(|e| e.into_inner());
+                                    match seen {
+                                        Some((at, Some(true))) if at == down => return,
+                                        Some((at, None)) if at == down => {
+                                            cx.background_executor().timer(std::time::Duration::from_millis(25)).await;
+                                        }
+                                        _ => break,
+                                    }
+                                }
                                 let empty = matches!(desqu_desktop::selection_count(), Ok(0));
                                 if !empty {
                                     return;
@@ -314,7 +346,8 @@ fn main() {
                                         if engine.create_vial(rect).is_some() {
                                             bump(&revision, cx);
                                         }
-                                    });
+                                    })
+                                    .icon(menu::Icon::Add);
                                     menu::open(cx, up, vec![entry]);
                                 });
                             })

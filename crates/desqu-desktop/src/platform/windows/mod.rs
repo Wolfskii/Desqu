@@ -251,8 +251,13 @@ pub(crate) fn surface_probe() -> DesktopResult<(usize, usize, usize, bool)> {
 /// The id of the desktop folder under `screen` (screen pixels), or `None` when the icon under it is not
 /// a folder or there is no icon there. Read-only.
 pub(crate) fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
+    Ok(item_at(screen)?.filter(|id| Path::new(id).is_dir()))
+}
+
+/// The id of the desktop item under `screen` (screen pixels), or `None` over empty desktop. Read-only.
+pub(crate) fn item_at(screen: Point) -> DesktopResult<Option<String>> {
     std::thread::Builder::new()
-        .name("desqu-desktop-folder-at".into())
+        .name("desqu-desktop-item-at".into())
         .spawn(move || {
             with_com(|| {
                 // SAFETY: on a COM thread of its own.
@@ -262,16 +267,12 @@ pub(crate) fn folder_at(screen: Point) -> DesktopResult<Option<String>> {
                     let p = shell::screen_to_client(lv, screen);
                     let raw = shell::list(&view)?;
                     let Some(index) = shell::hit_item(&view, &raw, p) else { return Ok(None) };
-                    Ok(raw
-                        .into_iter()
-                        .find(|r| r.index == index)
-                        .filter(|r| Path::new(&r.id).is_dir())
-                        .map(|r| r.id))
+                    Ok(raw.into_iter().find(|r| r.index == index).map(|r| r.id))
                 }
             })
         })?
         .join()
-        .map_err(|_| DesktopError::Native { op: "folder at", message: "thread panicked".into() })?
+        .map_err(|_| DesktopError::Native { op: "item at", message: "thread panicked".into() })?
 }
 
 /// How many desktop items are selected right now. Read-only, takes no lock.
