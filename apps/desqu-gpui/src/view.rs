@@ -14,6 +14,19 @@ use gpui::{
 use crate::modules::{Kind, Settings, TriState, ALL};
 use crate::supervisor::{Status, Supervisor};
 
+/// What Screenbound's page holds: the views of the app itself, fed from its saved settings.
+struct ScreenboundViews {
+    remote: Arc<crate::screenbound_remote::Remote>,
+    main: gpui::Entity<screenbound_gpui::view::ScreenboundView>,
+    manage: gpui::Entity<screenbound_gpui::manage::ManageView>,
+}
+
+impl Drop for ScreenboundViews {
+    fn drop(&mut self) {
+        self.remote.stop();
+    }
+}
+
 // The Tauri app's colours (packages/ui/src/tokens.css).
 const SURFACE_0: u32 = 0x111317;
 const SURFACE_1: u32 = 0x181b20;
@@ -152,6 +165,8 @@ struct DesquView {
     busy: HashSet<Kind>,
     /// The Workspaces item whose desktop is being chosen.
     picked: Option<String>,
+    /// Screenbound's own views, made the first time its page is opened.
+    screenbound: Option<ScreenboundViews>,
     note: String,
     update_note: String,
     update_url: Option<String>,
@@ -715,7 +730,16 @@ impl DesquView {
                         .child(self.workspaces_section(cx)),
                 )
             }
-            Kind::Screenbound => None,
+            Kind::Screenbound => self.screenbound.as_ref().map(|views| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(card_title("Zone and apps"))
+                    .child(div().h(px(880.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.main.clone()))
+                    .child(card_title("Groups, rules and browser"))
+                    .child(div().h(px(660.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.manage.clone()))
+            }),
         }
     }
 
@@ -771,6 +795,14 @@ impl DesquView {
 
 impl Render for DesquView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Screenbound's views are made the first time its page is shown.
+        if self.page == Page::App(Kind::Screenbound) && self.screenbound.is_none() {
+            let remote = crate::screenbound_remote::Remote::start();
+            let backend: Arc<dyn screenbound_gpui::runtime::Backend> = remote.clone();
+            let main = screenbound_gpui::view::embedded(backend.clone(), cx);
+            let manage = screenbound_gpui::manage::embedded(backend, cx);
+            self.screenbound = Some(ScreenboundViews { remote, main, manage });
+        }
         let page = match self.page {
             Page::Home => self.home(window, cx),
             Page::App(kind) => self.app_page(kind, cx),
@@ -849,7 +881,7 @@ pub fn open(cx: &mut App, shell: Arc<Shell>) {
                     }
                 })
                 .detach();
-                DesquView { shell, page: Page::Home, busy: HashSet::new(), picked: None, note: String::new(), update_note: String::new(), update_url: None }
+                DesquView { shell, page: Page::Home, busy: HashSet::new(), picked: None, screenbound: None, note: String::new(), update_note: String::new(), update_url: None }
             })
         },
     );

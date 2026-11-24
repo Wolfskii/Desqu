@@ -5,6 +5,7 @@
 
 mod app_settings;
 mod modules;
+mod screenbound_remote;
 mod supervisor;
 mod workspaces_page;
 mod view;
