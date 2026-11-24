@@ -20,6 +20,31 @@ use crate::runtime::Backend;
 struct Open(Option<AnyWindowHandle>);
 impl Global for Open {}
 
+/// How many characters of an app's name the list shows before it cuts the name with "...".
+const NAME_CHARS: usize = 56;
+
+/// `text` cut to at most `max` characters, with "..." where it was cut.
+fn shorten(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{}\u{2026}", kept.trim_end())
+}
+
+/// Names an element so a test can ask where it was drawn.
+fn tag<E: gpui::InteractiveElement>(element: E, name: &'static str) -> E {
+    #[cfg(test)]
+    {
+        element.debug_selector(|| name.into())
+    }
+    #[cfg(not(test))]
+    {
+        let _ = name;
+        element
+    }
+}
+
 /// The height of the list of apps.
 const APPS_HEIGHT: f32 = 240.0;
 
@@ -122,6 +147,8 @@ pub struct ScreenboundView {
     merged: u64,
     /// The scroll position of the list of apps (its scroll bar is drawn from it).
     apps_scroll: gpui::ScrollHandle,
+    /// The app of the list whose details are shown.
+    expanded: Option<String>,
 }
 
 impl ScreenboundView {
@@ -264,7 +291,7 @@ impl Render for ScreenboundView {
                 }),
             );
 
-        let presets = div().flex().flex_wrap().gap_1().children(PRESETS.iter().enumerate().map(|(i, preset)| {
+        let presets = tag(div().flex().flex_wrap().gap_1(), "presets").children(PRESETS.iter().enumerate().map(|(i, preset)| {
             let monitor = snap.monitors.iter().find(|m| m.is_primary).or(snap.monitors.first()).cloned();
             button(preset.label, false).id(("preset", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 let rect = (PRESETS[i].rect)(monitor.as_ref());
@@ -273,21 +300,60 @@ impl Render for ScreenboundView {
             }))
         }));
 
+        let expanded = self.expanded.clone();
         let app_list = apps.iter().enumerate().map(|(i, row)| {
             let name = row.process_name.clone();
             let on = row.applied;
+            let open = expanded.as_deref() == Some(row.process_name.as_str());
+            let label = if row.title.is_empty() { row.process_name.clone() } else { format!("{} ({})", row.title, row.process_name) };
+            let toggle_name = row.process_name.clone();
             div()
                 .flex()
-                .items_center()
-                .gap_2()
-                .min_h(px(30.))
-                .child(button(if on { "On" } else { "Off" }, on).id(("app", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    let name = name.clone();
-                    this.rt.change(move |c| model::set_app_enabled(c, &name, !on));
-                    cx.notify();
-                })))
-                .child(div().w(px(8.)).h(px(8.)).rounded(px(4.)).bg(rgba(if row.running { 0x6fe08aff } else { 0xffffff30 })))
-                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_sm().child(if row.title.is_empty() { row.process_name.clone() } else { format!("{} ({})", row.title, row.process_name) }))
+                .flex_col()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .min_h(px(30.))
+                        .child(button(if on { "On" } else { "Off" }, on).id(("app", i)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            let name = name.clone();
+                            this.rt.change(move |c| model::set_app_enabled(c, &name, !on));
+                            cx.notify();
+                        })))
+                        .child(div().w(px(8.)).h(px(8.)).flex_none().rounded(px(4.)).bg(rgba(if row.running { 0x6fe08aff } else { 0xffffff30 })))
+                        // The name is cut short with "..."; a click shows everything about the app.
+                        .child(
+                            tag(div().id(("app-name", i)).flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_sm().cursor_pointer(), "app-title")
+                                .hover(|s| s.text_color(rgba(0xaad2ffff)))
+                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                    this.expanded = if this.expanded.as_deref() == Some(toggle_name.as_str()) { None } else { Some(toggle_name.clone()) };
+                                    cx.notify();
+                                }))
+                                .child(shorten(&label, NAME_CHARS)),
+                        ),
+                )
+                .when(open, |d| {
+                    d.child(
+                        div()
+                            .ml(px(70.))
+                            .mb_1()
+                            .p_2()
+                            .rounded(px(6.))
+                            .bg(rgba(0xffffff0c))
+                            .text_xs()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(div().child(if row.title.is_empty() { "(no window title)".to_string() } else { row.title.clone() }))
+                            .child(div().text_color(rgba(0xffffff90)).child(format!("Program: {}", row.process_name)))
+                            .child(div().text_color(rgba(0xffffff90)).child(format!(
+                                "{}; {}",
+                                if row.running { "open now" } else { "not open" },
+                                if on { "kept inside the zone" } else { "left alone" }
+                            ))),
+                    )
+                })
         });
 
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
@@ -413,7 +479,7 @@ fn create(rt: Arc<dyn Backend>, embedded: bool, cx: &mut App) -> Entity<Screenbo
             }
         })
         .detach();
-        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), avail: Rc::new(Cell::new(PREVIEW_W)), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0, apps_scroll: gpui::ScrollHandle::new() }
+        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), avail: Rc::new(Cell::new(PREVIEW_W)), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0, apps_scroll: gpui::ScrollHandle::new(), expanded: None }
     })
 }
 
@@ -448,6 +514,7 @@ pub fn open(cx: &mut App, rt: Arc<dyn Backend>) {
 mod tests {
     use super::*;
     use screenbound_module::core::geometry::Rect;
+    use crate::runtime::Snapshot;
     use screenbound_module::core::monitor::MonitorId;
 
     fn mon(id: &str, l: i32, t: i32, r: i32, b: i32) -> MonitorInfo {
@@ -474,6 +541,68 @@ mod tests {
         assert!(a.w / a.h > 3.0 && (a.h - b.h).abs() < 0.01);
         assert!(a.x + a.w <= 640.5 && a.h <= 150.5, "everything fits the box");
         assert!(layout_monitors(&[], 640.0, 150.0).is_empty());
+    }
+
+    struct Fake(std::sync::Arc<Snapshot>);
+
+    impl Backend for Fake {
+        fn snapshot(&self) -> std::sync::Arc<Snapshot> {
+            self.0.clone()
+        }
+        fn generation(&self) -> u64 {
+            1
+        }
+        fn change_boxed(&self, _: Box<dyn FnOnce(&mut screenbound_module::core::config::AppConfig) -> bool + Send>) {}
+        fn release_all(&self) {}
+        fn sync_browser(&self) {}
+    }
+
+    /// The box the Desqu window puts the view in: 760 wide, whatever the view would like to be.
+    struct Host(Entity<ScreenboundView>);
+
+    impl Render for Host {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            // The page of the Desqu window: a column at most 760 wide inside a wider area.
+            div().w(px(870.)).flex().flex_col().child(
+                div().max_w(px(760.)).flex().flex_col().gap(px(12.)).child(
+                    div().flex().flex_col().gap(px(12.)).child(div().w_full().min_w(px(0.)).h(px(980.)).overflow_hidden().child(self.0.clone())),
+                ),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn nothing_is_wider_than_the_box_it_sits_in(cx: &mut gpui::TestAppContext) {
+        use screenbound_module::core::config::{AppConfig, KnownApp};
+        let config = AppConfig {
+            known_apps: vec![KnownApp {
+            process_name: "librewolf.exe".into(),
+            title: "(1289) ANOMALY GOES TO LAPLAND (PAPA'S SUMMER PLACE) - YouTube - Ursprunglig profil - LibreWolf and a good deal more words after that".into(),
+            enabled: true,
+            group_id: None,
+        }],
+            ..AppConfig::default()
+        };
+        let backend: Arc<dyn Backend> = Arc::new(Fake(Arc::new(Snapshot { config: Some(config), ..Default::default() })));
+        let (host, cx) = cx.add_window_view(|_, cx| Host(embedded(backend, cx)));
+        cx.run_until_parked();
+        let view = host.read_with(cx, |h, _| h.0.clone());
+        let list = view.read_with(cx, |v, _| v.apps_scroll.bounds());
+        assert!(list.right() <= px(760.), "the list of apps ends at {:?}, past the 760 px box", list.right());
+        assert!(list.size.width > px(100.), "the list has a width: {:?}", list.size);
+        let presets = cx.debug_bounds("presets").expect("the presets were drawn");
+        assert!(presets.right() <= px(760. - 24.), "the presets end at {:?}; the page has a 24 px margin on its right", presets.right());
+        let title = cx.debug_bounds("app-title").expect("the app title was drawn");
+        assert!(title.right() <= px(760.), "the title ends at {:?}, past the box", title.right());
+    }
+
+    #[test]
+    fn long_names_are_cut_with_an_ellipsis_and_short_ones_are_left_alone() {
+        assert_eq!(shorten("Spotify", 10), "Spotify");
+        let cut = shorten("A very long window title indeed", 10);
+        assert_eq!(cut.chars().count(), 10);
+        assert!(cut.ends_with('\u{2026}'));
+        assert_eq!(shorten("exactly10!", 10), "exactly10!");
     }
 
     #[test]
