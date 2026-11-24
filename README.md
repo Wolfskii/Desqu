@@ -18,12 +18,15 @@ installs on its own.
 
 ## Build
 
-Prerequisites: Rust (stable, MSVC), Node 20+, [Task](https://taskfile.dev), WebView2.
+Prerequisites: Rust (stable, MSVC) and [Task](https://taskfile.dev). Node 20+ only for the browser extension.
 
 ```powershell
-task install      # npm dependencies for all workspaces
-task --list       # every task, grouped by app (e.g. screenbound:dev)
-task ci           # type check, unit tests and clippy for every app
+task dev                   # run Desqu with its apps (builds them first; the first build compiles GPUI and takes a few minutes)
+task gpui:vials            # run one app on its own: gpui:vials, gpui:workspaces, gpui:screenbound
+task test                  # unit tests for every app and shared crate
+task ci                    # unit tests and clippy for everything, plus the browser extension
+task --list                # every task
+task gpui:package APP=desqu   # build an installer (vials, workspaces, screenbound or desqu)
 ```
 
 ## Repository layout

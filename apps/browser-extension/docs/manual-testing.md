@@ -40,7 +40,7 @@ Chrome, Edge, Brave, Opera, Vivaldi, Firefox, LibreWolf. Note the version of eac
 
 ## Desqu integration (run after the window checklist)
 
-1. Start Desqu (`task desqu:dev`). The popup and the options page say "Connected to Desqu <version>".
+1. Start Desqu (`task dev`). The popup and the options page say "Connected to Desqu <version>".
 2. Registration: `reg query "HKCU\Software\Google\Chrome\NativeMessagingHosts\io.github.wolfskii.desqu.browser"`
    shows the manifest path under `%LOCALAPPDATA%\Desqu\browser-host`.
 3. Rule sync: change a rule in the extension options; it appears in the Browsers tab within a second. Change a

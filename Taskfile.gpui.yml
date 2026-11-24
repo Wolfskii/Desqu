@@ -5,7 +5,8 @@ version: "3"
 
 tasks:
   desqu:
-    desc: Run the whole Desqu GPUI shell locally, no install (it starts the modules that are on)
+    aliases: [dev]
+    desc: Run Desqu with its apps locally, no install (it starts the apps that are on)
     interactive: true
     cmds:
       - cargo build --release --manifest-path apps/vials-gpui/Cargo.toml
@@ -43,6 +44,18 @@ tasks:
       - for: [vials-gpui, workspaces-gpui, screenbound-gpui, desqu-gpui]
         cmd: cargo test --release --manifest-path apps/{{.ITEM}}/Cargo.toml
       - cargo test --release -p vials-core -p vials-platform -p workspaces-core -p screenbound-module
+
+  lint:
+    desc: Clippy for every GPUI app
+    cmds:
+      - for: [vials-gpui, workspaces-gpui, screenbound-gpui, desqu-gpui]
+        cmd: cargo clippy --release --all-targets --manifest-path apps/{{.ITEM}}/Cargo.toml
+
+  ci:
+    desc: Unit tests and clippy for every GPUI app and its crates
+    cmds:
+      - task: test
+      - task: lint
 
   package:
     desc: "Build an installer: task gpui:package APP=vials|workspaces|screenbound|desqu"
