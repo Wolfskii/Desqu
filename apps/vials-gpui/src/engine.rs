@@ -374,6 +374,14 @@ impl Engine {
 
     /// Adds a rule (tried after the existing ones). Desktop items that already match it and sit in no vial
     /// are sorted at once.
+    /// A vial named "Archive" with a rule that sends it whatever has not been changed for `days` days.
+    pub fn create_archive_at(&self, point: Option<(i32, i32)>, days: u32) -> Option<String> {
+        let vial = self.create_vial_at(point)?;
+        self.rename_vial(&vial, "Archive");
+        self.add_rule(&format!("not changed for {days} days"), vials_core::model::ItemMatcher::ModifiedOlderThanDays(days), &vial);
+        Some(vial)
+    }
+
     pub fn add_rule(&self, name: &str, matcher: vials_core::model::ItemMatcher, vial_id: &str) -> bool {
         let added = self.apply(|cfg| cfg.add_rule(name, matcher, vial_id).is_some());
         if added {

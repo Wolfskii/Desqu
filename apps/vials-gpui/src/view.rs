@@ -984,6 +984,14 @@ impl VialView {
         }
         {
             let live = live.clone();
+            entries.push(MenuEntry::new("New archive vial here (not changed for 30 days)", move |cx| {
+                if live.engine.create_archive_at(Some(at), 30).is_some() {
+                    bump(&live.revision, cx);
+                }
+            }));
+        }
+        {
+            let live = live.clone();
             entries.push(MenuEntry::new("New recent files vial here", move |cx| {
                 if live.engine.create_portal_at(Some(at), vials_core::portal::RECENT).is_some() {
                     bump(&live.revision, cx);

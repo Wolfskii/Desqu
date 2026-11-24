@@ -295,10 +295,19 @@ fn main() {
         });
         let _ = engine.reconcile();
         let (engine_for_desktop, revision_for_desktop) = (engine.clone(), revision.clone());
-        cx.spawn(async move |cx| loop {
+        cx.spawn(async move |cx| {
+            // Rules about age ("not changed for 30 days") start to apply as time passes, with no event to say so:
+            // look again every ten minutes.
+            let mut idle = 0u32;
+            loop {
             let (engine, revision) = (&engine_for_desktop, &revision_for_desktop);
             let mut changed = false;
             while rx.try_recv().is_ok() {
+                changed = true;
+            }
+            idle += 1;
+            if idle >= 2000 {
+                idle = 0;
                 changed = true;
             }
             if changed {
@@ -312,6 +321,7 @@ fn main() {
                 }
             }
             cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
+            }
         })
         .detach();
 
