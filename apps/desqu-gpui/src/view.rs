@@ -736,9 +736,9 @@ impl DesquView {
                     .flex_col()
                     .gap(px(12.))
                     .child(card_title("Zone and apps"))
-                    .child(div().h(px(980.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.main.clone()))
+                    .child(div().w_full().min_w(px(0.)).h(px(980.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.main.clone()))
                     .child(card_title("Groups, rules and browser"))
-                    .child(div().h(px(660.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.manage.clone()))
+                    .child(div().w_full().min_w(px(0.)).h(px(660.)).rounded(px(6.)).border_1().border_color(rgb(BORDER)).overflow_hidden().child(views.manage.clone()))
             }),
         }
     }

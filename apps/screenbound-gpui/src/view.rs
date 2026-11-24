@@ -112,6 +112,8 @@ pub struct ScreenboundView {
     embedded: bool,
     /// Where the preview is in the window (set while painting), to turn mouse positions into positions on a monitor.
     origin: Rc<Cell<Point<Pixels>>>,
+    /// How wide the space for the preview is (measured while painting): the preview shrinks to fit.
+    avail: Rc<Cell<f32>>,
     drag: Option<Drag>,
     note: String,
     update_note: String,
@@ -167,6 +169,11 @@ impl ScreenboundView {
         }
     }
 
+    /// The preview is as wide as the room allows, up to its full size.
+    fn preview_w(&self) -> f32 {
+        self.avail.get().clamp(240.0, PREVIEW_W)
+    }
+
     fn zone_from_drag(&self, monitors: &[Placed], drag: &Drag) -> Option<NormalizedRect> {
         let m = monitors.iter().find(|m| m.index == drag.monitor)?;
         let rel = |p: (f32, f32)| (f64::from((p.0 - m.x) / m.w.max(1.0)), f64::from((p.1 - m.y) / m.h.max(1.0)));
@@ -180,7 +187,8 @@ impl Render for ScreenboundView {
         let snap = self.rt.snapshot();
         let enabled = snap.config.as_ref().is_none_or(|c| c.enabled);
         let zone = snap.config.as_ref().and_then(|c| c.zones.first()).map(|z| z.rect);
-        let placed = layout_monitors(&snap.monitors, PREVIEW_W, PREVIEW_H);
+        let preview_w = self.preview_w();
+        let placed = layout_monitors(&snap.monitors, preview_w, PREVIEW_H);
         let drag_rect = self.drag.as_ref().and_then(|d| self.zone_from_drag(&placed, d));
         let shown_zone = drag_rect.or(zone);
         let managed = snap.status.as_ref().map(|s| s.managed.clone()).unwrap_or_default();
@@ -192,7 +200,7 @@ impl Render for ScreenboundView {
         let preview = div()
             .id("preview")
             .relative()
-            .w(px(PREVIEW_W))
+            .w(px(preview_w))
             .h(px(PREVIEW_H))
             .rounded(px(8.))
             .bg(rgba(0x00000040))
@@ -228,7 +236,7 @@ impl Render for ScreenboundView {
                     let o = this.origin.get();
                     let p = (f32::from(e.position.x - o.x), f32::from(e.position.y - o.y));
                     let snap = this.rt.snapshot();
-                    let placed = layout_monitors(&snap.monitors, PREVIEW_W, PREVIEW_H);
+                    let placed = layout_monitors(&snap.monitors, this.preview_w(), PREVIEW_H);
                     if let Some(m) = placed.iter().find(|m| p.0 >= m.x && p.0 <= m.x + m.w && p.1 >= m.y && p.1 <= m.y + m.h) {
                         this.drag = Some(Drag { monitor: m.index, start: p, current: p });
                         cx.notify();
@@ -247,7 +255,7 @@ impl Render for ScreenboundView {
                 cx.listener(|this, _: &MouseUpEvent, _, cx| {
                     if let Some(d) = this.drag.take() {
                         let snap = this.rt.snapshot();
-                        let placed = layout_monitors(&snap.monitors, PREVIEW_W, PREVIEW_H);
+                        let placed = layout_monitors(&snap.monitors, this.preview_w(), PREVIEW_H);
                         if let Some(rect) = this.zone_from_drag(&placed, &d) {
                             this.rt.change(move |c| model::set_zone(c, rect));
                         }
@@ -302,6 +310,7 @@ impl Render for ScreenboundView {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .items_center()
                     .gap_3()
                     .child(div().text_lg().child("Screenbound"))
@@ -318,7 +327,10 @@ impl Render for ScreenboundView {
             )
             .child(div().text_xs().text_color(rgba(0xffffff80)).child("When an app goes fullscreen, it stays inside the zone. Everything else stays visible."))
             .child(section("Zone: drag on a monitor, or pick a preset"))
-            .child(preview)
+            .child({
+                let avail = self.avail.clone();
+                div().relative().w_full().child(canvas(move |b, _, _| avail.set(f32::from(b.size.width)), |_, _, _, _| {}).absolute().size_full()).child(preview)
+            })
             .child(presets)
             .child(section("Apps that stay inside the zone"))
             .child(
@@ -401,7 +413,7 @@ fn create(rt: Arc<dyn Backend>, embedded: bool, cx: &mut App) -> Entity<Screenbo
             }
         })
         .detach();
-        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0, apps_scroll: gpui::ScrollHandle::new() }
+        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), avail: Rc::new(Cell::new(PREVIEW_W)), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0, apps_scroll: gpui::ScrollHandle::new() }
     })
 }
 

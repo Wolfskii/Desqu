@@ -55,7 +55,7 @@ fn dim(text: impl Into<SharedString>) -> gpui::Div {
 }
 
 fn row() -> gpui::Div {
-    div().flex().items_center().gap_2().min_h(px(32.))
+    div().flex().flex_wrap().items_center().gap_2().min_h(px(32.))
 }
 
 fn rule_line() -> gpui::Div {
