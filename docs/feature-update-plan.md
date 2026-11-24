@@ -59,7 +59,7 @@ progress log in the same commit as the work.
 | P2-13 | [x] | Screenbound: zones per screen setup | M | |
 | P2-14 | [x] | Desqu: hotkey manager with clash warnings | M | |
 | P2-15 | [x] | Desqu: backup, restore and OneDrive sync of all settings | M | |
-| P2-16 | [ ] | Desqu: one update check and installer for the suite | M | Needs signed feeds first |
+| P2-16 | [!] | Desqu: one update check and installer for the suite | M | Needs signed feeds first |
 
 ## Phase 3: polish, reach, command palette
 
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P2-16 one update for the whole suite: blocked on R-01. There are no signed installers or published update feeds yet (docs/releasing.md), so a suite-wide installer and check cannot be built or tried; Desqu's own update check and each app's remain as they are. To do when R-01 is done: one manifest listing all four apps, one installer that replaces them together.
 - P2-15 backup and restore of all settings: Desqu's Settings page has "Back up now" (one zip with the four settings files in Documents/Desqu backups), the five newest with "Restore" (the running apps are stopped, the files are read and checked first, replaced beside-then-rename, the apps start again), a daily automatic backup (newest 14 kept), and with OneDrive present a switch that also keeps a copy in OneDrive/Desqu (newest 5) with "Restore it" for another PC. Tests: round trip, a broken file replaces nothing, listing/pruning/due. Hand test: the restore with the apps running.
 - P2-14 hotkey manager: a Hotkeys card on Desqu's Settings page lists every hotkey that is on (Vials peek, Workspaces jump, Screenbound zone) and warns when two are the same key (the nine desktop keys count too), when Windows uses the key (Win+Space, Win+L, Alt+Tab, ... 16 known) or when the text is not a key. Tests for the list, the clashes and the table.
 - P2-13 zones per screen setup: when the monitors change (dock, undock, another resolution) the zones take the shape they had the last time the screens were like that; nothing is added or removed, so no rule loses its zone. Tests for the setup change both ways and the config staying valid. Hand test: really docking.
