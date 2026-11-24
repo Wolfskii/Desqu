@@ -120,6 +120,9 @@ impl Shell {
 
     /// Brings the open windows in line with the vials: new vials get a window, deleted ones lose it.
     fn sync(&self, cx: &mut App, windows: &Windows, vials: &[Vial]) {
+        // A tab of another vial has no window: the vial it is in shows it.
+        let vials: Vec<Vial> = vials.iter().filter(|v| v.tab_host.is_none()).cloned().collect();
+        let vials = &vials[..];
         let wanted: Vec<&str> = vials.iter().map(|v| v.id.as_str()).collect();
         let gone: Vec<String> = windows.borrow().keys().filter(|id| !wanted.contains(&id.as_str())).cloned().collect();
         for id in gone {

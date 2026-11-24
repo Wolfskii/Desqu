@@ -100,6 +100,9 @@ pub struct Vial {
     /// the desktop. Nothing is hidden on the desktop and `items` stays empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// A tab of another vial: it has no window of its own, the vial named here shows it as one of its tabs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_host: Option<String>,
 }
 
 /// The icon sizes a vial can use, in pixels.
@@ -428,6 +431,7 @@ impl VialsConfig {
                 icon_size: None,
                 title_center: false,
                 source: None,
+                tab_host: None,
             },
         );
         true
@@ -454,15 +458,59 @@ impl VialsConfig {
             icon_size: None,
             title_center: false,
             source: None,
+            tab_host: None,
         });
         id
     }
 
-    /// Deletes a vial; its items go back on the desktop. The built-in Desktop vial cannot be deleted.
+    /// Deletes a vial; its items go back on the desktop. The built-in Desktop vial cannot be deleted. The tabs of
+    /// a deleted vial become vials of their own again.
     pub fn delete_vial(&mut self, id: &str) -> bool {
         let before = self.vials.len();
         self.vials.retain(|v| v.id != id || v.inbox);
-        self.vials.len() != before
+        let deleted = self.vials.len() != before;
+        if deleted {
+            for v in self.vials.iter_mut().filter(|v| v.tab_host.as_deref() == Some(id)) {
+                v.tab_host = None;
+            }
+        }
+        deleted
+    }
+
+    /// The vial `host` and the vials that are its tabs, the host first and then the tabs in the order they were made.
+    pub fn tabs_of(&self, host: &str) -> Vec<&Vial> {
+        self.vials.iter().filter(|v| v.id == host).chain(self.vials.iter().filter(|v| v.tab_host.as_deref() == Some(host))).collect()
+    }
+
+    /// Makes `vial` a tab of `host`. A vial that is itself a tab of another goes there instead of nesting, a host
+    /// that is itself a tab is replaced by its own host, and the tabs of `vial` come along. Returns whether anything
+    /// changed (nothing for the same vial, an unknown one or the built-in Desktop vial).
+    pub fn merge_tab(&mut self, vial: &str, host: &str) -> bool {
+        let root = self.vial(host).map(|h| h.tab_host.clone().unwrap_or_else(|| h.id.clone()));
+        let (Some(root), Some(moving)) = (root, self.vial(vial)) else { return false };
+        if root == vial || moving.inbox || self.vial(&root).is_some_and(|h| h.inbox) {
+            return false;
+        }
+        let members: Vec<String> = self.vials.iter().filter(|v| v.tab_host.as_deref() == Some(vial)).map(|v| v.id.clone()).collect();
+        for v in self.vials.iter_mut().filter(|v| v.id == vial || members.contains(&v.id)) {
+            v.tab_host = Some(root.clone());
+        }
+        true
+    }
+
+    /// Takes a tab out of its vial: it is a vial with a window of its own again, a little below and to the right of
+    /// where the vial it was in sits. Returns whether it was a tab.
+    pub fn split_tab(&mut self, vial: &str) -> bool {
+        let Some(host) = self.vial(vial).and_then(|v| v.tab_host.clone()) else { return false };
+        let place = self.vial(&host).map(|h| (h.rect, h.monitor.clone()));
+        if let Some(v) = self.vials.iter_mut().find(|v| v.id == vial) {
+            v.tab_host = None;
+            if let Some((rect, monitor)) = place {
+                v.rect = NormalizedRect { x: (rect.x + 0.03).min(0.8), y: (rect.y + 0.05).min(0.8), ..rect };
+                v.monitor = monitor;
+            }
+        }
+        true
     }
 
     /// Renames a vial (trimmed, 1..=80 characters). Returns whether the name changed.
@@ -649,6 +697,33 @@ impl VialsConfig {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn vials_merge_into_tabs_without_nesting_and_split_out_again() {
+        let mut cfg = VialsConfig::default();
+        for id in ["a", "b", "c"] {
+            cfg.vials.push(vial(id, &[]));
+        }
+        assert!(cfg.merge_tab("b", "a"));
+        assert_eq!(cfg.tabs_of("a").iter().map(|v| v.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
+        // c goes into b, which is a tab: it lands in a, the vial that shows them.
+        assert!(cfg.merge_tab("c", "b"));
+        assert_eq!(cfg.vial("c").unwrap().tab_host.as_deref(), Some("a"));
+        assert_eq!(cfg.tabs_of("a").len(), 3);
+        assert!(!cfg.merge_tab("a", "a") && !cfg.merge_tab("a", "nope") && !cfg.merge_tab("nope", "a"));
+        // Merging a vial that has tabs takes them along.
+        cfg.vials.push(vial("d", &[]));
+        assert!(cfg.merge_tab("a", "d"));
+        assert_eq!(cfg.tabs_of("d").len(), 4, "a, its tabs b and c, and d");
+        assert!(cfg.vial("d").unwrap().tab_host.is_none());
+        // Splitting puts the vial back next to its host; one that is no tab is refused.
+        assert!(cfg.split_tab("b") && cfg.vial("b").unwrap().tab_host.is_none());
+        assert!(!cfg.split_tab("b"));
+        assert_eq!(cfg.tabs_of("d").len(), 3);
+        // Deleting the vial that shows tabs frees them.
+        assert!(cfg.delete_vial("d"));
+        assert!(cfg.vials.iter().all(|v| v.tab_host.is_none()));
+    }
+
+    #[test]
     fn a_portal_is_a_vial_with_a_source_and_old_vials_have_none() {
         let mut cfg = VialsConfig::default();
         let id = cfg.add_portal(NormalizedRect { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, None, r"\\server\share\Projects");
@@ -765,6 +840,7 @@ mod tests {
             icon_size: None,
             title_center: false,
             source: None,
+            tab_host: None,
         }
     }
 

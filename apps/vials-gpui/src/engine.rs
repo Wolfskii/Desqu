@@ -530,6 +530,16 @@ impl Engine {
         })
     }
 
+    /// Makes `vial` (with its tabs) a tab of `host`.
+    pub fn merge_tab(&self, vial: &str, host: &str) -> bool {
+        self.apply(|cfg| cfg.merge_tab(vial, host))
+    }
+
+    /// Takes a tab out into a vial of its own.
+    pub fn split_tab(&self, vial: &str) -> bool {
+        self.apply(|cfg| cfg.split_tab(vial))
+    }
+
     /// Whether the vial is locked.
     pub fn is_locked(&self, vial_id: &str) -> bool {
         self.config.lock().unwrap_or_else(|e| e.into_inner()).is_locked(vial_id)
@@ -619,6 +629,7 @@ mod tests {
             icon_size: None,
             title_center: false,
             source: None,
+            tab_host: None,
         });
         cfg.save(&cfg_path).unwrap();
 
@@ -694,6 +705,7 @@ mod tests {
             icon_size: None,
             title_center: false,
             source: None,
+            tab_host: None,
         });
         cfg.rules.push(SortRule {
             id: "r1".into(),

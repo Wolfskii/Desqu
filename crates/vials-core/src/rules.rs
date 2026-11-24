@@ -340,6 +340,7 @@ mod tests {
             icon_size: None,
             title_center: false,
             source: None,
+            tab_host: None,
         }
     }
 

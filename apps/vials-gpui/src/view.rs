@@ -118,6 +118,10 @@ pub struct VialView {
     /// Which deep search of a portal is current, and what it found (`None`: look through `all_items`).
     search_gen: std::sync::Arc<std::sync::atomic::AtomicU64>,
     search_results: Option<Vec<String>>,
+    /// The vials that show in this window as tabs (this vial first, with the name each has), and the one that is
+    /// open. A window with one vial has no tab bar.
+    tabs: Vec<(String, String)>,
+    active_tab: Option<String>,
     /// A folder portal: the folder it was made for, the one it shows now, and what that held when last looked at.
     portal: Option<PortalState>,
     /// Icon size in pixels, and whether the title is centred: from the vial's own look.
@@ -242,6 +246,8 @@ impl VialView {
             icons_requested: HashSet::new(),
             icon_size: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).map_or(32, |v| v.icon_px()),
             title_center: live.as_ref().and_then(|l| l.engine.vials().into_iter().find(|v| v.id == l.vial_id)).is_some_and(|v| v.title_center),
+            tabs: Vec::new(),
+            active_tab: None,
             all_items: Vec::new(),
             search: None,
             search_gen: Default::default(),
@@ -282,8 +288,47 @@ impl VialView {
     /// A vial that shows a folder starts at that folder.
     fn init_portal(&mut self, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
-        let source = live.engine.vials().into_iter().find(|v| v.id == live.vial_id).and_then(|v| v.source);
-        self.set_portal_source(source, cx);
+        let vials = live.engine.vials();
+        self.sync_content(&vials, cx);
+    }
+
+    /// The vial whose items the window shows: the open tab, else the vial of the window.
+    fn content_id(&self) -> String {
+        let host = self.live.as_ref().map(|l| l.vial_id.clone()).unwrap_or_default();
+        self.active_tab.clone().filter(|id| self.tabs.iter().any(|t| &t.0 == id)).unwrap_or(host)
+    }
+
+    /// Looks at which vials are tabs of this one and shows the items of the open one.
+    fn sync_content(&mut self, vials: &[vials_core::model::Vial], cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        let mut tabs = vec![(live.vial_id.clone(), self.name.to_string())];
+        tabs.extend(vials.iter().filter(|v| v.tab_host.as_deref() == Some(live.vial_id.as_str())).map(|v| (v.id.clone(), v.name.clone())));
+        if let Some(host) = vials.iter().find(|v| v.id == live.vial_id) {
+            tabs[0].1 = host.name.clone();
+        }
+        self.tabs = if tabs.len() > 1 { tabs } else { Vec::new() };
+        let content = self.content_id();
+        let Some(vial) = vials.iter().find(|v| v.id == content) else { return };
+        self.set_portal_source(vial.source.clone(), cx);
+        if self.portal.is_none() {
+            self.set_items(vial.items.clone(), cx);
+        }
+    }
+
+    /// Opens one of the tabs.
+    fn select_tab(&mut self, id: String, cx: &mut Context<Self>) {
+        let Some(live) = self.live.clone() else { return };
+        if self.active_tab.as_deref() == Some(id.as_str()) {
+            return;
+        }
+        self.active_tab = Some(id);
+        self.selected.clear();
+        self.cursor = None;
+        self.search = None;
+        self.portal = None;
+        let vials = live.engine.vials();
+        self.sync_content(&vials, cx);
+        cx.notify();
     }
 
     /// Makes the view a portal of `source` (or an ordinary vial with `None`); nothing changes when it already is.
@@ -473,10 +518,8 @@ impl VialView {
             let config = live.engine.config();
             self.privacy_mask = config.privacy_mask;
             self.apply_capture(config.hide_from_capture);
-            self.set_portal_source(vial.source.clone(), cx);
-            if self.portal.is_none() {
-                self.set_items(vial.items, cx);
-            }
+            let vials = live.engine.vials();
+            self.sync_content(&vials, cx);
         }
         cx.notify();
     }
@@ -685,7 +728,7 @@ impl VialView {
             .detach();
             return;
         }
-        let (engine, vial_id) = (live.engine.clone(), live.vial_id.clone());
+        let (engine, vial_id) = (live.engine.clone(), self.content_id());
         cx.spawn(async move |this, cx| {
             let changed = cx.background_executor().spawn(async move { engine.drop_items(&vial_id, &paths) }).await;
             if changed {
@@ -868,7 +911,11 @@ impl VialView {
     /// The vial's own menu: rename, sort, folders first, new vial, delete.
     fn open_vial_menu(&mut self, cx: &mut Context<Self>) {
         let Some(live) = self.live.clone() else { return };
-        let Some(vial) = live.engine.vials().into_iter().find(|v| v.id == live.vial_id) else { return };
+        let all = live.engine.vials();
+        let Some(host) = all.iter().find(|v| v.id == live.vial_id).cloned() else { return };
+        // What belongs to the items (sorting, a folder) is about the tab that is open; the window (lock, look) about the vial of the window.
+        let content = self.content_id();
+        let vial = all.iter().find(|v| v.id == content).cloned().unwrap_or_else(|| host.clone());
         let Some(at) = win::cursor_position() else { return };
         let weak = cx.weak_entity();
 
@@ -883,10 +930,11 @@ impl VialView {
             let on = vial.sort_key.as_deref() == Some(key);
             let descending = on && !vial.sort_desc; // choosing the active sort again reverses it
             let live = live.clone();
+            let sort_id = vial.id.clone();
             let label = if on { format!("{label} ({})", if vial.sort_desc { "descending" } else { "ascending" }) } else { label.to_string() };
             entries.push(
                 MenuEntry::new(label, move |cx| {
-                    let _ = live.engine.sort_vial(&live.vial_id, key, descending);
+                    let _ = live.engine.sort_vial(&sort_id, key, descending);
                     bump(&live.revision, cx);
                 })
                 .checked(on),
@@ -901,9 +949,10 @@ impl VialView {
         if vial.source.is_none() {
             let live = live.clone();
             let on = !vial.folders_first;
+            let folders_id = vial.id.clone();
             entries.push(
                 MenuEntry::new("Folders first", move |cx| {
-                    live.engine.set_folders_first(&live.vial_id, on);
+                    live.engine.set_folders_first(&folders_id, on);
                     bump(&live.revision, cx);
                 })
                 .checked(vial.folders_first),
@@ -911,14 +960,31 @@ impl VialView {
         }
         {
             let live = live.clone();
-            let on = !vial.locked;
+            let on = !host.locked;
             entries.push(
                 MenuEntry::new("Lock", move |cx| {
                     live.engine.set_locked(&live.vial_id, on);
                     bump(&live.revision, cx);
                 })
-                .checked(vial.locked),
+                .checked(host.locked),
             );
+        }
+        // Tabs: take the tab that is open out into a vial of its own, or put this vial into another as a tab.
+        if !self.tabs.is_empty() && content != live.vial_id {
+            let live = live.clone();
+            let tab = content.clone();
+            entries.push(MenuEntry::new("Split this tab out", move |cx| {
+                live.engine.split_tab(&tab);
+                bump(&live.revision, cx);
+            }));
+        }
+        for other in all.iter().filter(|v| v.tab_host.is_none() && !v.inbox && v.id != live.vial_id) {
+            let live = live.clone();
+            let target = other.id.clone();
+            entries.push(MenuEntry::new(format!("Merge into {} as a tab", other.name), move |cx| {
+                live.engine.merge_tab(&live.vial_id, &target);
+                bump(&live.revision, cx);
+            }));
         }
         {
             let weak = weak.clone();
@@ -945,7 +1011,7 @@ impl VialView {
             entries.push(MenuEntry::new("Zip to the desktop", move |cx| {
                 let _ = w.update(cx, |view, cx| view.zip_items(cx));
             }));
-            if !vial.locked {
+            if !host.locked {
                 let w = weak.clone();
                 entries.push(MenuEntry::new("Move to folder...", move |cx| {
                     let _ = w.update(cx, |view, cx| view.move_items(cx));
@@ -1608,6 +1674,26 @@ impl Render for VialView {
             .relative()
             .when_some(self.liquid.clone().filter(|_| t.liquid), |d, image| d.child(img(image).absolute().top_0().left_0().size_full()))
             .child(header)
+            .when(!self.tabs.is_empty(), |d| {
+                let open = self.content_id();
+                d.child(div().flex_none().h(px(26.)).flex().items_center().border_b_1().border_color(rgba(t.line)).text_xs().children(self.tabs.iter().enumerate().map(|(i, (id, name))| {
+                    let id = id.clone();
+                    div()
+                        .id(("tab", i))
+                        .px_3()
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .max_w(px(160.))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .when(id == open, |d| d.bg(rgba(t.selected)).border_b_2().border_color(rgba(t.selected_border)))
+                        .when(id != open, move |d| d.hover(move |s| s.bg(rgba(t.hover))))
+                        .child(name.clone())
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.select_tab(id.clone(), cx)))
+                })))
+            })
             .when_some(self.search.clone(), |d, text| {
                 let shown = self.items.len();
                 d.child(

@@ -65,7 +65,7 @@ progress log in the same commit as the work.
 
 | ID | Status | Item | Size | Notes |
 |---|---|---|---|---|
-| P3-01 | [ ] | Tabs: merge vials into one window | L | |
+| P3-01 | [x] | Tabs: merge vials into one window | L | |
 | P3-02 | [x] | Mica theme (Windows 11), fallback to Fluent | M | Check it works on borderless vial windows |
 | P3-03 | [~] | Languages: string tables, Swedish and Polish first | L | |
 | P3-04 | [~] | ARM64 builds | M | Needs an ARM device to try |
@@ -103,6 +103,7 @@ Each is a new app Desqu can turn on and off, with its own page.
 
 Newest first. One line per finished item: the ID, the commit, what was checked, what is left for a hand test.
 
+- P3-01 tabs: the vial menu has "Merge into <vial> as a tab" (the window and its tabs go into another vial, never nested) and "Split this tab out"; a vial with tabs shows a tab bar under its title, the tab that is open decides which items show, where drops go, and the sorting and folder choices of the menu; lock and look stay with the window's own vial; deleting the vial that shows tabs frees them. Tests for merging (no nesting, tabs come along), splitting and deleting in the model. NOT covered by a test: the window side (tab bar, drops into the open tab). Hand test it.
 - P3-03 languages: a small translation layer (desqu-native-shell i18n: look a text up by its English wording, English comes back when there is no translation) with Swedish and Polish for the Desqu window: sidebar, Home, status texts, the descriptions of the apps, the first-run tour, the Settings page (language, palette, backup, report, updates, about). A Language card on the Settings page (Automatic follows Windows). Tests: the tables, and a guard that every text the window passes through t() has both translations. NOT done: the texts inside the apps' own screens on their pages (the option names, the vial menus, the Screenbound views, the palette) are still English; a text with a number or a name in it (format!) is not translated yet. German, French and Spanish are not added.
 - P3-05 accessibility: blocked by GPUI. Version 0.2.2 has no UI Automation provider (no WM_GETOBJECT, nothing about accessibility in its source), so a screen reader sees none of the text in any of our windows. What exists instead: everything in a vial works from the keyboard (P1-07), the palette and menus are keyboard driven, and Windows' own item menus are accessible. Revisit when GPUI gets accessibility support (or by hosting a UIA provider per window, a big job).
 - P3-04 ARM64: CI now has an "arm64" job that runs cargo check --release --target aarch64-pc-windows-msvc for the four GPUI apps, so ARM-only breakage shows up. NOT done: an ARM installer in scripts/package-gpui-app.ps1, and trying the apps on a real ARM PC (none here; the target also needs clang, which this PC does not have, so even the check was not run locally). Whether CI passes is not known yet.
