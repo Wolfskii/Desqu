@@ -6853,7 +6853,7 @@ dependencies = [
 
 [[package]]
 name = "workspaces-gpui"
-version = "0.4.0"
+version = "1.0.0"
 dependencies = [
  "desqu-desktop",
  "desqu-native-shell",
