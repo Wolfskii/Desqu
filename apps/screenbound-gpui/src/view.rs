@@ -20,6 +20,20 @@ use crate::runtime::Backend;
 struct Open(Option<AnyWindowHandle>);
 impl Global for Open {}
 
+/// The height of the list of apps.
+const APPS_HEIGHT: f32 = 240.0;
+
+/// A thin scroll bar for a list `height` tall that is scrolled with `handle`: `None` while everything fits.
+fn scroll_thumb(handle: &gpui::ScrollHandle, height: f32) -> Option<gpui::Div> {
+    let max = f32::from(handle.max_offset().height);
+    if max <= 1.0 {
+        return None;
+    }
+    let thumb = (height * height / (height + max)).clamp(24.0, height);
+    let scrolled = (-f32::from(handle.offset().y) / max).clamp(0.0, 1.0);
+    Some(div().absolute().right(px(2.)).top(px(scrolled * (height - thumb))).w(px(5.)).h(px(thumb)).rounded(px(3.)).bg(rgba(0xffffff50)))
+}
+
 const PREVIEW_W: f32 = 640.0;
 const PREVIEW_H: f32 = 150.0;
 
@@ -104,6 +118,8 @@ pub struct ScreenboundView {
     update_url: Option<String>,
     /// The snapshot generation whose apps were last merged into the config.
     merged: u64,
+    /// The scroll position of the list of apps (its scroll bar is drawn from it).
+    apps_scroll: gpui::ScrollHandle,
 }
 
 impl ScreenboundView {
@@ -263,7 +279,7 @@ impl Render for ScreenboundView {
                     cx.notify();
                 })))
                 .child(div().w(px(8.)).h(px(8.)).rounded(px(4.)).bg(rgba(if row.running { 0x6fe08aff } else { 0xffffff30 })))
-                .child(div().flex_1().min_w_0().text_sm().child(if row.title.is_empty() { row.process_name.clone() } else { format!("{} ({})", row.title, row.process_name) }))
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_sm().child(if row.title.is_empty() { row.process_name.clone() } else { format!("{} ({})", row.title, row.process_name) }))
         });
 
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
@@ -307,13 +323,24 @@ impl Render for ScreenboundView {
             .child(section("Apps that stay inside the zone"))
             .child(
                 div()
-                    .id("apps")
-                    .h(px(150.))
-                    .overflow_y_scroll()
-                    .flex()
-                    .flex_col()
-                    .when(apps.is_empty(), |d| d.child(div().text_xs().text_color(rgba(0xffffff80)).child("Open the apps you want to manage: they appear here.")))
-                    .children(app_list),
+                    .relative()
+                    .h(px(APPS_HEIGHT))
+                    .child(
+                        div()
+                            .id("apps")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.apps_scroll)
+                            .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .pr(px(12.))
+                            .pb_2()
+                            .when(apps.is_empty(), |d| d.child(div().text_xs().text_color(rgba(0xffffff80)).child("Open the apps you want to manage: they appear here.")))
+                            .children(app_list),
+                    )
+                    .when_some(scroll_thumb(&self.apps_scroll, APPS_HEIGHT), |d, thumb| d.child(thumb)),
             )
             .child(section(&format!("Managed now: {}", managed.len())))
             .children(managed.iter().take(4).map(|m| div().text_xs().child(format!("{} ({:?})", m.process_name, m.kind))))
@@ -374,7 +401,7 @@ fn create(rt: Arc<dyn Backend>, embedded: bool, cx: &mut App) -> Entity<Screenbo
             }
         })
         .detach();
-        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0 }
+        ScreenboundView { rt: rt.clone(), embedded, origin: Rc::new(Cell::new(Point::default())), drag: None, note: String::new(), update_note: String::new(), update_url: None, merged: 0, apps_scroll: gpui::ScrollHandle::new() }
     })
 }
 

@@ -40,7 +40,21 @@ struct Shared {
     stopping: AtomicBool,
     /// The browser bridge (the pipe the extension talks to), while integration is on.
     bridge: Mutex<Option<BridgeServer>>,
+    /// When a window last read the snapshot (milliseconds since `epoch`): the list of open windows is
+    /// only worth its cost while someone looks at it.
+    viewed: AtomicU64,
+    epoch: std::time::Instant,
+    /// The last list of open windows, and when it was read.
+    windows: Mutex<(Option<std::time::Instant>, Vec<WindowInfo>)>,
 }
+
+/// The list of windows is read while a window looked at the snapshot this recently.
+const VIEWED_WITHIN: Duration = Duration::from_secs(6);
+/// How often the list of windows is read while someone looks.
+const WINDOWS_EVERY: Duration = Duration::from_secs(2);
+/// Snapshots are made at most this often, so a burst of engine notifications (every step of an
+/// animation) does not keep the engine thread busy answering them.
+const SNAPSHOT_GAP: Duration = Duration::from_millis(300);
 
 /// What the views need from Screenbound: the engine inside the app itself ([`Runtime`]), or, in the
 /// Desqu window, the saved config plus a message to the running app.
@@ -178,6 +192,9 @@ impl Runtime {
             wake: (Mutex::new(false), std::sync::Condvar::new()),
             stopping: AtomicBool::new(false),
             bridge: Mutex::new(None),
+            viewed: AtomicU64::new(0),
+            epoch: std::time::Instant::now(),
+            windows: Mutex::new((None, Vec::new())),
         });
         let _ = cell.set(shared.clone());
         shared.refresh();
@@ -189,6 +206,7 @@ impl Runtime {
     }
 
     pub fn snapshot(&self) -> Arc<Snapshot> {
+        self.shared.mark_viewed();
         lock(&self.shared.snapshot).clone()
     }
 
@@ -256,6 +274,21 @@ impl Shared {
         }
     }
 
+    /// Notes that a window is looking at the snapshot. After a pause it also asks for a fresh one, so
+    /// the list of windows is there right away.
+    fn mark_viewed(&self) {
+        let now = self.epoch.elapsed().as_millis() as u64 + 1;
+        let before = self.viewed.swap(now, Ordering::Relaxed);
+        if before == 0 || now - before > VIEWED_WITHIN.as_millis() as u64 {
+            self.poke();
+        }
+    }
+
+    fn being_viewed(&self) -> bool {
+        let at = self.viewed.load(Ordering::Relaxed);
+        at != 0 && (self.epoch.elapsed().as_millis() as u64 + 1).saturating_sub(at) <= VIEWED_WITHIN.as_millis() as u64
+    }
+
     fn poke(&self) {
         *lock(&self.wake.0) = true;
         self.wake.1.notify_one();
@@ -264,6 +297,8 @@ impl Shared {
     fn refresh_loop(&self) {
         while !self.stopping.load(Ordering::Relaxed) {
             self.refresh();
+            // At most a few snapshots a second, whatever the engine reports.
+            std::thread::sleep(SNAPSHOT_GAP);
             let (flag, cv) = &self.wake;
             let mut woken = lock(flag);
             if !*woken {
@@ -276,11 +311,21 @@ impl Shared {
 
     /// Reads the engine's state into a new snapshot.
     pub fn refresh(&self) {
-        let read = self.handle.call(|e| {
-            let windows = e.list_windows().unwrap_or_default();
+        // Listing the open windows asks Windows about every one of them, on the engine thread, which
+        // also moves the windows: only do it while a window shows the list, and not on every pass.
+        let list_windows = self.being_viewed() && lock(&self.windows).0.is_none_or(|at| at.elapsed() >= WINDOWS_EVERY);
+        let read = self.handle.call(move |e| {
+            let windows = if list_windows { e.list_windows().ok() } else { None };
             (e.config(), e.monitors(), windows, e.status(), e.activity())
         });
         if let Ok((config, monitors, windows, status, activity)) = read {
+            let windows = {
+                let mut last = lock(&self.windows);
+                if let Some(fresh) = windows {
+                    *last = (Some(std::time::Instant::now()), fresh);
+                }
+                last.1.clone()
+            };
             *lock(&self.snapshot) = Arc::new(Snapshot { config: Some(config), monitors, windows, status: Some(status), activity });
             self.generation.fetch_add(1, Ordering::Relaxed);
         }
