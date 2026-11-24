@@ -622,7 +622,7 @@ impl Engine {
             style = format_args!("{:#010x}/{:#010x}", state.style.primary, state.style.extended),
             "detected fullscreen transition"
         );
-        let duration = self.config.transition.duration();
+        let duration = Duration::ZERO; // no animation: windows go straight to their new size
         if duration.is_zero() {
             match self.apply_zone(&mut m, Some(&monitor)) {
                 Ok(msg) => {
@@ -1102,7 +1102,7 @@ impl Engine {
                 tracing::warn!(window = %id, "could not clear taskbar fullscreen mark: {e}");
             }
             tracing::info!(window = %who, app_left_at = %current.bounds, restoring = %pre.bounds, "fullscreen exited");
-            let duration = self.config.transition.duration();
+            let duration = Duration::ZERO; // no animation: windows go straight to their new size
             if duration.is_zero() || current.bounds.approx_eq(&pre.bounds, BOUNDS_TOLERANCE) {
                 self.finish_exit(id, pre, who);
             } else {
