@@ -18,6 +18,8 @@ pub struct Engine {
     path: PathBuf,
     monitors: Vec<MonitorRef>,
     watch: Mutex<Option<desqu_desktop::Subscription>>,
+    /// What the vials looked like before the last few changes the user made: for undo.
+    history: Mutex<vials_core::history::History<VialsConfig>>,
 }
 
 impl Engine {
@@ -29,7 +31,7 @@ impl Engine {
             desqu_desktop::DesktopError::OwnedElsewhere => "the desktop is held by an older Desqu, Vials or Workspaces that does not share it: quit that one first".to_string(),
             other => other.to_string(),
         })?;
-        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None) });
+        let engine = Arc::new(Self { layer, config: Mutex::new(config), path: path.to_path_buf(), monitors, watch: Mutex::new(None), history: Mutex::new(vials_core::history::History::new(30)) });
         engine.hide_vial_items();
         Ok(engine)
     }
@@ -94,10 +96,20 @@ impl Engine {
     /// Changes the config with `edit`, saves it, and hides the items that entered a vial / shows the
     /// ones that left. Returns whether anything changed.
     fn apply(&self, edit: impl FnOnce(&mut VialsConfig) -> bool) -> bool {
+        self.apply_with(true, edit)
+    }
+
+    /// Like `apply`; `record` says whether undo can take the change back (what the user did, not what
+    /// the desktop or a setting did).
+    fn apply_with(&self, record: bool, edit: impl FnOnce(&mut VialsConfig) -> bool) -> bool {
         let mut cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
         let before: HashSet<String> = cfg.assigned_ids().into_iter().collect();
+        let snapshot = record.then(|| cfg.clone());
         if !edit(&mut cfg) {
             return false;
+        }
+        if let Some(snapshot) = snapshot {
+            self.history.lock().unwrap_or_else(|e| e.into_inner()).push(snapshot);
         }
         let after: HashSet<String> = cfg.assigned_ids().into_iter().collect();
         if let Err(e) = cfg.save(&self.path) {
@@ -183,7 +195,7 @@ impl Engine {
         // The desktop keeps listing a deleted file for a few seconds: never put such a ghost in a vial.
         let items: Vec<_> = items.into_iter().filter(|i| i.id.starts_with("::") || Path::new(&i.id).exists()).collect();
         let names: std::collections::HashMap<&str, &str> = items.iter().map(|i| (i.id.as_str(), i.name.as_str())).collect();
-        let changed = self.apply(|cfg| {
+        let changed = self.apply_with(false, |cfg| {
             let assignments = rules::assign_new_items(cfg, &items);
             for (item, vial) in &assignments {
                 cfg.assign(item, Some(vial));
@@ -301,7 +313,7 @@ impl Engine {
     /// "hide items on the desktop" on or off hides or shows the vials' items at once.
     pub fn edit_settings(&self, edit: impl FnOnce(&mut VialsConfig)) -> bool {
         let before = self.config();
-        let changed = self.apply(|cfg| {
+        let changed = self.apply_with(false, |cfg| {
             edit(cfg);
             *cfg != before
         });
@@ -386,6 +398,23 @@ impl Engine {
         self.apply(|cfg| cfg.rename_vial(vial_id, name))
     }
 
+    /// Whether there is something to undo.
+    pub fn can_undo(&self) -> bool {
+        !self.history.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+    }
+
+    /// Takes back the last change the user made to the vials, their items or the rules.
+    pub fn undo(&self) -> bool {
+        let Some(before) = self.history.lock().unwrap_or_else(|e| e.into_inner()).pop() else { return false };
+        self.apply_with(false, |cfg| {
+            let mut restored = cfg.clone();
+            restored.restore_content(before);
+            let changed = restored != *cfg;
+            *cfg = restored;
+            changed
+        })
+    }
+
     /// Whether the vial is locked.
     pub fn is_locked(&self, vial_id: &str) -> bool {
         self.config.lock().unwrap_or_else(|e| e.into_inner()).is_locked(vial_id)
@@ -397,7 +426,7 @@ impl Engine {
     }
 
     pub fn set_collapsed(&self, vial_id: &str, collapsed: bool) {
-        self.apply(|cfg| match cfg.vials.iter_mut().find(|v| v.id == vial_id) {
+        self.apply_with(false, |cfg| match cfg.vials.iter_mut().find(|v| v.id == vial_id) {
             Some(v) if v.collapsed != collapsed => {
                 v.collapsed = collapsed;
                 true

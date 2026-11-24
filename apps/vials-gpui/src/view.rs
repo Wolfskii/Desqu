@@ -622,6 +622,12 @@ impl VialView {
                 let _ = weak.update(cx, |view, cx| view.open_look_menu(cx));
             }));
         }
+        if live.engine.can_undo() {
+            let weak = weak.clone();
+            entries.push(MenuEntry::new("Undo", move |cx| {
+                let _ = weak.update(cx, |view, cx| view.undo(cx));
+            }));
+        }
         entries.push(MenuEntry::separator());
         // While Workspaces runs: which virtual desktop the vial shows on (the current one is checked).
         if let Some(choices) = crate::desktops::menu_choices(&live.vial_id) {
@@ -697,6 +703,10 @@ impl VialView {
             self.paste(cx);
             return;
         }
+        if k.modifiers.control && k.key == "z" {
+            self.undo(cx);
+            return;
+        }
         if k.modifiers.control && k.key == "a" {
             self.selected = (0..self.items.len()).collect();
             cx.notify();
@@ -752,6 +762,14 @@ impl VialView {
             }
         } else if k.modifiers.control && (k.key == "c" || k.key == "x") {
             let _ = vials_platform::clipboard::put_files(&ids, k.key == "x");
+        }
+    }
+
+    /// Takes back the last change (any vial's).
+    fn undo(&mut self, cx: &mut Context<Self>) {
+        let Some(live) = &self.live else { return };
+        if live.engine.undo() {
+            self.announce(cx);
         }
     }
 

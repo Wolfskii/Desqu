@@ -4,6 +4,7 @@ pub mod b64;
 pub mod clip;
 pub mod gesture;
 pub mod layout;
+pub mod history;
 pub mod model;
 pub mod nav;
 pub mod rules;

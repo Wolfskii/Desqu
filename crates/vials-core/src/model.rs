@@ -314,6 +314,21 @@ impl VialsConfig {
         self.vials.iter().find(|v| v.id == id)
     }
 
+    /// Goes back to the vials, items and rules of `before`, but keeps what has changed since in how the
+    /// vials sit on screen (place, size, collapsed) and in the settings: undo is about content.
+    pub fn restore_content(&mut self, mut before: VialsConfig) {
+        for vial in &mut before.vials {
+            if let Some(now) = self.vials.iter().find(|v| v.id == vial.id) {
+                vial.rect = now.rect;
+                vial.monitor = now.monitor.clone();
+                vial.collapsed = now.collapsed;
+            }
+        }
+        self.vials = before.vials;
+        self.rules = before.rules;
+        self.declined = before.declined;
+    }
+
     /// Whether the vial is locked (an unknown vial is not).
     pub fn is_locked(&self, id: &str) -> bool {
         self.vial(id).is_some_and(|v| v.locked)
@@ -584,6 +599,26 @@ impl VialsConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn restoring_content_keeps_where_the_vials_are_and_the_settings() {
+        let mut before = VialsConfig::default();
+        before.vials.push(vial("a", &["x", "y"]));
+        before.vials.push(vial("gone", &["z"]));
+        before.theme = VialTheme::Classic;
+        let mut now = before.clone();
+        now.vials.remove(1);
+        now.vials[0].items = vec!["x".into()];
+        now.vials[0].rect = NormalizedRect { x: 0.5, y: 0.5, width: 0.2, height: 0.2 };
+        now.vials[0].collapsed = true;
+        now.theme = VialTheme::Glass;
+        now.restore_content(before);
+        assert_eq!(now.vials.len(), 2, "the deleted vial is back");
+        assert_eq!(now.vials[0].items, vec!["x".to_string(), "y".to_string()], "with its items");
+        assert_eq!(now.vials[0].rect.x, 0.5, "but where the window is now");
+        assert!(now.vials[0].collapsed);
+        assert_eq!(now.theme, VialTheme::Glass, "settings are not undone");
+    }
+
     #[test]
     fn a_vial_look_has_defaults_and_ignores_values_it_does_not_know() {
         let mut v = vial("a", &[]);
